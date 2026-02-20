@@ -1,0 +1,44 @@
+{
+  "name": "@dtour/viewer",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/viewer.js",
+  "exports": {
+    ".": {
+      "import": "./dist/viewer.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./dist/viewer.css": "./dist/viewer.css"
+  },
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@dtour/scatter": "workspace:*",
+    "@phosphor-icons/react": "^2.1.10",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slider": "^1.3.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/vite": "^4.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jotai": "^2.10.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.11"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  }
+}

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dtour"
+version = "0.1.0"
+description = "Guided tours through high-dimensional data — interactive WebGPU scatter in Jupyter"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "anywidget>=0.9.0",
+  "numpy>=1.26",
+  "pyarrow>=14.0",
+  "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+umap = ["umap-learn>=0.5"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "ty>=0.0.1a0",
+  "jupyterlab>=4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dtour"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "RUF"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

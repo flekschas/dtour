@@ -1,0 +1,53 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noDefaultExport": "off",
+        "useNamingConvention": "off",
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "overrides": [
+    {
+      "include": ["packages/viewer/src/circular-range-selector.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noArrayIndexKey": "off" },
+          "a11y": { "noSvgWithoutTitle": "off" }
+        }
+      }
+    }
+  ],
+  "files": {
+    "ignore": [
+      "**/node_modules",
+      "**/dist",
+      "**/.vite",
+      "related-code/**",
+      "papers/**",
+      "figures/**",
+      ".claude/**",
+      "**/*.md"
+    ]
+  }
+}

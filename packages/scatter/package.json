@@ -1,0 +1,30 @@
+{
+  "name": "@dtour/scatter",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/scatter.js",
+  "module": "./dist/scatter.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/scatter.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@uwdata/flechette": "^2.3.0",
+    "hyparquet": "^1.25.0",
+    "hyparquet-compressors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.54",
+    "vite": "^6.0.11"
+  }
+}

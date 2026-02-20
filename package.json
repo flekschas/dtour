@@ -1,0 +1,16 @@
+{
+  "name": "dtour-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter webapp dev",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "shadcn": "^3.8.5",
+    "typescript": "^5.7.3"
+  }
+}
