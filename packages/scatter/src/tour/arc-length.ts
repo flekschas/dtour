@@ -1,8 +1,15 @@
 import { geodesicDistance, interpolateBases } from './geodesic.ts';
 
+/** Number of sub-samples per segment for arc-length estimation along the Catmull-Rom curve. */
+const ARC_SAMPLES = 8;
+
 /**
  * Compute cumulative arc-length table for a cyclic sequence of basis matrices.
  * The last basis connects back to the first (closed loop).
+ *
+ * Because interpolation follows a Catmull-Rom spline (not a geodesic),
+ * we sample multiple points along each cubic segment and sum the
+ * geodesic distances between consecutive samples.
  *
  * Returns a Float32Array of length bases.length + 1:
  *   [0, d01, d01+d12, ..., total]
@@ -16,10 +23,29 @@ export const computeArcLengths = (bases: Float32Array[], p: number): Float32Arra
   const cumulative = new Float32Array(n + 1);
   cumulative[0] = 0;
 
+  const prev = new Float32Array(p * 2);
+  const cur = new Float32Array(p * 2);
+
   for (let i = 0; i < n; i++) {
-    const next = (i + 1) % n;
-    const d = geodesicDistance(bases[i]!, bases[next]!, p);
-    cumulative[i + 1] = cumulative[i]! + d;
+    const i0 = (i - 1 + n) % n;
+    const i1 = i;
+    const i2 = (i + 1) % n;
+    const i3 = (i + 2) % n;
+
+    // Sample along the Catmull-Rom curve and sum geodesic distances
+    let segLen = 0;
+    // Start at t=0 (which equals bases[i1])
+    interpolateBases(prev, bases[i0]!, bases[i1]!, bases[i2]!, bases[i3]!, p, 0);
+
+    for (let s = 1; s <= ARC_SAMPLES; s++) {
+      const localT = s / ARC_SAMPLES;
+      interpolateBases(cur, bases[i0]!, bases[i1]!, bases[i2]!, bases[i3]!, p, localT);
+      segLen += geodesicDistance(prev, cur, p);
+      // Swap prev ← cur
+      prev.set(cur);
+    }
+
+    cumulative[i + 1] = cumulative[i]! + segLen;
   }
 
   // Normalize to [0, 1]
@@ -80,6 +106,9 @@ export const interpolateAtPosition = (
 ): Float32Array => {
   const n = bases.length;
   const { segment, localT } = resolvePosition(arcLengths, t);
-  const next = (segment + 1) % n;
-  return interpolateBases(out, bases[segment]!, bases[next]!, p, localT);
+  const i0 = (segment - 1 + n) % n;
+  const i1 = segment;
+  const i2 = (segment + 1) % n;
+  const i3 = (segment + 2) % n;
+  return interpolateBases(out, bases[i0]!, bases[i1]!, bases[i2]!, bases[i3]!, p, localT);
 };
