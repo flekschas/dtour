@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '../lib/utils';
 
-export type CircularSelectorProps = {
+export type CircularSliderProps = {
   /** Current position [0, 1]. */
   value: number;
   /** Called when the user drags the handle. */
@@ -11,14 +12,19 @@ export type CircularSelectorProps = {
   size?: number;
 };
 
-export const CircularSelector = ({
+export const CircularSlider = ({
   value,
   onChange,
   tickCount = 8,
   size = 200,
-}: CircularSelectorProps) => {
+}: CircularSliderProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  const prevValue = useRef(value);
+
+  // Detect wrap-around (e.g. 0.98 → 0.02) to suppress arc flicker
+  const isWrapping = Math.abs(value - prevValue.current) > 0.5;
+  prevValue.current = value;
 
   const center = size / 2;
   const radius = size * 0.4;
@@ -107,35 +113,69 @@ export const CircularSelector = ({
       ref={svgRef}
       width={size}
       height={size}
-      style={{ cursor: 'pointer', userSelect: 'none', touchAction: 'none' }}
       onMouseDown={handlePointerDown}
       onTouchStart={handlePointerDown}
+      className="pointer-events-none select-none touch-none"
     >
+      <title>Circular slider for Dtour</title>
+      {/* Transparent hit area for track ring — wider for easier clicking */}
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="transparent"
+        strokeWidth="20"
+        className="cursor-pointer pointer-events-auto"
+      />
       {/* Track ring */}
-      <circle cx={center} cy={center} r={radius} fill="none" stroke="#333" strokeWidth="3" />
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="#333"
+        strokeWidth="3"
+        className="pointer-events-none"
+      />
       {/* Ticks */}
       {ticks}
       {/* Arc showing position */}
-      {value > 0.001 && (
+      {value > 0.001 && !isWrapping && (
         <path
           d={`M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${handleX} ${handleY}`}
           fill="none"
-          stroke="#4f8ff7"
+          stroke="#e8a040"
           strokeWidth="4"
           strokeLinecap="round"
+          className="pointer-events-none"
         />
       )}
       {/* Center dot */}
-      <circle cx={center} cy={center} r="3" fill="#666" />
+      <circle
+        cx={center}
+        cy={center}
+        r="3"
+        fill="#666"
+        className="pointer-events-none"
+      />
+      {/* Transparent hit area for handle — larger for easier grabbing */}
+      <circle
+        cx={handleX}
+        cy={handleY}
+        r="16"
+        fill="transparent"
+        className={cn("cursor-grab pointer-events-auto", isDragging ? 'cursor-grabbing' : 'cursor-grab')}
+      />
       {/* Handle */}
       <circle
         cx={handleX}
         cy={handleY}
         r="8"
-        fill="#4f8ff7"
+        fill="#e8a040"
         stroke="#1a1a2e"
         strokeWidth="2"
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        className="pointer-events-none"
       />
     </svg>
   );

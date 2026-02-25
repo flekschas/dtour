@@ -3,10 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeGalleryPositions } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import {
+  previewCountAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
   tourPositionAtom,
-  viewCountAtom,
+  tourSuspendedAtom,
 } from '../state/atoms.ts';
 
 /** 360° of travel = 1000ms animation */
@@ -24,18 +25,19 @@ export type GalleryProps = {
 };
 
 export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: GalleryProps) => {
-  const viewCount = useAtomValue(viewCountAtom);
+  const previewCount = useAtomValue(previewCountAtom);
   const position = useAtomValue(tourPositionAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPosition = useSetAtom(tourPositionAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
+  const setTourSuspended = useSetAtom(tourSuspendedAtom);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
   const animRef = useRef<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const { positions } = useMemo(
-    () => computeGalleryPositions(containerWidth, containerHeight, viewCount),
-    [containerWidth, containerHeight, viewCount],
+    () => computeGalleryPositions(containerWidth, containerHeight, previewCount),
+    [containerWidth, containerHeight, previewCount],
   );
 
   // Adopt each canvas into its wrapper div (once, on mount)
@@ -56,18 +58,18 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
     };
   }, []);
 
-  const currentKeyframe = Math.round(position * viewCount) % viewCount;
+  const currentKeyframe = Math.round(position * previewCount) % previewCount;
 
   const getBorderColor = (i: number): string => {
+    const isActive = i === selectedKeyframe || i === currentKeyframe;
+    if (isActive) return '#e8a040';
     if (i === hoveredIndex) return '#ffffff';
-    if (i === selectedKeyframe) return '#e8a040';
-    if (i === currentKeyframe) return '#4080e8';
     return '#2a2a3a'; // matches toolbar border (dtour-border)
   };
 
   const getBoxShadow = (i: number): string => {
     if (i === selectedKeyframe) return '0 0 8px rgba(232, 160, 64, 0.3)';
-    if (i === currentKeyframe) return '0 0 8px rgba(64, 128, 232, 0.3)';
+    if (i === currentKeyframe) return '0 0 8px rgba(232, 160, 64, 0.3)';
     if (i === hoveredIndex) return '0 0 6px rgba(255, 255, 255, 0.15)';
     return 'none';
   };
@@ -80,10 +82,11 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
         animRef.current = null;
       }
 
+      setTourSuspended(false);
       setSelectedKeyframe(i);
       setPlaying(false);
 
-      const target = i / viewCount;
+      const target = i / previewCount;
 
       // Read current position via the atom getter callback
       setPosition((current) => {
@@ -93,7 +96,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
         if (delta < -0.5) delta += 1;
 
         const absDelta = Math.abs(delta);
-        const durationMs = Math.max(MIN_ANIMATION_MS, absDelta * MS_PER_FULL_ROTATION);
+        const durationMs = Math.max(MIN_ANIMATION_MS, absDelta * MS_PER_FULL_ROTATION) * 1.5;
 
         // If already there, no animation needed
         if (absDelta < 0.001) return target;
@@ -127,7 +130,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
         return current;
       });
     },
-    [viewCount, setSelectedKeyframe, setPlaying, setPosition],
+    [previewCount, setSelectedKeyframe, setPlaying, setPosition, setTourSuspended],
   );
 
   return (
@@ -147,7 +150,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
             onMouseEnter={pos ? () => setHoveredIndex(i) : undefined}
             onMouseLeave={pos ? () => setHoveredIndex(null) : undefined}
             className={cn(
-              'absolute overflow-hidden border-2 border-solid rounded-sm transition-[border-color,box-shadow] duration-200 ease-in-out',
+              'absolute overflow-hidden border-2 border-solid rounded-sm transition-[border-color,box-shadow] duration-200 ease-in-out z-20',
               pos ? 'block cursor-pointer' : 'hidden',
             )}
             style={{

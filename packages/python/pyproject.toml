@@ -11,8 +11,9 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
   "anywidget>=0.9.0",
+  "arro3-core>=0.7.0",
+  "arro3-io>=0.7.0",
   "numpy>=1.26",
-  "pyarrow>=14.0",
   "scikit-learn>=1.4",
 ]
 
@@ -27,6 +28,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dtour"]
+artifacts = ["src/dtour/static/*"]
 
 [tool.ruff]
 line-length = 100

@@ -26,11 +26,11 @@ export type ScatterInstance = {
    * Set tour basis matrices. Each basis is a p×2 column-major Float32Array:
    * [x0, x1, ..., xp-1, y0, y1, ..., yp-1]
    * where x_i is the x-projection weight for dimension i.
+   * dims (p) is inferred as bases[0].length / 2.
    *
    * @param bases - array of basis matrices, one per tour keyframe
-   * @param dims  - number of dimensions (p)
    */
-  setBases: (bases: Float32Array[], dims: number) => void;
+  setBases: (bases: Float32Array[]) => void;
   /** Set tour position along the arc-length parameterized path [0, 1]. */
   setTourPosition: (position: number) => void;
   /** Update point rendering style. */
@@ -39,12 +39,31 @@ export type ScatterInstance = {
     opacity?: number;
     color?: [number, number, number];
   }) => void;
-  /** Set 2D camera (pan in world space, zoom factor). */
-  setCamera: (options: { pan?: [number, number]; zoom?: number }) => void;
+  /** Set 2D camera (pan, zoom, and optional viewport inset for toolbar offset). */
+  setCamera: (options: {
+    pan?: [number, number];
+    zoom?: number;
+    /** NDC-space Y offset — shifts content to center below toolbar. */
+    insetOffsetY?: number;
+    /** Zoom multiplier — scales content to fit visible area below toolbar. */
+    insetZoom?: number;
+  }) => void;
   /** Resize a canvas to the given pixel dimensions (use for DPI-aware sizing). */
   resize: (viewIndex: number, width: number, height: number) => void;
   /** Request a render of all views. */
   render: () => void;
+  /** Set a single basis directly for manual/zen modes. Renders main view only. */
+  setDirectBasis: (basis: Float32Array) => void;
+  /** Encode a column as per-point colors. Column can be categorical or numeric. */
+  encodeColor: (column: string, palette?: string) => void;
+  /** Clear per-point colors and revert to uniform color. */
+  clearColor: () => void;
+  /** Set a selection mask (1 = selected, 0 = dimmed). */
+  setSelectionMask: (mask: Uint32Array) => void;
+  /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
+  lassoSelect: (polygon: Float32Array) => void;
+  /** Clear selection mask — all points visible. */
+  clearSelection: () => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
@@ -72,7 +91,7 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  * const scatter = createScatter({ canvases: [mainCanvas, ...previewCanvases] });
  * scatter.subscribe(console.log);
  * scatter.loadData(arrowBuffer);
- * scatter.setBases(bases, dims);
+ * scatter.setBases(bases);
  * scatter.setTourPosition(0.5);
  * ```
  */
@@ -132,16 +151,16 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     opacity: 0.7,
     color: [0.25, 0.5, 0.9] as [number, number, number],
   };
-  let currentCamera = { pan: [0, 0] as [number, number], zoom: 1 };
+  let currentCamera = { pan: [0, 0] as [number, number], zoom: 1, insetOffsetY: 0, insetZoom: 1 };
 
   const loadData = (buffer: ArrayBuffer): void => {
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
   };
 
-  const setBases = (bases: Float32Array[], dims: number): void => {
+  const setBases = (bases: Float32Array[]): void => {
     // Transfer ownership of basis buffers for zero-copy
     const transfers = bases.map((b) => b.buffer);
-    sendToGpu(gpuWorker, { type: 'setBases', bases, dims }, transfers);
+    sendToGpu(gpuWorker, { type: 'setBases', bases }, transfers);
   };
 
   const setTourPosition = (position: number): void => {
@@ -162,12 +181,19 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     });
   };
 
-  const setCamera = (opts: { pan?: [number, number]; zoom?: number }): void => {
+  const setCamera = (opts: {
+    pan?: [number, number];
+    zoom?: number;
+    insetOffsetY?: number;
+    insetZoom?: number;
+  }): void => {
     currentCamera = { ...currentCamera, ...opts };
     sendToGpu(gpuWorker, {
       type: 'setCamera',
       pan: currentCamera.pan,
       zoom: currentCamera.zoom,
+      insetOffsetY: currentCamera.insetOffsetY,
+      insetZoom: currentCamera.insetZoom,
     });
   };
 
@@ -177,6 +203,33 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
 
   const render = (): void => {
     sendToGpu(gpuWorker, { type: 'render' });
+  };
+
+  const setDirectBasis = (basis: Float32Array): void => {
+    sendToGpu(gpuWorker, { type: 'setDirectBasis', basis }, [basis.buffer]);
+  };
+
+  const encodeColor = (column: string, palette?: string): void => {
+    const msg: MainToData = palette
+      ? { type: 'encodeColor', column, palette }
+      : { type: 'encodeColor', column };
+    sendToData(dataWorker, msg);
+  };
+
+  const clearColor = (): void => {
+    sendToGpu(gpuWorker, { type: 'clearColors' });
+  };
+
+  const setSelectionMask = (mask: Uint32Array): void => {
+    sendToGpu(gpuWorker, { type: 'setSelectionMask', mask }, [mask.buffer]);
+  };
+
+  const lassoSelect = (polygon: Float32Array): void => {
+    sendToGpu(gpuWorker, { type: 'lassoSelect', polygon }, [polygon.buffer]);
+  };
+
+  const clearSelection = (): void => {
+    sendToGpu(gpuWorker, { type: 'clearSelectionMask' });
   };
 
   const subscribe = (handler: (status: ScatterStatus) => void): (() => void) => {
@@ -198,6 +251,12 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setCamera,
     resize,
     render,
+    setDirectBasis,
+    encodeColor,
+    clearColor,
+    setSelectionMask,
+    lassoSelect,
+    clearSelection,
     subscribe,
     destroy,
   };

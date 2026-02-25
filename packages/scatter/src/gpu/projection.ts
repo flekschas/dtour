@@ -99,7 +99,7 @@ export const createProjectionResources = (
   const projectedBuffer = device.createBuffer({
     label: 'projected',
     size: numPoints * 2 * 4, // N×2 floats
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
 
   return { dataBuffer, normParamsBuffer, basisBuffer, projectedBuffer, bindGroup: null };

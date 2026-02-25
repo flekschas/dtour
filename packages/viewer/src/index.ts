@@ -1,23 +1,34 @@
 // @dtour/viewer — React UI for dtour: circular selector, preview gallery, tour controls.
 import './styles.css';
 
+// Primary API — self-contained component with spec-driven state
 export { Dtour } from './Dtour.tsx';
 export type { DtourProps } from './Dtour.tsx';
-export { CircularSelector } from './circular-range-selector.tsx';
-export type { CircularSelectorProps } from './circular-range-selector.tsx';
-export { createDefaultBases } from './bases.ts';
-export { DtourToolbar } from './components/DtourToolbar.tsx';
+export type { DtourSpec } from './spec.ts';
+export { dtourSpecSchema, DTOUR_DEFAULTS } from './spec.ts';
 
-// Jotai atoms — state groups for MCP-web integration
+// Advanced composable API — for users who need granular control with their own Provider
+export { DtourViewer } from './DtourViewer.tsx';
+export type { DtourViewerProps } from './DtourViewer.tsx';
+export { DtourToolbar } from './components/DtourToolbar.tsx';
+export { CircularSlider } from './components/CircularSlider.tsx';
+export type { CircularSliderProps } from './components/CircularSlider.tsx';
+export { createDefaultBases } from './bases.ts';
+
+// Radial chart — quality metrics visualization
+export { RadialChart, parseMetrics } from './radial-chart/index.ts';
+export type { RadialTrackConfig, ParsedTrack, RadialChartProps } from './radial-chart/index.ts';
+
+// Jotai atoms — for advanced users composing with DtourViewer + own Provider
 export {
   // Tour
   tourPositionAtom,
   tourPlayingAtom,
   tourSpeedAtom,
   tourDirectionAtom,
-  // View
-  viewCountAtom,
-  galleryPaddingAtom,
+  // Preview
+  previewCountAtom,
+  previewPaddingAtom,
   selectedKeyframeAtom,
   // Point style
   pointSizeAtom,
@@ -27,6 +38,8 @@ export {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  // View mode
+  viewModeAtom,
   // Read-only
   metadataAtom,
 } from './state/atoms.ts';

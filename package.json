@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm --filter webapp dev",
+    "dev": "pnpm --parallel --filter @dtour/viewer --filter webapp dev",
     "lint": "biome check .",
     "format": "biome format --write ."
   },

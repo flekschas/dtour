@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pyarrow as pa
 from sklearn.decomposition import PCA
-
-from .data import _table_to_ipc_bytes
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -20,28 +17,36 @@ class TourResult:
     """Output of a tour computation.
 
     Attributes:
-        bases: Arrow IPC bytes of a table with columns ``basis_<i>`` where
-            each column is a flattened p×2 float32 array (one row per view).
+        bases: List of basis matrices, each shape ``(p, 2)`` float32.
         n_views: Number of projection views (bases).
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
     """
 
-    bases: bytes
+    bases: list[np.ndarray]
     n_views: int
     n_dims: int
-    explained_variance_ratio: list[float]
+    explained_variance_ratio: list[float] = field(default_factory=list)
+
+    @property
+    def bases_raw(self) -> bytes:
+        """Raw float32 bytes of all basis matrices (for widget transfer).
+
+        Layout: ``n_views`` contiguous blocks of ``p * 2`` float32 values,
+        each in column-major order ``[x0 .. xp-1, y0 .. yp-1]``.
+        """
+        return np.stack([b.flatten() for b in self.bases]).astype(np.float32).tobytes()
 
 
 def little_tour(
-    X: "np.ndarray | pd.DataFrame",
+    X: np.ndarray | pd.DataFrame,
     n_components: int | None = None,
 ) -> TourResult:
     """Compute a PCA-based little tour over a dataset.
 
     Creates a cyclic sequence of 2D projections using consecutive pairs of
-    principal components: [PC1, PC2] → [PC2, PC3] → ... → [PCN, PC1].
+    principal components: [PC1, PC2] -> [PC2, PC3] -> ... -> [PCN, PC1].
 
     Args:
         X: Data matrix, shape (n_samples, n_features). DataFrame columns must
@@ -50,7 +55,7 @@ def little_tour(
             min(n_features, 10) to keep the tour manageable.
 
     Returns:
-        A :class:`TourResult` with basis matrices encoded as Arrow IPC bytes.
+        A :class:`TourResult` with basis matrices as numpy arrays.
     """
     import pandas as pd
 
@@ -69,33 +74,24 @@ def little_tour(
     components = pca.components_  # (k, p)
 
     # Build cyclic pairs: (0,1), (1,2), ..., (k-2, k-1), (k-1, 0)
-    n_views = k
     bases: list[np.ndarray] = []
-    for i in range(n_views):
-        a = components[i]           # (p,)
-        b = components[(i + 1) % k] # (p,)
-        # Column-major p×2: [a0, a1, ..., ap, b0, b1, ..., bp]
+    for i in range(k):
+        a = components[i]               # (p,)
+        b = components[(i + 1) % k]     # (p,)
+        # Column-major px2: [a0, a1, ..., ap-1, b0, b1, ..., bp-1]
         basis = np.stack([a, b], axis=1).astype(np.float32)  # (p, 2)
-        bases.append(basis.flatten())
-
-    bases_arr = np.stack(bases)  # (n_views, p*2)
-
-    # Encode as Arrow table: one row per view, one column per flattened element
-    col_names = [f"b{i}" for i in range(bases_arr.shape[1])]
-    arrays = [pa.array(bases_arr[:, j]) for j in range(bases_arr.shape[1])]
-    table = pa.table(dict(zip(col_names, arrays)))
-    bases_ipc = _table_to_ipc_bytes(table)
+        bases.append(basis)
 
     return TourResult(
-        bases=bases_ipc,
-        n_views=n_views,
+        bases=bases,
+        n_views=k,
         n_dims=n_features,
         explained_variance_ratio=pca.explained_variance_ratio_.tolist(),
     )
 
 
 def little_umap_tour(
-    X: "np.ndarray | pd.DataFrame",
+    X: np.ndarray | pd.DataFrame,
     n_components: int = 10,
     umap_kwargs: dict | None = None,
 ) -> TourResult:

@@ -20,7 +20,7 @@ export type PreviewPosition = {
 export const computeGalleryPositions = (
   containerWidth: number,
   containerHeight: number,
-  viewCount: number,
+  previewCount: number,
 ): { positions: PreviewPosition[]; previewSize: number; padX: number; padY: number } => {
   // Preview size: ~12% of the shorter container dimension, clamped
   const shortSide = Math.min(containerWidth, containerHeight);
@@ -40,7 +40,7 @@ export const computeGalleryPositions = (
 
   const positions: PreviewPosition[] = [];
 
-  if (viewCount <= 4) {
+  if (previewCount <= 4) {
     // Corner placement: TL, TR, BR, BL
     const corners: [number, number, number][] = [
       [left, top, -Math.PI / 4], // top-left, angle ~10:30
@@ -48,7 +48,7 @@ export const computeGalleryPositions = (
       [right, bottom, (3 * Math.PI) / 4], // bottom-right
       [left, bottom, (-3 * Math.PI) / 4], // bottom-left
     ];
-    for (let i = 0; i < viewCount; i++) {
+    for (let i = 0; i < previewCount; i++) {
       const [x, y, angle] = corners[i]!;
       positions.push({ x, y, size: previewSize, angle });
     }
@@ -61,8 +61,8 @@ export const computeGalleryPositions = (
 
     // Start from 10:30 position (-π/2 - π/12 ≈ -105°)
     const startAngle = -Math.PI / 2 - Math.PI / 12;
-    for (let i = 0; i < viewCount; i++) {
-      const angle = startAngle + (2 * Math.PI * i) / viewCount;
+    for (let i = 0; i < previewCount; i++) {
+      const angle = startAngle + (2 * Math.PI * i) / previewCount;
       positions.push({
         x: cx + rx * Math.cos(angle),
         y: cy + ry * Math.sin(angle),

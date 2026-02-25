@@ -1,10 +1,27 @@
-import { ArrowCounterClockwise, CaretDown, Gauge, Pause, Play } from '@phosphor-icons/react';
+import {
+  ArrowCounterClockwiseIcon,
+  CaretDownIcon,
+  CompassIcon,
+  CursorIcon,
+  GaugeIcon,
+  PathIcon,
+  PauseIcon,
+  PlayIcon,
+} from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
-import * as Slider from '@radix-ui/react-slider';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback } from 'react';
 import { usePlayback } from '../hooks/usePlayback.ts';
-import { metadataAtom, tourPlayingAtom, tourPositionAtom, tourSpeedAtom } from '../state/atoms.ts';
+import {
+  metadataAtom,
+  selectedKeyframeAtom,
+  tourPlayingAtom,
+  tourPositionAtom,
+  tourSpeedAtom,
+  tourSuspendedAtom,
+  viewModeAtom,
+  zenExitTargetAtom,
+} from '../state/atoms.ts';
 import { Button } from './ui/button.tsx';
 import {
   DropdownMenu,
@@ -14,119 +31,136 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu.tsx';
+import { Slider } from './ui/slider.tsx';
+
+type ViewMode = 'tour' | 'manual' | 'zen';
+
+const MODE_CONFIG: { mode: ViewMode; label: string; icon: typeof PathIcon }[] = [
+  { mode: 'tour', label: 'Tour', icon: PathIcon },
+  { mode: 'manual', label: 'Manual', icon: CursorIcon },
+  { mode: 'zen', label: 'Zen', icon: CompassIcon },
+];
 
 export const DtourToolbar = () => {
   const [playing, setPlaying] = useAtom(tourPlayingAtom);
   const setPosition = useSetAtom(tourPositionAtom);
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
   const metadata = useAtomValue(metadataAtom);
+  const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const setTourSuspended = useSetAtom(tourSuspendedAtom);
+  const setZenExitTarget = useSetAtom(zenExitTargetAtom);
+  const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
 
   // Activate the rAF playback loop
   usePlayback();
 
   const handlePlayPause = useCallback(() => {
+    setTourSuspended(false);
+    if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [setPlaying]);
+  }, [playing, setPlaying, setTourSuspended, setSelectedKeyframe]);
 
   const handleReset = useCallback(() => {
+    setTourSuspended(false);
     setPlaying(false);
     setPosition(0);
-  }, [setPlaying, setPosition]);
+  }, [setPlaying, setPosition, setTourSuspended]);
 
   return (
     <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-border bg-dtour-bg px-3 text-dtour-text">
-      {/* Left: branding */}
+      {/* Left: branding + mode switcher */}
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold tracking-wide text-white">dtour</span>
+        <div className="ml-2 flex items-center rounded-md border border-dtour-border">
+          {MODE_CONFIG.map(({ mode, label, icon: Icon }) => (
+            <Button
+              key={mode}
+              variant="ghost"
+              size="sm"
+              className={`rounded-none first:rounded-l-md last:rounded-r-md ${viewMode === mode ? 'bg-dtour-surface text-white' : 'text-dtour-text-muted'}`}
+              onClick={() => {
+                if (viewMode === 'zen') {
+                  if (mode === 'zen') {
+                    // Cancel any in-progress exit
+                    setZenExitTarget(null);
+                    return;
+                  }
+                  // Request ease-out exit from zen
+                  setZenExitTarget(mode);
+                } else {
+                  // Instant switch (not exiting zen)
+                  if (mode === 'tour' && viewMode !== 'tour') setTourSuspended(true);
+                  if (mode !== 'tour' && viewMode === 'tour') setPlaying(false);
+                  if (mode === 'zen') setZenExitTarget(null);
+                  setViewMode(mode);
+                }
+              }}
+              title={label}
+            >
+              <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
+              <span className="ml-1 text-xs">{label}</span>
+            </Button>
+          ))}
+        </div>
       </div>
 
-      {/* Center: playback controls — grid column guarantees true centering */}
+      {/* Center: playback controls (tour mode) / speed (zen mode) */}
       <div className="flex items-center gap-1">
-        {/* Reset */}
-        <Button variant="ghost" size="icon" onClick={handleReset} title="Reset to start">
-          <ArrowCounterClockwise size={16} />
-        </Button>
-
-        {/* Play / Pause */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handlePlayPause}
-          title={playing ? 'Pause' : 'Play'}
-        >
-          {playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
-        </Button>
-
-        {/* Speed — icon button with vertical slider popover */}
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>
-              <Gauge size={16} />
+        {viewMode === 'tour' && (
+          <>
+            {/* Reset */}
+            <Button variant="ghost" size="icon" onClick={handleReset} title="Reset to start">
+              <ArrowCounterClockwiseIcon size={16} />
             </Button>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Content
-              side="bottom"
-              align="center"
-              sideOffset={4}
-              className="z-50 flex flex-col items-center gap-2 rounded-md border border-dtour-border bg-dtour-surface p-3 shadow-md"
+
+            {/* Play / Pause */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handlePlayPause}
+              title={playing ? 'Pause' : 'Play'}
             >
-              <span className="text-xs text-dtour-text-muted">Speed</span>
-              <Slider.Root
-                orientation="vertical"
-                min={0}
-                max={SPEED_STEPS.length - 1}
-                step={1}
-                value={[speedToStep(speed)]}
-                onValueChange={([step]) => {
-                  if (step !== undefined) setSpeed(stepToSpeed(step));
-                }}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  width: 20,
-                  height: 120,
-                  touchAction: 'none',
-                  userSelect: 'none',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+              {playing ? (
+                <PauseIcon size={16} weight="fill" />
+              ) : (
+                <PlayIcon size={16} weight="fill" />
+              )}
+            </Button>
+          </>
+        )}
+
+        {/* Speed — shown in tour and zen modes */}
+        {(viewMode === 'tour' || viewMode === 'zen') && (
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>
+                <GaugeIcon size={16} />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                side="bottom"
+                align="center"
+                sideOffset={4}
+                className="z-50 flex flex-col items-center gap-2 rounded-md border border-dtour-border bg-dtour-surface p-3 shadow-md"
               >
-                <Slider.Track
-                  style={{
-                    position: 'relative',
-                    width: 6,
-                    flexGrow: 1,
-                    borderRadius: 9999,
-                    backgroundColor: '#2a2a3a',
+                <span className="text-xs text-dtour-text-muted">Speed</span>
+                <Slider
+                  orientation="vertical"
+                  min={0}
+                  max={SPEED_STEPS.length - 1}
+                  step={1}
+                  value={[speedToStep(speed)]}
+                  onValueChange={([step]: number[]) => {
+                    if (step !== undefined) setSpeed(stepToSpeed(step));
                   }}
-                >
-                  <Slider.Range
-                    style={{
-                      position: 'absolute',
-                      width: '100%',
-                      borderRadius: 9999,
-                      backgroundColor: '#4080e8',
-                    }}
-                  />
-                </Slider.Track>
-                <Slider.Thumb
-                  style={{
-                    display: 'block',
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    border: '2px solid #4080e8',
-                    backgroundColor: 'white',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                    outline: 'none',
-                  }}
+                  className="h-[120px]"
                 />
-              </Slider.Root>
-              <span className="text-xs font-medium text-white">{speed}x</span>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
+                <span className="text-xs font-medium text-white">{speed}x</span>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+        )}
       </div>
 
       {/* Right: data info + settings */}
@@ -141,7 +175,7 @@ export const DtourToolbar = () => {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
               Settings
-              <CaretDown size={12} />
+              <CaretDownIcon size={12} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>

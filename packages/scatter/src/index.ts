@@ -5,3 +5,4 @@
 export { createScatter } from './gpu/client.ts';
 export type { ScatterOptions, ScatterInstance, ScatterStatus } from './gpu/client.ts';
 export type { Metadata } from './data/types.ts';
+export { computeArcLengths, interpolateAtPosition } from './tour/arc-length.ts';

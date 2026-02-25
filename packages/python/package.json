@@ -1,0 +1,23 @@
+{
+	"private": true,
+	"name": "@dtour/python-build",
+	"type": "module",
+	"scripts": {
+		"build:js": "vite build"
+	},
+	"devDependencies": {
+		"@anywidget/react": "^0.2.0",
+		"@dtour/scatter": "workspace:*",
+		"@dtour/viewer": "workspace:*",
+		"@tailwindcss/vite": "^4.2.0",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"@vitejs/plugin-react": "^4.3.4",
+		"jotai": "^2.10.3",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"tailwindcss": "^4.2.0",
+		"vite": "^6.0.11",
+		"zod": "^4.3.6"
+	}
+}
