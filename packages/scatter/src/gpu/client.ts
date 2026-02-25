@@ -14,7 +14,7 @@ export type ScatterOptions = {
 };
 
 export type ScatterStatus =
-  | { type: 'ready'; limits: { maxBufferSize: number; maxTextureDimension2D: number } }
+  | { type: 'ready' }
   | { type: 'rendered'; viewIndex: number }
   | { type: 'metadata'; metadata: Metadata }
   | { type: 'error'; message: string };

@@ -33,8 +33,6 @@ const App = () => {
       className="flex flex-col w-screen h-screen"
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
-      onClick={() => data === undefined && inputRef.current?.click()}
-      onKeyDown={(e) => e.key === 'Enter' && data === undefined && inputRef.current?.click()}
     >
       <input
         ref={inputRef}
@@ -43,7 +41,36 @@ const App = () => {
         className="hidden"
         onChange={handleFileSelect}
       />
-      <Dtour data={data} />
+      {data ? (
+        <Dtour data={data} />
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="flex flex-col items-center gap-3 px-6 py-4 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+          >
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              role="img"
+              aria-labelledby="upload-icon-title"
+            >
+              <title id="upload-icon-title">Upload file</title>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span className="text-sm">Drop a Parquet or Arrow file to start</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

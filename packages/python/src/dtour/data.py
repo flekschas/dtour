@@ -64,6 +64,7 @@ def _to_ipc_bytes(data: object) -> bytes:
     Accepts:
     - ``bytes`` — assumed to be Arrow IPC already, returned as-is
     - ``str`` or ``Path`` — read file contents
+    - ``np.ndarray`` — 2-D array, converted via :func:`from_numpy`
     - Anything with ``__arrow_c_stream__`` — serialized via arro3
     """
     import arro3.core as ac
@@ -75,6 +76,9 @@ def _to_ipc_bytes(data: object) -> bytes:
     if isinstance(data, (str, Path)):
         return Path(data).read_bytes()
 
+    if isinstance(data, np.ndarray):
+        return from_numpy(data)
+
     if hasattr(data, "__arrow_c_stream__"):
         table = ac.Table.from_arrow(data)
         buf = BytesIO()
@@ -83,6 +87,6 @@ def _to_ipc_bytes(data: object) -> bytes:
 
     raise TypeError(
         f"Cannot convert {type(data).__name__} to Arrow IPC bytes. "
-        "Pass bytes, a file path, or an object with __arrow_c_stream__ "
-        "(pandas DataFrame, polars DataFrame, pyarrow Table, etc.)."
+        "Pass bytes, a file path, a numpy ndarray, or an object with "
+        "__arrow_c_stream__ (pandas DataFrame, polars DataFrame, pyarrow Table, etc.)."
     )

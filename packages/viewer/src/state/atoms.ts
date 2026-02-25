@@ -35,21 +35,21 @@ export const cameraPanYAtom = atom(0);
 export const cameraZoomAtom = atom(1);
 
 // ---------------------------------------------------------------------------
-// View mode — controls which UI is shown (tour, manual, zen)
+// View mode — controls which UI is shown (guided, manual, grand)
 // ---------------------------------------------------------------------------
 
-export const viewModeAtom = atom<'tour' | 'manual' | 'zen'>('tour');
+export const viewModeAtom = atom<'guided' | 'manual' | 'grand'>('guided');
 
 /**
  * When true, `useScatter` skips `setTourPosition` messages.
- * Set on returning to tour mode from manual/zen so the current
+ * Set on returning to guided mode from manual/grand so the current
  * projection is preserved until the user clicks the circular slider
  * or presses play.
  */
-export const tourSuspendedAtom = atom(false);
+export const guidedSuspendedAtom = atom(false);
 
-/** Target mode after zen ease-out completes. null = not exiting. */
-export const zenExitTargetAtom = atom<'tour' | 'manual' | null>(null);
+/** Target mode after grand ease-out completes. null = not exiting. */
+export const grandExitTargetAtom = atom<'guided' | 'manual' | null>(null);
 
 /**
  * Tracks the currently-displayed projection basis (p×2 column-major).

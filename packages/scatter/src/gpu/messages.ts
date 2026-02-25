@@ -40,9 +40,6 @@ export type MainToGpu =
 
 // GPU Worker → Main thread
 export type GpuToMain =
-  | {
-      type: 'ready';
-      limits: { maxBufferSize: number; maxTextureDimension2D: number };
-    }
+  | { type: 'ready' }
   | { type: 'rendered'; viewIndex: number }
   | { type: 'error'; message: string };

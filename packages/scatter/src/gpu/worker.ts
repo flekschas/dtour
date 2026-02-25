@@ -405,13 +405,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
 
       msg.dataPort.onmessage = onDataMessage;
 
-      postMain({
-        type: 'ready',
-        limits: {
-          maxBufferSize: device.limits.maxBufferSize,
-          maxTextureDimension2D: device.limits.maxTextureDimension2D,
-        },
-      });
+      postMain({ type: 'ready' });
     } catch (err) {
       postMain({
         type: 'error',

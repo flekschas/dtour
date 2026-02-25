@@ -13,7 +13,7 @@ export type { DtourViewerProps } from './DtourViewer.tsx';
 export { DtourToolbar } from './components/DtourToolbar.tsx';
 export { CircularSlider } from './components/CircularSlider.tsx';
 export type { CircularSliderProps } from './components/CircularSlider.tsx';
-export { createDefaultBases } from './bases.ts';
+export { createDefaultViews } from './views.ts';
 
 // Radial chart — quality metrics visualization
 export { RadialChart, parseMetrics } from './radial-chart/index.ts';

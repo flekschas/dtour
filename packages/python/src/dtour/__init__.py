@@ -2,10 +2,10 @@
 
 from .metrics import MetricResult, compute_metrics
 from .tours import TourResult, little_tour, little_umap_tour
-from .widget import DtourWidget
+from .widget import Widget
 
 __all__ = [
-    "DtourWidget",
+    "Widget",
     "MetricResult",
     "TourResult",
     "compute_metrics",

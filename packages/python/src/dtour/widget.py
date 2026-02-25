@@ -1,4 +1,4 @@
-"""anywidget-based DtourWidget for Jupyter / Marimo."""
+"""anywidget-based Widget for Jupyter / Marimo."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 _STATIC = Path(__file__).parent / "static"
 
 
-class DtourWidget(anywidget.AnyWidget):
+class Widget(anywidget.AnyWidget):
     """Interactive dtour scatter widget for Jupyter / Marimo.
 
     Data is sent via custom messages (not binary traitlets) so it works
@@ -36,7 +36,7 @@ class DtourWidget(anywidget.AnyWidget):
     -------
     >>> import dtour, numpy as np
     >>> X = np.random.randn(500, 5).astype(np.float32)
-    >>> w = dtour.DtourWidget(
+    >>> w = dtour.Widget(
     ...     data=dtour.data.from_numpy(X),
     ...     tour=dtour.little_tour(X),
     ... )
@@ -85,7 +85,7 @@ class DtourWidget(anywidget.AnyWidget):
     def __init__(self, *, data: object | None = None, tour: TourResult | None = None, **kwargs):
         super().__init__(**kwargs)
         self._data_buf: bytes | None = None
-        self._bases_buf: bytes | None = None
+        self._views_buf: bytes | None = None
         self._metrics_buf: bytes | None = None
         self._n_dims: int = 0
         self.on_msg(self._handle_custom_msg)
@@ -106,10 +106,10 @@ class DtourWidget(anywidget.AnyWidget):
         self.send({"type": "data"}, buffers=[self._data_buf])
 
     def set_tour(self, tour: TourResult) -> None:
-        """Set tour bases from a :class:`~dtour.tours.TourResult`."""
-        self._bases_buf = tour.bases_raw
+        """Set tour views from a :class:`~dtour.tours.TourResult`."""
+        self._views_buf = tour.views_raw
         self._n_dims = tour.n_dims
-        self.send({"type": "bases", "n_dims": self._n_dims}, buffers=[self._bases_buf])
+        self.send({"type": "views", "n_dims": self._n_dims}, buffers=[self._views_buf])
 
     def set_metrics(self, metric_result: MetricResult) -> None:
         """Send quality metrics to the JS frontend for radial chart display."""
@@ -118,12 +118,12 @@ class DtourWidget(anywidget.AnyWidget):
 
     # ── Custom message handler ───────────────────────────────────────────
     def _handle_custom_msg(self, _widget: object, content: dict, _buffers: list) -> None:
-        """Re-send data, bases, and metrics when the JS frontend signals it is ready."""
+        """Re-send data, views, and metrics when the JS frontend signals it is ready."""
         if content.get("type") != "ready":
             return
         if self._data_buf is not None:
             self.send({"type": "data"}, buffers=[self._data_buf])
-        if self._bases_buf is not None:
-            self.send({"type": "bases", "n_dims": self._n_dims}, buffers=[self._bases_buf])
+        if self._views_buf is not None:
+            self.send({"type": "views", "n_dims": self._n_dims}, buffers=[self._views_buf])
         if self._metrics_buf is not None:
             self.send({"type": "metrics"}, buffers=[self._metrics_buf])

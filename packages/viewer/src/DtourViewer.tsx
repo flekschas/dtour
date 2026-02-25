@@ -2,7 +2,6 @@ import { computeArcLengths, createScatter, interpolateAtPosition } from '@dtour/
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createDefaultBases } from './bases.ts';
 import { AxisOverlay } from './components/AxisOverlay.tsx';
 import { CircularSlider } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
@@ -16,18 +15,19 @@ import type { RadialTrackConfig } from './radial-chart/types.ts';
 import {
   canvasSizeAtom,
   currentBasisAtom,
+  guidedSuspendedAtom,
   metadataAtom,
   previewCountAtom,
   tourPositionAtom,
-  tourSuspendedAtom,
   viewModeAtom,
 } from './state/atoms.ts';
+import { createDefaultViews } from './views.ts';
 
 export type DtourViewerProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
   data?: ArrayBuffer | undefined;
-  /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
-  bases?: Float32Array[] | undefined;
+  /** Tour keyframe views (p×2 column-major). Auto-generated if omitted. */
+  views?: Float32Array[] | undefined;
   /** Arrow IPC ArrayBuffer with per-view quality metrics. */
   metrics?: ArrayBuffer | undefined;
   /** Track configuration for radial bar charts. */
@@ -45,7 +45,14 @@ const PREVIEW_PHYSICAL_SIZE = 200; // Physical pixels per preview canvas
 
 const INSET_ANIMATION_MS = 300;
 
-export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, toolbarHeight = 0 }: DtourViewerProps) => {
+export const DtourViewer = ({
+  data,
+  views,
+  metrics,
+  metricTracks,
+  onStatus,
+  toolbarHeight = 0,
+}: DtourViewerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scatterRef = useRef<ScatterInstance | null>(null);
   const previewCanvasesRef = useRef<HTMLCanvasElement[]>([]);
@@ -54,7 +61,7 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
   const setMetadata = useSetAtom(metadataAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const viewMode = useAtomValue(viewModeAtom);
-  const setTourSuspended = useSetAtom(tourSuspendedAtom);
+  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
@@ -63,32 +70,32 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
 
   const setCurrentBasis = useSetAtom(currentBasisAtom);
 
-  const isTourMode = viewMode === 'tour';
+  const isGuidedMode = viewMode === 'guided';
 
-  // Resolve bases (from props or auto-generated) and precompute arc lengths
+  // Resolve views (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
-  const { resolvedBases, arcLengths } = useMemo(() => {
-    if (!metadata || metadata.dimCount < 2) return { resolvedBases: null, arcLengths: null };
+  const { resolvedViews, arcLengths } = useMemo(() => {
+    if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
     const dims = metadata.dimCount;
     const rb =
-      bases && bases.length > 0
-        ? bases.map((b) => new Float32Array(b))
-        : createDefaultBases(dims, previewCount);
-    return { resolvedBases: rb, arcLengths: computeArcLengths(rb, dims) };
-  }, [bases, metadata, previewCount]);
+      views && views.length > 0
+        ? views.map((b) => new Float32Array(b))
+        : createDefaultViews(dims, previewCount);
+    return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
+  }, [views, metadata, previewCount]);
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
   // modes (manual, zen) can initialize from the current projection.
-  // Only update in tour mode — in manual/zen the atom is owned by
+  // Only update in guided mode — in manual/grand the atom is owned by
   // AxisOverlay / useGrandTour respectively.
   useEffect(() => {
-    if (viewMode !== 'tour') return;
-    if (!resolvedBases || !arcLengths || !metadata) return;
+    if (viewMode !== 'guided') return;
+    if (!resolvedViews || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
     const out = new Float32Array(dims * 2);
-    interpolateAtPosition(out, resolvedBases, arcLengths, dims, position);
+    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position);
     setCurrentBasis(out);
-  }, [viewMode, resolvedBases, arcLengths, metadata, position, setCurrentBasis]);
+  }, [viewMode, resolvedViews, arcLengths, metadata, position, setCurrentBasis]);
 
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(
@@ -99,10 +106,12 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatterRef.current);
 
-  // Animate camera inset when the toolbar appears/disappears (zen toggle).
+  // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
   // We also track the current pixel offset for positioning overlays.
-  const [overlayOffsetY, setOverlayOffsetY] = useState(toolbarHeight > 0 && viewMode !== 'zen' ? toolbarHeight / 2 : 0);
+  const [overlayOffsetY, setOverlayOffsetY] = useState(
+    toolbarHeight > 0 && viewMode !== 'grand' ? toolbarHeight / 2 : 0,
+  );
   const overlayOffsetRef = useRef(overlayOffsetY);
   overlayOffsetRef.current = overlayOffsetY;
   const insetAnimRef = useRef<number | null>(null);
@@ -111,16 +120,16 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
     const scatter = scatterRef.current;
     if (!scatter || containerSize.height === 0) return;
 
-    const targetT = viewMode === 'zen' || toolbarHeight === 0 ? 0 : 1;
+    const targetT = viewMode === 'grand' || toolbarHeight === 0 ? 0 : 1;
     const h = containerSize.height;
     const t = toolbarHeight;
 
     // Current inset factor: derive from current overlayOffsetY via ref
-    const startT = t > 0 ? (overlayOffsetRef.current / (t / 2)) : 0;
+    const startT = t > 0 ? overlayOffsetRef.current / (t / 2) : 0;
     if (Math.abs(startT - targetT) < 0.001) {
       // Already at target — just ensure shader is in sync
-      const insetOffsetY = -targetT * t / h;
-      const insetZoom = 1 - targetT * t / h;
+      const insetOffsetY = (-targetT * t) / h;
+      const insetZoom = 1 - (targetT * t) / h;
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
       return;
     }
@@ -131,19 +140,18 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
       const elapsed = now - startTime;
       const progress = Math.min(1, elapsed / INSET_ANIMATION_MS);
       // ease-in-out cubic
-      const eased = progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - (-2 * progress + 2) ** 3 / 2;
+      const eased =
+        progress < 0.5 ? 4 * progress * progress * progress : 1 - (-2 * progress + 2) ** 3 / 2;
 
       const currentT = startT + (targetT - startT) * eased;
 
       // Shader inset: shift down and scale to fit visible area
-      const insetOffsetY = -currentT * t / h;
-      const insetZoom = 1 - currentT * t / h;
+      const insetOffsetY = (-currentT * t) / h;
+      const insetZoom = 1 - (currentT * t) / h;
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
 
       // Overlay pixel offset
-      setOverlayOffsetY(currentT * t / 2);
+      setOverlayOffsetY((currentT * t) / 2);
 
       if (progress < 1) {
         insetAnimRef.current = requestAnimationFrame(tick);
@@ -163,7 +171,7 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
     };
   }, [viewMode, toolbarHeight, containerSize.height]);
 
-  // Zen mode: Givens-rotation grand tour
+  // Grand mode: Givens-rotation grand tour
   useGrandTour(scatterRef.current, viewMode, metadata);
 
   // Compute gallery positions + padding for canvas insets
@@ -240,7 +248,7 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
       for (const c of previews) c.remove();
       previewCanvasesRef.current = [];
     };
-  }, [setMetadata, setCanvasSize]);
+  }, [previewCount, setMetadata, setCanvasSize]);
 
   // Send data when it changes
   useEffect(() => {
@@ -249,35 +257,35 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
     scatterRef.current.loadData(data.slice(0));
   }, [data]);
 
-  // Set bases when available (from props or auto-generated from metadata)
+  // Set views when available (from props or auto-generated from metadata)
   useEffect(() => {
     const scatter = scatterRef.current;
     if (!scatter) return;
-    if (bases && bases.length > 0) {
-      scatter.setBases(bases.map((b) => new Float32Array(b)));
+    if (views && views.length > 0) {
+      scatter.setBases(views.map((b) => new Float32Array(b)));
     } else if (metadata && metadata.dimCount >= 2) {
-      const defaultBases = createDefaultBases(metadata.dimCount, previewCount);
-      scatter.setBases(defaultBases);
+      const defaultViews = createDefaultViews(metadata.dimCount, previewCount);
+      scatter.setBases(defaultViews);
     }
-    // Safety: explicitly request a full re-render after bases are set,
+    // Safety: explicitly request a full re-render after views are set,
     // ensuring all preview canvases get painted even if messages race.
     scatter.render();
-  }, [bases, metadata, previewCount]);
+  }, [views, metadata, previewCount]);
 
   const handlePositionChange = useCallback(
     (pos: number) => {
-      setTourSuspended(false);
+      setGuidedSuspended(false);
       setPosition(pos);
     },
-    [setPosition, setTourSuspended],
+    [setPosition, setGuidedSuspended],
   );
 
-  const tickCount = bases?.length ?? previewCount;
+  const tickCount = views?.length ?? previewCount;
   const hasData = !!data;
 
-  if (import.meta.env.DEV && bases && bases.length !== previewCount) {
+  if (import.meta.env.DEV && views && views.length !== previewCount) {
     console.warn(
-      `[dtour] bases.length (${bases.length}) differs from previewCount (${previewCount}). Selector ticks and radial bars reflect bases count; preview gallery reflects previewCount. Set previewCount to match bases.length for full alignment.`,
+      `[dtour] views.length (${views.length}) differs from previewCount (${previewCount}). Selector ticks and radial bars reflect views count; preview gallery reflects previewCount. Set previewCount to match views.length for full alignment.`,
     );
   }
 
@@ -285,12 +293,9 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
     <div ref={containerRef} className="w-full h-full relative bg-dtour-bg">
       {/* Overlay wrapper — translateY matches the shader inset so overlays
           stay visually centered in the area below the toolbar. */}
-      <div
-        className="absolute inset-0"
-        style={{ transform: `translateY(${overlayOffsetY}px)` }}
-      >
-        {/* Preview gallery — only in tour mode */}
-        {isTourMode &&
+      <div className="absolute inset-0" style={{ transform: `translateY(${overlayOffsetY}px)` }}>
+        {/* Preview gallery — only in guided mode */}
+        {isGuidedMode &&
           hasData &&
           containerSize.width > 0 &&
           previewCanvasesRef.current.length > 0 && (
@@ -319,58 +324,33 @@ export const DtourViewer = ({ data, bases, metrics, metricTracks, onStatus, tool
           />
         )}
 
-        {/* Circular selector + radial chart overlay — only in tour mode, above lasso */}
-        {isTourMode && hasData && (
+        {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
+        {isGuidedMode && hasData && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          {/* Radial chart — behind selector */}
-          {parsedTracks.length > 0 && (
-            <div className="absolute">
-              <RadialChart
-                tracks={parsedTracks}
-                keyframeCount={tickCount}
-                position={position}
+            {/* Radial chart — behind selector */}
+            {parsedTracks.length > 0 && (
+              <div className="absolute">
+                <RadialChart
+                  tracks={parsedTracks}
+                  keyframeCount={tickCount}
+                  position={position}
+                  size={selectorSize}
+                  innerRadius={selectorSize * 0.4}
+                />
+              </div>
+            )}
+            {/* Selector — on top for drag interaction */}
+            <div className="pointer-events-none">
+              <CircularSlider
+                value={position}
+                onChange={handlePositionChange}
+                tickCount={tickCount}
                 size={selectorSize}
-                innerRadius={selectorSize * 0.4}
               />
             </div>
-          )}
-          {/* Selector — on top for drag interaction */}
-          <div className="pointer-events-none">
-            <CircularSlider
-              value={position}
-              onChange={handlePositionChange}
-              tickCount={tickCount}
-              size={selectorSize}
-            />
           </div>
-        </div>
-      )}
-
+        )}
       </div>
-
-      {/* Empty state — shown when no data is loaded */}
-      {!hasData && containerSize.width > 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-dtour-text-muted pointer-events-none">
-          <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            role="img"
-            aria-labelledby="upload-icon-title"
-          >
-            <title id="upload-icon-title">Upload file</title>
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <span className="text-sm">Drop a Parquet or Arrow file to start</span>
-        </div>
-      )}
     </div>
   );
 };

@@ -33,16 +33,16 @@ function dataViewToArrayBuffer(dv: DataView): ArrayBuffer {
   return dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength);
 }
 
-function parseBases(dv: DataView, nDims: number): Float32Array[] {
+function parseViews(dv: DataView, nDims: number): Float32Array[] {
   const buf = dataViewToArrayBuffer(dv);
   const flat = new Float32Array(buf);
   const stride = nDims * 2;
   const nViews = Math.floor(flat.length / stride);
-  const bases: Float32Array[] = [];
+  const views: Float32Array[] = [];
   for (let i = 0; i < nViews; i++) {
-    bases.push(new Float32Array(flat.buffer, i * stride * 4, stride));
+    views.push(new Float32Array(flat.buffer, i * stride * 4, stride));
   }
-  return bases;
+  return views;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: anywidget model is untyped
@@ -61,18 +61,18 @@ function readSpecFromModel(model: any): DtourSpec {
 function Widget() {
   const model = useModel();
   const [data, setData] = useState<ArrayBuffer | undefined>();
-  const [bases, setBases] = useState<Float32Array[] | undefined>();
+  const [views, setViews] = useState<Float32Array[] | undefined>();
   const [metrics, setMetrics] = useState<ArrayBuffer | undefined>();
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
   const suppressRef = useRef(false);
 
-  // Custom messages → data / bases / metrics (binary buffers from Python)
+  // Custom messages → data / views / metrics (binary buffers from Python)
   useEffect(() => {
     function onMsg(msg: { type: string; n_dims?: number }, buffers: DataView[]) {
       if (msg.type === 'data' && buffers[0]) {
         setData(dataViewToArrayBuffer(buffers[0]));
-      } else if (msg.type === 'bases' && buffers[0] && msg.n_dims) {
-        setBases(parseBases(buffers[0], msg.n_dims));
+      } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
+        setViews(parseViews(buffers[0], msg.n_dims));
       } else if (msg.type === 'metrics' && buffers[0]) {
         setMetrics(dataViewToArrayBuffer(buffers[0]));
       }
@@ -120,7 +120,7 @@ function Widget() {
     <div className="w-full" style={{ height: `${height}px` }}>
       <Dtour
         data={data}
-        bases={bases}
+        views={views}
         metrics={metrics}
         spec={spec}
         onSpecChange={handleSpecChange}

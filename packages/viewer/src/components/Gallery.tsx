@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeGalleryPositions } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import {
+  guidedSuspendedAtom,
   previewCountAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
   tourPositionAtom,
-  tourSuspendedAtom,
 } from '../state/atoms.ts';
 
 /** 360° of travel = 1000ms animation */
@@ -30,7 +30,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPosition = useSetAtom(tourPositionAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
-  const setTourSuspended = useSetAtom(tourSuspendedAtom);
+  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
   const animRef = useRef<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -82,7 +82,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
         animRef.current = null;
       }
 
-      setTourSuspended(false);
+      setGuidedSuspended(false);
       setSelectedKeyframe(i);
       setPlaying(false);
 
@@ -130,7 +130,7 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight }: Ga
         return current;
       });
     },
-    [previewCount, setSelectedKeyframe, setPlaying, setPosition, setTourSuspended],
+    [previewCount, setSelectedKeyframe, setPlaying, setPosition, setGuidedSuspended],
   );
 
   return (

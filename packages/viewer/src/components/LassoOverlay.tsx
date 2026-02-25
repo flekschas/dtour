@@ -6,7 +6,7 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
-  tourSuspendedAtom,
+  guidedSuspendedAtom,
   viewModeAtom,
 } from '../state/atoms.ts';
 
@@ -43,7 +43,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
   const zoom = useAtomValue(cameraZoomAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const setViewMode = useSetAtom(viewModeAtom);
-  const setTourSuspended = useSetAtom(tourSuspendedAtom);
+  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
 
   const [lassoMode, setLassoMode] = useState(false);
   const [path, setPath] = useState<[number, number][]>([]);
@@ -149,10 +149,10 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (viewMode === 'zen') {
-          // In zen mode, Escape returns to tour mode
-          setTourSuspended(true);
-          setViewMode('tour');
+        if (viewMode === 'grand') {
+          // In grand mode, Escape returns to guided mode
+          setGuidedSuspended(true);
+          setViewMode('guided');
         } else {
           scatter?.clearSelection();
         }
@@ -163,7 +163,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scatter, clearLongPress, viewMode, setViewMode, setTourSuspended]);
+  }, [scatter, clearLongPress, viewMode, setViewMode, setGuidedSuspended]);
 
   // Build path string for SVG polygon
   const pathStr = path.map(([x, y]) => `${x},${y}`).join(' ');

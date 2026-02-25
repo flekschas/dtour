@@ -13,14 +13,14 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback } from 'react';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import {
+  grandExitTargetAtom,
+  guidedSuspendedAtom,
   metadataAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
   tourPositionAtom,
   tourSpeedAtom,
-  tourSuspendedAtom,
   viewModeAtom,
-  zenExitTargetAtom,
 } from '../state/atoms.ts';
 import { Button } from './ui/button.tsx';
 import {
@@ -33,12 +33,12 @@ import {
 } from './ui/dropdown-menu.tsx';
 import { Slider } from './ui/slider.tsx';
 
-type ViewMode = 'tour' | 'manual' | 'zen';
+type ViewMode = 'guided' | 'manual' | 'grand';
 
 const MODE_CONFIG: { mode: ViewMode; label: string; icon: typeof PathIcon }[] = [
-  { mode: 'tour', label: 'Tour', icon: PathIcon },
+  { mode: 'guided', label: 'Guided', icon: PathIcon },
   { mode: 'manual', label: 'Manual', icon: CursorIcon },
-  { mode: 'zen', label: 'Zen', icon: CompassIcon },
+  { mode: 'grand', label: 'Grand', icon: CompassIcon },
 ];
 
 export const DtourToolbar = () => {
@@ -47,24 +47,24 @@ export const DtourToolbar = () => {
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
   const metadata = useAtomValue(metadataAtom);
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
-  const setTourSuspended = useSetAtom(tourSuspendedAtom);
-  const setZenExitTarget = useSetAtom(zenExitTargetAtom);
+  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
 
   // Activate the rAF playback loop
   usePlayback();
 
   const handlePlayPause = useCallback(() => {
-    setTourSuspended(false);
+    setGuidedSuspended(false);
     if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [playing, setPlaying, setTourSuspended, setSelectedKeyframe]);
+  }, [playing, setPlaying, setGuidedSuspended, setSelectedKeyframe]);
 
   const handleReset = useCallback(() => {
-    setTourSuspended(false);
+    setGuidedSuspended(false);
     setPlaying(false);
     setPosition(0);
-  }, [setPlaying, setPosition, setTourSuspended]);
+  }, [setPlaying, setPosition, setGuidedSuspended]);
 
   return (
     <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-border bg-dtour-bg px-3 text-dtour-text">
@@ -79,19 +79,19 @@ export const DtourToolbar = () => {
               size="sm"
               className={`rounded-none first:rounded-l-md last:rounded-r-md ${viewMode === mode ? 'bg-dtour-surface text-white' : 'text-dtour-text-muted'}`}
               onClick={() => {
-                if (viewMode === 'zen') {
-                  if (mode === 'zen') {
+                if (viewMode === 'grand') {
+                  if (mode === 'grand') {
                     // Cancel any in-progress exit
-                    setZenExitTarget(null);
+                    setGrandExitTarget(null);
                     return;
                   }
-                  // Request ease-out exit from zen
-                  setZenExitTarget(mode);
+                  // Request ease-out exit from grand
+                  setGrandExitTarget(mode);
                 } else {
-                  // Instant switch (not exiting zen)
-                  if (mode === 'tour' && viewMode !== 'tour') setTourSuspended(true);
-                  if (mode !== 'tour' && viewMode === 'tour') setPlaying(false);
-                  if (mode === 'zen') setZenExitTarget(null);
+                  // Instant switch (not exiting grand)
+                  if (mode === 'guided' && viewMode !== 'guided') setGuidedSuspended(true);
+                  if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
+                  if (mode === 'grand') setGrandExitTarget(null);
                   setViewMode(mode);
                 }
               }}
@@ -104,9 +104,9 @@ export const DtourToolbar = () => {
         </div>
       </div>
 
-      {/* Center: playback controls (tour mode) / speed (zen mode) */}
+      {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
-        {viewMode === 'tour' && (
+        {viewMode === 'guided' && (
           <>
             {/* Reset */}
             <Button variant="ghost" size="icon" onClick={handleReset} title="Reset to start">
@@ -129,8 +129,8 @@ export const DtourToolbar = () => {
           </>
         )}
 
-        {/* Speed — shown in tour and zen modes */}
-        {(viewMode === 'tour' || viewMode === 'zen') && (
+        {/* Speed — shown in guided and grand modes */}
+        {(viewMode === 'guided' || viewMode === 'grand') && (
           <Popover.Root>
             <Popover.Trigger asChild>
               <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>

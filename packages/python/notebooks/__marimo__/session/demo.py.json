@@ -1,0 +1,93 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.20.2"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "81cfe6d74e4eb0e6d0d13301aeade465",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"dtour-demo-umap-tour-of-immune-cell-markers\">dtour Demo: UMAP Tour of Immune Cell Markers</h1>\n<span class=\"paragraph\">This notebook loads the <a href=\"https://pubmed.ncbi.nlm.nih.gov/35545675/\" rel=\"noopener noreferrer\" target=\"_blank\">Mair 2022 tumor dataset</a>, embeds the 18 winsorized\nmarker columns into 8D with <a href=\"https://umap-learn.readthedocs.io/\" rel=\"noopener noreferrer\" target=\"_blank\">UMAP</a>, then runs a <strong>little tour</strong> through\nthe embedding with points colored by <a href=\"https://pubmed.ncbi.nlm.nih.gov/34950900/\" rel=\"noopener noreferrer\" target=\"_blank\">FAUST cell-type label</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "708a82694df78357db0c8ed2782a6774",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "eaba4d65de183ce578185c0355711405",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='vblA-0' random-id='e14c821f-a02f-7134-ffa4-e39ff873b5b3'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;CD4_Windsorized&#92;&quot;:0.8952594043450952,&#92;&quot;CD8_Windsorized&#92;&quot;:0.1387517626658126,&#92;&quot;CD3_Windsorized&#92;&quot;:0.8445075130459326,&#92;&quot;CD45RA_Windsorized&#92;&quot;:0.0958515730940506,&#92;&quot;CD27_Windsorized&#92;&quot;:0.655957175277398,&#92;&quot;CD19_Windsorized&#92;&quot;:0.1560877331704071,&#92;&quot;CD103_Windsorized&#92;&quot;:0.12789610385619268,&#92;&quot;CD28_Windsorized&#92;&quot;:0.6492734618322192,&#92;&quot;CD69_Windsorized&#92;&quot;:0.15710705186432977,&#92;&quot;PD1_Windsorized&#92;&quot;:0.6808457994825399,&#92;&quot;HLADR_Windsorized&#92;&quot;:0.09035793074543141,&#92;&quot;GranzymeB_Windsorized&#92;&quot;:0.24452580064050433,&#92;&quot;CD25_Windsorized&#92;&quot;:0.19179787903712187,&#92;&quot;ICOS_Windsorized&#92;&quot;:0.2488945667055779,&#92;&quot;TCRgd_Windsorized&#92;&quot;:0.408622112871217,&#92;&quot;CD38_Windsorized&#92;&quot;:0.20083038331581154,&#92;&quot;CD127_Windsorized&#92;&quot;:0.5889644297819209,&#92;&quot;Tim3_Windsorized&#92;&quot;:0.3531303843110126},{&#92;&quot;CD4_Windsorized&#92;&quot;:0.16022956527666235,&#92;&quot;CD8_Windsorized&#92;&quot;:0.8073431573957486,&#92;&quot;CD3_Windsorized&#92;&quot;:0.8239537650749896,&#92;&quot;CD45RA_Windsorized&#92;&quot;:0.1082235796865471,&#92;&quot;CD27_Windsorized&#92;&quot;:0.34897274468063244,&#92;&quot;CD19_Windsorized&#92;&quot;:0.10080151864337485,&#92;&quot;CD103_Windsorized&#92;&quot;:0.1626999886946172,&#92;&quot;CD28_Windsorized&#92;&quot;:0.6030279579310694,&#92;&quot;CD69_Windsorized&#92;&quot;:0.4000680210004255,&#92;&quot;PD1_Windsorized&#92;&quot;:0.24782084552052566,&#92;&quot;HLADR_Windsorized&#92;&quot;:0.15295341124341627,&#92;&quot;GranzymeB_Windsorized&#92;&quot;:0.7812544895838653,&#92;&quot;CD25_Windsorized&#92;&quot;:0.20058669141214383,&#92;&quot;ICOS_Windsorized&#92;&quot;:0.10466173795450479,&#92;&quot;TCRgd_Windsorized&#92;&quot;:0.3445559862042611,&#92;&quot;CD38_Windsorized&#92;&quot;:0.3511575515453881,&#92;&quot;CD127_Windsorized&#92;&quot;:0.2666760241571581,&#92;&quot;Tim3_Windsorized&#92;&quot;:0.26545120363122987},{&#92;&quot;CD4_Windsorized&#92;&quot;:0.13060517803802518,&#92;&quot;CD8_Windsorized&#92;&quot;:0.8587694735776993,&#92;&quot;CD3_Windsorized&#92;&quot;:0.8290918186766675,&#92;&quot;CD45RA_Windsorized&#92;&quot;:0.10505473269457655,&#92;&quot;CD27_Windsorized&#92;&quot;:0.826061889328352,&#92;&quot;CD19_Windsorized&#92;&quot;:0.05601484415985039,&#92;&quot;CD103_Windsorized&#92;&quot;:0.8691915033367555,&#92;&quot;CD28_Windsorized&#92;&quot;:0.6740069204585701,&#92;&quot;CD69_Windsorized&#92;&quot;:0.7577827394142723,&#92;&quot;PD1_Windsorized&#92;&quot;:0.6354245108927945,&#92;&quot;HLADR_Windsorized&#92;&quot;:0.41236592594854204,&#92;&quot;GranzymeB_Windsorized&#92;&quot;:0.1471947904724255,&#92;&quot;CD25_Windsorized&#92;&quot;:0.19106376177615417,&#92;&quot;ICOS_Windsorized&#92;&quot;:0.22048170719090224,&#92;&quot;TCRgd_Windsorized&#92;&quot;:0.6524441107957518,&#92;&quot;CD38_Windsorized&#92;&quot;:0.5840524088287065,&#92;&quot;CD127_Windsorized&#92;&quot;:0.42290110799614283,&#92;&quot;Tim3_Windsorized&#92;&quot;:0.11340410075124356},{&#92;&quot;CD4_Windsorized&#92;&quot;:0.7729904220099207,&#92;&quot;CD8_Windsorized&#92;&quot;:0.15674198213004964,&#92;&quot;CD3_Windsorized&#92;&quot;:0.8106504020783817,&#92;&quot;CD45RA_Windsorized&#92;&quot;:0.0745177108245664,&#92;&quot;CD27_Windsorized&#92;&quot;:0.8682723997432287,&#92;&quot;CD19_Windsorized&#92;&quot;:0.1385334581314745,&#92;&quot;CD103_Windsorized&#92;&quot;:0.35549391181613693,&#92;&quot;CD28_Windsorized&#92;&quot;:0.8590430001098387,&#92;&quot;CD69_Windsorized&#92;&quot;:0.41238501547782896,&#92;&quot;PD1_Windsorized&#92;&quot;:0.48833091443891236,&#92;&quot;HLADR_Windsorized&#92;&quot;:0.07207542363275052,&#92;&quot;GranzymeB_Windsorized&#92;&quot;:0.17853787586889552,&#92;&quot;CD25_Windsorized&#92;&quot;:0.28823554413614116,&#92;&quot;ICOS_Windsorized&#92;&quot;:0.5392625380752816,&#92;&quot;TCRgd_Windsorized&#92;&quot;:0.6485977463577033,&#92;&quot;CD38_Windsorized&#92;&quot;:0.253574716120277,&#92;&quot;CD127_Windsorized&#92;&quot;:0.33599603825209784,&#92;&quot;Tim3_Windsorized&#92;&quot;:0.8314996426395073},{&#92;&quot;CD4_Windsorized&#92;&quot;:0.16672999028289917,&#92;&quot;CD8_Windsorized&#92;&quot;:0.12749987662861925,&#92;&quot;CD3_Windsorized&#92;&quot;:0.03394119271605513,&#92;&quot;CD45RA_Windsorized&#92;&quot;:1.0,&#92;&quot;CD27_Windsorized&#92;&quot;:0.013274027972799056,&#92;&quot;CD19_Windsorized&#92;&quot;:0.8984064795510238,&#92;&quot;CD103_Windsorized&#92;&quot;:0.34783427742700535,&#92;&quot;CD28_Windsorized&#92;&quot;:0.12493408310796691,&#92;&quot;CD69_Windsorized&#92;&quot;:0.010862862858970354,&#92;&quot;PD1_Windsorized&#92;&quot;:0.21759130016254977,&#92;&quot;HLADR_Windsorized&#92;&quot;:0.43402363431686514,&#92;&quot;GranzymeB_Windsorized&#92;&quot;:0.17653580460168553,&#92;&quot;CD25_Windsorized&#92;&quot;:0.22256086763684357,&#92;&quot;ICOS_Windsorized&#92;&quot;:0.09611595958851113,&#92;&quot;TCRgd_Windsorized&#92;&quot;:0.04898566285214183,&#92;&quot;CD38_Windsorized&#92;&quot;:0.12371527936124153,&#92;&quot;CD127_Windsorized&#92;&quot;:0.24909305173904442,&#92;&quot;Tim3_Windsorized&#92;&quot;:0.3524871157973776}]&quot;' data-total-rows='5' data-total-columns='18' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='true' data-page-size='10' data-field-types='[[&quot;CD4_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD8_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD3_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD45RA_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD27_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD19_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD103_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD28_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD69_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;PD1_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;HLADR_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;GranzymeB_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD25_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;ICOS_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;TCRgd_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD38_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;CD127_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]],[&quot;Tim3_Windsorized&quot;,[&quot;number&quot;,&quot;f64&quot;]]]' data-show-filters='true' data-show-download='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false' data-download-file-name='&quot;df&quot;'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "122103d7bdfc4efe2a5dfae2ac037374",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "affb30eadb5555aa2119009639868daf",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "9e5c2774e4f128472dbf2786a9eb9b90",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "Cannot convert ndarray to Arrow IPC bytes. Pass bytes, a file path, or an object with __arrow_c_stream__ (pandas DataFrame, polars DataFrame, pyarrow Table, etc.).",
+          "traceback": []
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "<span class=\"codehilite\"><div class=\"highlight\"><pre><span></span><span class=\"gt\">Traceback (most recent call last):</span>\n  File <span class=\"nb\">&quot;/var/folders/1q/43l11bl1573fx_sb848qnwmr0000gp/T/marimo_26739/__marimo__cell_Xref_.py&quot;</span>, line <span class=\"m\">1</span>, in <span class=\"n\">&lt;module&gt;</span>\n<span class=\"w\">    </span><span class=\"n\">w</span> <span class=\"o\">=</span> <span class=\"n\">dtour</span><span class=\"o\">.</span><span class=\"n\">Widget</span><span class=\"p\">(</span>\n<span class=\"w\">        </span><span class=\"pm\">^^^^^^^^^^^^^</span>\n  File <span class=\"nb\">&quot;/Users/Fritz/Code/dtour/packages/python/src/dtour/widget.py&quot;</span>, line <span class=\"m\">93</span>, in <span class=\"n\">__init__</span>\n<span class=\"w\">    </span><span class=\"bp\">self</span><span class=\"o\">.</span><span class=\"n\">set_data</span><span class=\"p\">(</span><span class=\"n\">data</span><span class=\"p\">)</span>\n  File <span class=\"nb\">&quot;/Users/Fritz/Code/dtour/packages/python/src/dtour/widget.py&quot;</span>, line <span class=\"m\">105</span>, in <span class=\"n\">set_data</span>\n<span class=\"w\">    </span><span class=\"bp\">self</span><span class=\"o\">.</span><span class=\"n\">_data_buf</span> <span class=\"o\">=</span> <span class=\"n\">_to_ipc_bytes</span><span class=\"p\">(</span><span class=\"n\">data</span><span class=\"p\">)</span>\n<span class=\"w\">                     </span><span class=\"pm\">^^^^^^^^^^^^^^^^^^^</span>\n  File <span class=\"nb\">&quot;/Users/Fritz/Code/dtour/packages/python/src/dtour/data.py&quot;</span>, line <span class=\"m\">84</span>, in <span class=\"n\">_to_ipc_bytes</span>\n<span class=\"w\">    </span><span class=\"k\">raise</span> <span class=\"ne\">TypeError</span><span class=\"p\">(</span>\n<span class=\"gr\">TypeError</span>: <span class=\"n\">Cannot convert ndarray to Arrow IPC bytes. Pass bytes, a file path, or an object with __arrow_c_stream__ (pandas DataFrame, polars DataFrame, pyarrow Table, etc.).</span>\n</pre></div>\n</span>",
+          "mimetype": "application/vnd.marimo+traceback"
+        }
+      ]
+    }
+  ]
+}

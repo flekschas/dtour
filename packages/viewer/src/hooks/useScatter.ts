@@ -6,10 +6,10 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  guidedSuspendedAtom,
   metadataAtom,
   pointColorAtom,
   tourPositionAtom,
-  tourSuspendedAtom,
 } from '../state/atoms.ts';
 import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from '../state/auto-style.ts';
 
@@ -25,17 +25,17 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const pointSize = useAtomValue(resolvedPointSizeAtom);
   const opacity = useAtomValue(resolvedPointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
-  const tourSuspended = useAtomValue(tourSuspendedAtom);
+  const guidedSuspended = useAtomValue(guidedSuspendedAtom);
   const panX = useAtomValue(cameraPanXAtom);
   const panY = useAtomValue(cameraPanYAtom);
   const zoom = useAtomValue(cameraZoomAtom);
   const setMetadata = useSetAtom(metadataAtom);
 
-  // Forward tour position (skipped when suspended after returning from manual/zen)
+  // Forward tour position (skipped when suspended after returning from manual/grand)
   useEffect(() => {
-    if (tourSuspended) return;
+    if (guidedSuspended) return;
     scatter?.setTourPosition(position);
-  }, [scatter, position, tourSuspended]);
+  }, [scatter, position, guidedSuspended]);
 
   // Forward point style (size + opacity + uniform color)
   useEffect(() => {

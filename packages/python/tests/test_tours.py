@@ -30,24 +30,24 @@ def test_little_tour_n_views():
     assert result.n_views == 4
 
 
-def test_little_tour_bases_shapes():
+def test_little_tour_views_shapes():
     X = make_data(p=5)
     result = little_tour(X)
-    assert len(result.bases) == result.n_views
-    for basis in result.bases:
+    assert len(result.views) == result.n_views
+    for basis in result.views:
         assert basis.shape == (5, 2)
         assert basis.dtype == np.float32
 
 
-def test_little_tour_bases_raw_roundtrip():
+def test_little_tour_views_raw_roundtrip():
     X = make_data(p=5)
     result = little_tour(X)
-    raw = result.bases_raw
+    raw = result.views_raw
     flat = np.frombuffer(raw, dtype=np.float32)
     assert flat.shape == (result.n_views * 5 * 2,)
-    # Reconstruct and verify first basis matches
+    # Reconstruct and verify first view matches
     first = flat[: 5 * 2].reshape(5, 2)
-    np.testing.assert_array_equal(first, result.bases[0])
+    np.testing.assert_array_equal(first, result.views[0])
 
 
 def test_little_tour_with_dataframe():

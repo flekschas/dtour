@@ -52,7 +52,7 @@ _DEFAULT_METRICS = ["silhouette", "trustworthiness"]
 
 def compute_metrics(
     X: np.ndarray,
-    bases: list[np.ndarray],
+    views: list[np.ndarray],
     labels: np.ndarray | None = None,
     metrics: list[str] | None = None,
     k: int = 7,
@@ -61,8 +61,8 @@ def compute_metrics(
 
     Args:
         X: Data matrix, shape ``(n_samples, n_features)``, float32.
-        bases: List of basis matrices, each shape ``(p, 2)`` where
-            ``p = n_features``.
+        views: List of projection (basis) matrices, each shape ``(p, 2)``
+            where ``p = n_features``.
         labels: Cluster / class labels for supervised metrics (silhouette,
             calinski_harabasz, neighborhood_hit). Shape ``(n_samples,)``.
         metrics: Which metrics to compute. Defaults to
@@ -86,7 +86,7 @@ def compute_metrics(
 
     result_values: dict[str, list[float]] = {m: [] for m in requested}
 
-    for basis in bases:
+    for basis in views:
         # Project: (n, p) @ (p, 2) → (n, 2)
         proj = X @ basis
 

@@ -3,10 +3,10 @@ import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useEffect, useRef } from 'react';
 import {
   currentBasisAtom,
+  grandExitTargetAtom,
+  guidedSuspendedAtom,
   tourSpeedAtom,
-  tourSuspendedAtom,
   viewModeAtom,
-  zenExitTargetAtom,
 } from '../state/atoms.ts';
 
 const EASE_DURATION = 0.5; // seconds
@@ -16,19 +16,19 @@ function smoothstep(t: number): number {
 }
 
 /**
- * Givens-rotation grand tour for zen mode.
+ * Givens-rotation grand tour for grand mode.
  *
  * Generates random angular velocities for all dimension pairs and
  * applies rotations each frame via rAF. Sends basis to GPU via
  * `setDirectBasis` — much cheaper than `setBases`.
  *
  * Eases in over 500ms on entry and eases out over 500ms on exit.
- * During ease-out, `viewMode` stays 'zen' — the actual mode switch
+ * During ease-out, `viewMode` stays 'grand' — the actual mode switch
  * happens only after the animation decelerates to zero.
  */
 export const useGrandTour = (
   scatter: ScatterInstance | null,
-  viewMode: 'tour' | 'manual' | 'zen',
+  viewMode: 'guided' | 'manual' | 'grand',
   metadata: Metadata | null,
 ): void => {
   const speed = useAtomValue(tourSpeedAtom);
@@ -40,17 +40,17 @@ export const useGrandTour = (
 
   // Read exit target via ref so the rAF closure always sees the latest
   // value without restarting the effect.
-  const exitTarget = useAtomValue(zenExitTargetAtom);
+  const exitTarget = useAtomValue(grandExitTargetAtom);
   const exitTargetRef = useRef(exitTarget);
   exitTargetRef.current = exitTarget;
 
   const store = useStore();
   const setViewMode = useSetAtom(viewModeAtom);
-  const setZenExitTarget = useSetAtom(zenExitTargetAtom);
-  const setTourSuspended = useSetAtom(tourSuspendedAtom);
+  const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
+  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
 
   useEffect(() => {
-    if (viewMode !== 'zen' || !metadata || metadata.dimCount < 2 || !scatter) return;
+    if (viewMode !== 'grand' || !metadata || metadata.dimCount < 2 || !scatter) return;
 
     const dims = metadata.dimCount;
     const numPairs = (dims * (dims - 1)) / 2;
@@ -131,10 +131,10 @@ export const useGrandTour = (
         cancelAnimationFrame(rafId);
         // Store final basis so the next mode can pick up where we left off
         store.set(currentBasisAtom, new Float32Array(basis));
-        if (currentExitTarget === 'tour') {
-          setTourSuspended(true);
+        if (currentExitTarget === 'guided') {
+          setGuidedSuspended(true);
         }
-        setZenExitTarget(null);
+        setGrandExitTarget(null);
         setViewMode(currentExitTarget);
         return;
       }
@@ -149,5 +149,5 @@ export const useGrandTour = (
       // Store basis on cleanup so mode transitions always have the latest
       store.set(currentBasisAtom, new Float32Array(basis));
     };
-  }, [viewMode, metadata, scatter, store, setViewMode, setZenExitTarget, setTourSuspended]);
+  }, [viewMode, metadata, scatter, store, setViewMode, setGrandExitTarget, setGuidedSuspended]);
 };

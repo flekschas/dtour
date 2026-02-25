@@ -18,7 +18,7 @@ export const dtourSpecSchema = z.object({
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
   cameraZoom: z.number().positive().optional(),
-  viewMode: z.enum(['tour', 'manual', 'zen']).optional(),
+  viewMode: z.enum(['guided', 'manual', 'grand']).optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
@@ -36,5 +36,5 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   cameraPanX: 0,
   cameraPanY: 0,
   cameraZoom: 1,
-  viewMode: 'tour',
+  viewMode: 'guided',
 };

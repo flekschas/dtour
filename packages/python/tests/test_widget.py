@@ -4,11 +4,11 @@ import numpy as np
 import pytest
 
 from dtour.tours import little_tour
-from dtour.widget import DtourWidget
+from dtour.widget import Widget
 
 
 def test_widget_default_traits():
-    w = DtourWidget()
+    w = Widget()
     assert w.tour_position == 0.0
     assert w.tour_playing is False
     assert w.tour_speed == 1.0
@@ -25,23 +25,23 @@ def test_widget_default_traits():
 
 
 def test_widget_preview_count_validation():
-    w = DtourWidget(preview_count=8)
+    w = Widget(preview_count=8)
     assert w.preview_count == 8
 
     with pytest.raises(Exception):
-        DtourWidget(preview_count=5)
+        Widget(preview_count=5)
 
 
 def test_widget_tour_direction_validation():
-    w = DtourWidget(tour_direction="backward")
+    w = Widget(tour_direction="backward")
     assert w.tour_direction == "backward"
 
     with pytest.raises(Exception):
-        DtourWidget(tour_direction="sideways")
+        Widget(tour_direction="sideways")
 
 
 def test_widget_set_data_bytes():
-    w = DtourWidget()
+    w = Widget()
     # Raw bytes passthrough — no conversion needed
     w.set_data(b"fake arrow ipc bytes")
     assert w._data_buf == b"fake arrow ipc bytes"
@@ -50,11 +50,11 @@ def test_widget_set_data_bytes():
 def test_widget_set_tour():
     X = np.random.default_rng(42).standard_normal((50, 4)).astype(np.float32)
     tour = little_tour(X)
-    w = DtourWidget()
+    w = Widget()
     w.set_tour(tour)
-    assert w._bases_buf is not None
+    assert w._views_buf is not None
     assert w._n_dims == 4
-    assert len(w._bases_buf) == tour.n_views * 4 * 2 * 4  # n_views * dims * 2 * sizeof(float32)
+    assert len(w._views_buf) == tour.n_views * 4 * 2 * 4  # n_views * dims * 2 * sizeof(float32)
 
 
 def test_widget_constructor_with_data_and_tour():
@@ -63,6 +63,6 @@ def test_widget_constructor_with_data_and_tour():
 
     data = from_numpy(X)
     tour = little_tour(X)
-    w = DtourWidget(data=data, tour=tour)
+    w = Widget(data=data, tour=tour)
     assert w._data_buf is not None
-    assert w._bases_buf is not None
+    assert w._views_buf is not None

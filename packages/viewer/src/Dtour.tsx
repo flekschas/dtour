@@ -12,8 +12,8 @@ import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 export type DtourProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
   data?: ArrayBuffer;
-  /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
-  bases?: Float32Array[];
+  /** Tour keyframe views (p×2 column-major). Auto-generated if omitted. */
+  views?: Float32Array[];
   /** Arrow IPC ArrayBuffer with per-view quality metrics (columns = metrics, rows = views). */
   metrics?: ArrayBuffer;
   /** Track configuration for radial bar charts. When omitted, all metrics are shown with defaults. */
@@ -30,7 +30,7 @@ export type DtourProps = {
 
 export const Dtour = ({
   data,
-  bases,
+  views,
   metrics,
   metricTracks,
   spec,
@@ -51,7 +51,7 @@ export const Dtour = ({
     <Provider store={store}>
       <DtourInner
         data={data}
-        bases={bases}
+        views={views}
         metrics={metrics}
         metricTracks={metricTracks}
         spec={spec}
@@ -66,7 +66,7 @@ export const Dtour = ({
 /** Inner component that lives inside the Provider so hooks bind to the store. */
 const DtourInner = ({
   data,
-  bases,
+  views,
   metrics,
   metricTracks,
   spec,
@@ -75,7 +75,7 @@ const DtourInner = ({
   hideToolbar,
 }: {
   data: ArrayBuffer | undefined;
-  bases: Float32Array[] | undefined;
+  views: Float32Array[] | undefined;
   metrics: ArrayBuffer | undefined;
   metricTracks: RadialTrackConfig[] | undefined;
   spec: DtourSpec | undefined;
@@ -87,14 +87,14 @@ const DtourInner = ({
   useModeCycling();
 
   const viewMode = useAtomValue(viewModeAtom);
-  const isZen = viewMode === 'zen';
+  const isGrand = viewMode === 'grand';
 
   return (
     <div className="relative w-full h-full overflow-hidden">
       <div className="absolute inset-0">
         <DtourViewer
           data={data}
-          bases={bases}
+          views={views}
           metrics={metrics}
           metricTracks={metricTracks}
           onStatus={onStatus}
@@ -104,7 +104,7 @@ const DtourInner = ({
       {!hideToolbar && (
         <div
           className={`absolute inset-x-0 top-0 z-10 h-10 transition-transform duration-300 ease-in-out ${
-            isZen ? '-translate-y-full' : 'translate-y-0'
+            isGrand ? '-translate-y-full' : 'translate-y-0'
           }`}
         >
           <DtourToolbar />

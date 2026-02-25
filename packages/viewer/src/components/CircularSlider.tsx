@@ -97,6 +97,7 @@ export const CircularSlider = ({
     const r2 = radius - 3;
     return (
       <line
+        // biome-ignore lint/suspicious/noArrayIndexKey: tick key
         key={i}
         x1={center + r1 * Math.cos(tickRad)}
         y1={center + r1 * Math.sin(tickRad)}

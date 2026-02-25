@@ -10,6 +10,8 @@ from sklearn.decomposition import PCA
 
 if TYPE_CHECKING:
     import pandas as pd
+    import polars as pl
+    import pyarrow as pa
 
 
 @dataclass
@@ -17,30 +19,67 @@ class TourResult:
     """Output of a tour computation.
 
     Attributes:
-        bases: List of basis matrices, each shape ``(p, 2)`` float32.
-        n_views: Number of projection views (bases).
+        views: List of projection (basis) matrices, each shape ``(p, 2)`` float32.
+        n_views: Number of projection views.
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
     """
 
-    bases: list[np.ndarray]
+    views: list[np.ndarray]
     n_views: int
     n_dims: int
     explained_variance_ratio: list[float] = field(default_factory=list)
+    embedding: np.ndarray | None = None
 
     @property
-    def bases_raw(self) -> bytes:
-        """Raw float32 bytes of all basis matrices (for widget transfer).
+    def views_raw(self) -> bytes:
+        """Raw float32 bytes of all view matrices (for widget transfer).
 
         Layout: ``n_views`` contiguous blocks of ``p * 2`` float32 values,
         each in column-major order ``[x0 .. xp-1, y0 .. yp-1]``.
         """
-        return np.stack([b.flatten() for b in self.bases]).astype(np.float32).tobytes()
+        return np.stack([b.flatten() for b in self.views]).astype(np.float32).tobytes()
+
+
+def _to_float32(X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table) -> np.ndarray:
+    """Convert tabular input to a float32 numpy array, selecting numeric columns."""
+    if isinstance(X, np.ndarray):
+        return np.asarray(X, dtype=np.float32)
+
+    type_name = type(X).__qualname__
+    module = type(X).__module__
+
+    # pandas DataFrame
+    if type_name == "DataFrame" and module.startswith("pandas"):
+        return X.select_dtypes(include="number").to_numpy(dtype=np.float32)
+
+    # polars DataFrame
+    if type_name == "DataFrame" and module.startswith("polars"):
+        import polars.selectors as cs
+
+        return X.select(cs.numeric()).to_numpy().astype(np.float32)
+
+    # pyarrow Table
+    if type_name == "Table" and module.startswith("pyarrow"):
+        import pyarrow as pa
+
+        numeric_names = [
+            f.name
+            for f in X.schema
+            if pa.types.is_integer(f.type) or pa.types.is_floating(f.type)
+        ]
+        arrays = [X.column(c).to_numpy(zero_copy_only=False) for c in numeric_names]
+        if not arrays:
+            return np.empty((X.num_rows, 0), dtype=np.float32)
+        return np.column_stack(arrays).astype(np.float32)
+
+    # fallback
+    return np.asarray(X, dtype=np.float32)
 
 
 def little_tour(
-    X: np.ndarray | pd.DataFrame,
+    X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_components: int | None = None,
 ) -> TourResult:
     """Compute a PCA-based little tour over a dataset.
@@ -57,33 +96,28 @@ def little_tour(
     Returns:
         A :class:`TourResult` with basis matrices as numpy arrays.
     """
-    import pandas as pd
+    arr = _to_float32(X)
 
-    if isinstance(X, pd.DataFrame):
-        X = X.select_dtypes(include="number").to_numpy(dtype=np.float32)
-    else:
-        X = np.asarray(X, dtype=np.float32)
-
-    n_features = X.shape[1]
+    n_features = arr.shape[1]
     k = min(n_components or 10, n_features)
 
     pca = PCA(n_components=k)
-    pca.fit(X)
+    pca.fit(arr)
 
     # Components: shape (k, n_features). Each row is a principal component direction.
     components = pca.components_  # (k, p)
 
     # Build cyclic pairs: (0,1), (1,2), ..., (k-2, k-1), (k-1, 0)
-    bases: list[np.ndarray] = []
+    views: list[np.ndarray] = []
     for i in range(k):
-        a = components[i]               # (p,)
-        b = components[(i + 1) % k]     # (p,)
+        a = components[i]  # (p,)
+        b = components[(i + 1) % k]  # (p,)
         # Column-major px2: [a0, a1, ..., ap-1, b0, b1, ..., bp-1]
         basis = np.stack([a, b], axis=1).astype(np.float32)  # (p, 2)
-        bases.append(basis)
+        views.append(basis)
 
     return TourResult(
-        bases=bases,
+        views=views,
         n_views=k,
         n_dims=n_features,
         explained_variance_ratio=pca.explained_variance_ratio_.tolist(),
@@ -91,35 +125,24 @@ def little_tour(
 
 
 def little_umap_tour(
-    X: np.ndarray | pd.DataFrame,
+    X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_components: int = 10,
     umap_kwargs: dict | None = None,
 ) -> TourResult:
     """Reduce to n_components with UMAP, then compute a little tour.
-
-    Requires ``umap-learn`` (install with ``pip install dtour[umap]``).
 
     Args:
         X: Input data.
         n_components: UMAP output dimensions (= tour dimensionality).
         umap_kwargs: Extra keyword arguments passed to ``umap.UMAP``.
     """
-    try:
-        import umap
-    except ImportError as e:
-        raise ImportError(
-            "umap-learn is required for little_umap_tour. "
-            "Install it with: pip install dtour[umap]"
-        ) from e
+    import umap
 
-    import pandas as pd
+    arr = _to_float32(X)
 
-    if isinstance(X, pd.DataFrame):
-        X = X.select_dtypes(include="number").to_numpy(dtype=np.float32)
-    else:
-        X = np.asarray(X, dtype=np.float32)
+    kwargs = {"n_components": n_components, **(umap_kwargs or {})}
+    embedding = umap.UMAP(**kwargs).fit_transform(arr)
 
-    kwargs = {"n_components": n_components, "random_state": 42, **(umap_kwargs or {})}
-    embedding = umap.UMAP(**kwargs).fit_transform(X)
-
-    return little_tour(embedding, n_components=n_components)
+    result = little_tour(embedding, n_components=n_components)
+    result.embedding = embedding
+    return result
