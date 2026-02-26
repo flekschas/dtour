@@ -19,7 +19,13 @@ export type MainToGpu =
       position: number;
     }
   | { type: 'setStyle'; pointSize: number; opacity: number; color: [number, number, number] }
-  | { type: 'setCamera'; pan: [number, number]; zoom: number; insetOffsetY: number; insetZoom: number }
+  | {
+      type: 'setCamera';
+      pan: [number, number];
+      zoom: number;
+      insetOffsetY: number;
+      insetZoom: number;
+    }
   | { type: 'resize'; viewIndex: number; width: number; height: number }
   | { type: 'render' }
   | {
@@ -27,7 +33,6 @@ export type MainToGpu =
       type: 'setDirectBasis';
       basis: Float32Array;
     }
-  | { type: 'setColors'; colors: Uint32Array }
   | { type: 'clearColors' }
   | { type: 'setSelectionMask'; mask: Uint32Array }
   | { type: 'clearSelectionMask' }

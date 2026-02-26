@@ -1,5 +1,6 @@
 import { Dtour } from '@dtour/viewer';
 import { useCallback, useRef, useState } from 'react';
+import { Button } from './components/ui/button.tsx';
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
@@ -41,14 +42,13 @@ const App = () => {
         className="hidden"
         onChange={handleFileSelect}
       />
-      {data ? (
-        <Dtour data={data} />
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <button
-            type="button"
+      <Dtour data={data} />
+      {!data && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <Button
+            variant="ghost"
+            className="flex flex-col items-center gap-3 px-6 py-4 h-auto"
             onClick={() => inputRef.current?.click()}
-            className="flex flex-col items-center gap-3 px-6 py-4 text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
           >
             <svg
               width="48"
@@ -68,7 +68,7 @@ const App = () => {
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
             <span className="text-sm">Drop a Parquet or Arrow file to start</span>
-          </button>
+          </Button>
         </div>
       )}
     </div>

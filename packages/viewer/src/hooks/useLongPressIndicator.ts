@@ -70,23 +70,23 @@ const circleInRule = (halfPercent: number, clipPath: string, opacity: number) =>
     ${halfPercent + 0.01}%, 100% { clip-path: inset(0); opacity: 1; }
   }`;
 
-const circleLeftInRule = (pct: number, angle: number) => `
+const circleLeftInRule = (percent: number, angle: number) => `
   @keyframes leftSpinIn {
     0% { transform: rotate(${angle}deg); }
-    ${pct}%, 100% { transform: rotate(360deg); }
+    ${percent}%, 100% { transform: rotate(360deg); }
   }`;
 
-const circleRightInRule = (halfPct: number, angle: number) => `
+const circleRightInRule = (halfPercent: number, angle: number) => `
   @keyframes rightSpinIn {
     0% { transform: rotate(${angle}deg); }
-    ${halfPct}%, 100% { transform: rotate(180deg); }
+    ${halfPercent}%, 100% { transform: rotate(180deg); }
   }`;
 
 // --- Keyframe rule generators (out) ---
-const mainOutRule = (curColor: string, tgtColor: string) => `
+const mainOutRule = (currentColor: string, targetColor: string) => `
   @keyframes mainOut {
-    0% { color: ${curColor}; }
-    100% { color: ${tgtColor}; }
+    0% { color: ${currentColor}; }
+    100% { color: ${targetColor}; }
   }`;
 
 const effectOutRule = (opacity: number, scale: number) => `
@@ -96,9 +96,9 @@ const effectOutRule = (opacity: number, scale: number) => `
     100% { opacity: 0; transform: scale(0); }
   }`;
 
-const circleRightOutRule = (halfPct: number, angle: number) => `
+const circleRightOutRule = (halfPercent: number, angle: number) => `
   @keyframes rightSpinOut {
-    0%, ${halfPct}% { transform: rotate(${angle}deg); }
+    0%, ${halfPercent}% { transform: rotate(${angle}deg); }
     100% { transform: rotate(0deg); }
   }`;
 
@@ -108,10 +108,10 @@ const circleLeftOutRule = (angle: number) => `
     100% { transform: rotate(0deg); }
   }`;
 
-const circleOutRule = (halfPct: number, clipPath: string, opacity: number) => `
+const circleOutRule = (halfPercent: number, clipPath: string, opacity: number) => `
   @keyframes circleOut {
-    0%, ${halfPct}% { clip-path: ${clipPath}; opacity: ${opacity}; }
-    ${halfPct + 0.01}% { clip-path: inset(0 0 0 50%); opacity: ${opacity}; }
+    0%, ${halfPercent}% { clip-path: ${clipPath}; opacity: ${opacity}; }
+    ${halfPercent + 0.01}% { clip-path: inset(0 0 0 50%); opacity: ${opacity}; }
     100% { clip-path: inset(0 0 0 50%); opacity: 0; }
   }`;
 
@@ -147,19 +147,19 @@ const createInAnimations = ({
   circleClipPath: string;
   circleOpacity: number;
 }): Animations => {
-  const p = circleLeftRotation / 360;
-  const actualTime = (1 - p) * time + extraTime;
-  const longPressPct = Math.round((((1 - p) * time) / actualTime) * 100);
-  const halfPct = Math.round(longPressPct / 2);
-  const afterEffectPct = longPressPct + (100 - longPressPct) / 4;
+  const progress = circleLeftRotation / 360;
+  const actualTime = (1 - progress) * time + extraTime;
+  const longPressPercent = Math.round((((1 - progress) * time) / actualTime) * 100);
+  const halfPercent = Math.round(longPressPercent / 2);
+  const afterEffectPercent = longPressPercent + (100 - longPressPercent) / 4;
 
   return {
     rules: {
-      main: mainInRule(longPressPct, currentColor, targetColor),
-      effect: effectInRule(longPressPct, afterEffectPct, effectOpacity, effectScale),
-      circleRight: circleRightInRule(halfPct, circleRightRotation),
-      circleLeft: circleLeftInRule(longPressPct, circleLeftRotation),
-      circle: circleInRule(halfPct, circleClipPath, circleOpacity),
+      main: mainInRule(longPressPercent, currentColor, targetColor),
+      effect: effectInRule(longPressPercent, afterEffectPercent, effectOpacity, effectScale),
+      circleRight: circleRightInRule(halfPercent, circleRightRotation),
+      circleLeft: circleLeftInRule(longPressPercent, circleLeftRotation),
+      circle: circleInRule(halfPercent, circleClipPath, circleOpacity),
     },
     names: {
       main: mainInAnim(actualTime, delay),
@@ -192,18 +192,18 @@ const createOutAnimations = ({
   circleClipPath: string;
   circleOpacity: number;
 }): Animations => {
-  const p = circleLeftRotation / 360;
-  const actualTime = p * time;
-  const rotatedPct = Math.min(100, p * 100);
-  const halfPct = rotatedPct > 50 ? Math.round((1 - 50 / rotatedPct) * 100) : 0;
+  const progress = circleLeftRotation / 360;
+  const actualTime = progress * time;
+  const rotatedPercent = Math.min(100, progress * 100);
+  const halfPercent = rotatedPercent > 50 ? Math.round((1 - 50 / rotatedPercent) * 100) : 0;
 
   return {
     rules: {
       main: mainOutRule(currentColor, targetColor),
       effect: effectOutRule(effectOpacity, effectScale),
-      circleRight: circleRightOutRule(halfPct, circleRightRotation),
+      circleRight: circleRightOutRule(halfPercent, circleRightRotation),
       circleLeft: circleLeftOutRule(circleLeftRotation),
-      circle: circleOutRule(halfPct, circleClipPath, circleOpacity),
+      circle: circleOutRule(halfPercent, circleClipPath, circleOpacity),
     },
     names: {
       main: mainOutAnim(actualTime),
@@ -331,64 +331,64 @@ const safeRemove = (indices: RuleIndices, key: keyof RuleIndices) => {
 
 // --- The hook ---
 export const useLongPressIndicator = (parentRef: React.RefObject<HTMLElement | null>) => {
-  const els = useRef<ReturnType<typeof createElements> | null>(null);
-  const idx = useRef<RuleIndices>(emptyIndices());
+  const elementsRef = useRef<ReturnType<typeof createElements> | null>(null);
+  const ruleIndicesRef = useRef<RuleIndices>(emptyIndices());
   const isStarting = useRef(false);
 
   // Create / destroy DOM elements
   useEffect(() => {
-    const elements = createElements();
-    elements.root.style.color = INDICATOR_COLOR;
-    els.current = elements;
+    const created = createElements();
+    created.root.style.color = INDICATOR_COLOR;
+    elementsRef.current = created;
 
     const parent = parentRef.current ?? document.body;
-    parent.appendChild(elements.root);
+    parent.appendChild(created.root);
 
     return () => {
-      elements.root.remove();
-      els.current = null;
+      created.root.remove();
+      elementsRef.current = null;
     };
   }, [parentRef]);
 
   const show = useCallback((x: number, y: number) => {
-    const e = els.current;
-    if (!e) return;
+    const el = elementsRef.current;
+    if (!el) return;
 
     isStarting.current = true;
 
-    const mainStyle = getComputedStyle(e.root);
-    e.root.style.color = INDICATOR_COLOR;
-    e.root.style.top = `${y}px`;
-    e.root.style.left = `${x}px`;
-    e.root.style.animation = 'none';
+    const mainStyle = getComputedStyle(el.root);
+    el.root.style.color = INDICATOR_COLOR;
+    el.root.style.top = `${y}px`;
+    el.root.style.left = `${x}px`;
+    el.root.style.animation = 'none';
 
-    const circleStyle = getComputedStyle(e.circle);
-    e.circle.style.clipPath = circleStyle.clipPath;
-    e.circle.style.opacity = circleStyle.opacity;
-    e.circle.style.animation = 'none';
+    const circleStyle = getComputedStyle(el.circle);
+    el.circle.style.clipPath = circleStyle.clipPath;
+    el.circle.style.opacity = circleStyle.opacity;
+    el.circle.style.animation = 'none';
 
-    const effectStyle = getCurrentTransform(e.effect);
-    e.effect.style.opacity = String(effectStyle.opacity);
-    e.effect.style.transform = `scale(${effectStyle.scale})`;
-    e.effect.style.animation = 'none';
+    const effectStyle = getCurrentTransform(el.effect);
+    el.effect.style.opacity = String(effectStyle.opacity);
+    el.effect.style.transform = `scale(${effectStyle.scale})`;
+    el.effect.style.animation = 'none';
 
-    const leftStyle = getCurrentTransform(e.circleLeft);
-    e.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
-    e.circleLeft.style.animation = 'none';
+    const leftStyle = getCurrentTransform(el.circleLeft);
+    el.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
+    el.circleLeft.style.animation = 'none';
 
-    const rightStyle = getCurrentTransform(e.circleRight);
-    e.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
-    e.circleRight.style.animation = 'none';
+    const rightStyle = getCurrentTransform(el.circleRight);
+    el.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
+    el.circleRight.style.animation = 'none';
 
     requestAnimationFrame(() => {
-      if (!isStarting.current || !els.current) return;
+      if (!isStarting.current || !elementsRef.current) return;
 
-      const i = idx.current;
-      safeRemove(i, 'circleIn');
-      safeRemove(i, 'circleRightIn');
-      safeRemove(i, 'circleLeftIn');
-      safeRemove(i, 'effectIn');
-      safeRemove(i, 'mainIn');
+      const indices = ruleIndicesRef.current;
+      safeRemove(indices, 'circleIn');
+      safeRemove(indices, 'circleRightIn');
+      safeRemove(indices, 'circleLeftIn');
+      safeRemove(indices, 'effectIn');
+      safeRemove(indices, 'mainIn');
 
       const { rules, names } = createInAnimations({
         currentColor: mainStyle.color || 'currentcolor',
@@ -401,58 +401,58 @@ export const useLongPressIndicator = (parentRef: React.RefObject<HTMLElement | n
         circleOpacity: Number(circleStyle.opacity) || 0,
       });
 
-      i.mainIn = addRule(rules.main);
-      i.effectIn = addRule(rules.effect);
-      i.circleLeftIn = addRule(rules.circleLeft);
-      i.circleRightIn = addRule(rules.circleRight);
-      i.circleIn = addRule(rules.circle);
+      indices.mainIn = addRule(rules.main);
+      indices.effectIn = addRule(rules.effect);
+      indices.circleLeftIn = addRule(rules.circleLeft);
+      indices.circleRightIn = addRule(rules.circleRight);
+      indices.circleIn = addRule(rules.circle);
 
-      e.root.style.animation = names.main;
-      e.effect.style.animation = names.effect;
-      e.circleLeft.style.animation = names.circleLeft;
-      e.circleRight.style.animation = names.circleRight;
-      e.circle.style.animation = names.circle;
+      el.root.style.animation = names.main;
+      el.effect.style.animation = names.effect;
+      el.circleLeft.style.animation = names.circleLeft;
+      el.circleRight.style.animation = names.circleRight;
+      el.circle.style.animation = names.circle;
     });
   }, []);
 
   const hide = useCallback(() => {
-    const e = els.current;
-    if (!e || !isStarting.current) return;
+    const el = elementsRef.current;
+    if (!el || !isStarting.current) return;
 
     isStarting.current = false;
 
-    const mainStyle = getComputedStyle(e.root);
-    e.root.style.color = mainStyle.color;
-    e.root.style.animation = 'none';
+    const mainStyle = getComputedStyle(el.root);
+    el.root.style.color = mainStyle.color;
+    el.root.style.animation = 'none';
 
-    const circleStyle = getComputedStyle(e.circle);
-    e.circle.style.clipPath = circleStyle.clipPath;
-    e.circle.style.opacity = circleStyle.opacity;
-    e.circle.style.animation = 'none';
+    const circleStyle = getComputedStyle(el.circle);
+    el.circle.style.clipPath = circleStyle.clipPath;
+    el.circle.style.opacity = circleStyle.opacity;
+    el.circle.style.animation = 'none';
 
-    const effectStyle = getCurrentTransform(e.effect);
-    e.effect.style.opacity = String(effectStyle.opacity);
-    e.effect.style.transform = `scale(${effectStyle.scale})`;
-    e.effect.style.animation = 'none';
+    const effectStyle = getCurrentTransform(el.effect);
+    el.effect.style.opacity = String(effectStyle.opacity);
+    el.effect.style.transform = `scale(${effectStyle.scale})`;
+    el.effect.style.animation = 'none';
 
     // Detect if past the 50% mark of the circle animation
     const pastHalf = circleStyle.clipPath.slice(-2, -1) === 'x';
 
-    const leftStyle = getCurrentTransform(e.circleLeft, pastHalf);
-    e.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
-    e.circleLeft.style.animation = 'none';
+    const leftStyle = getCurrentTransform(el.circleLeft, pastHalf);
+    el.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
+    el.circleLeft.style.animation = 'none';
 
-    const rightStyle = getCurrentTransform(e.circleRight);
-    e.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
-    e.circleRight.style.animation = 'none';
+    const rightStyle = getCurrentTransform(el.circleRight);
+    el.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
+    el.circleRight.style.animation = 'none';
 
     requestAnimationFrame(() => {
-      const i = idx.current;
-      safeRemove(i, 'circleOut');
-      safeRemove(i, 'circleRightOut');
-      safeRemove(i, 'circleLeftOut');
-      safeRemove(i, 'effectOut');
-      safeRemove(i, 'mainOut');
+      const indices = ruleIndicesRef.current;
+      safeRemove(indices, 'circleOut');
+      safeRemove(indices, 'circleRightOut');
+      safeRemove(indices, 'circleLeftOut');
+      safeRemove(indices, 'effectOut');
+      safeRemove(indices, 'mainOut');
 
       const { rules, names } = createOutAnimations({
         currentColor: mainStyle.color || 'currentcolor',
@@ -465,17 +465,17 @@ export const useLongPressIndicator = (parentRef: React.RefObject<HTMLElement | n
         circleOpacity: Number(circleStyle.opacity) || 1,
       });
 
-      i.mainOut = addRule(rules.main);
-      i.effectOut = addRule(rules.effect);
-      i.circleLeftOut = addRule(rules.circleLeft);
-      i.circleRightOut = addRule(rules.circleRight);
-      i.circleOut = addRule(rules.circle);
+      indices.mainOut = addRule(rules.main);
+      indices.effectOut = addRule(rules.effect);
+      indices.circleLeftOut = addRule(rules.circleLeft);
+      indices.circleRightOut = addRule(rules.circleRight);
+      indices.circleOut = addRule(rules.circle);
 
-      e.root.style.animation = names.main;
-      e.effect.style.animation = names.effect;
-      e.circleLeft.style.animation = names.circleLeft;
-      e.circleRight.style.animation = names.circleRight;
-      e.circle.style.animation = names.circle;
+      el.root.style.animation = names.main;
+      el.effect.style.animation = names.effect;
+      el.circleLeft.style.animation = names.circleLeft;
+      el.circleRight.style.animation = names.circleRight;
+      el.circle.style.animation = names.circle;
     });
   }, []);
 

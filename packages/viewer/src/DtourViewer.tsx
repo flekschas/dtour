@@ -41,7 +41,7 @@ export type DtourViewerProps = {
 };
 
 const MIN_SELECTOR_SIZE = 80;
-const PREVIEW_PHYSICAL_SIZE = 200; // Physical pixels per preview canvas
+const PREVIEW_PHYSICAL_SIZE = 300; // Physical pixels per preview canvas
 
 const INSET_ANIMATION_MS = 300;
 
@@ -106,11 +106,13 @@ export const DtourViewer = ({
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatterRef.current);
 
+  const isToolbarVisible = toolbarHeight > 0 && viewMode !== 'grand';
+
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
   // We also track the current pixel offset for positioning overlays.
   const [overlayOffsetY, setOverlayOffsetY] = useState(
-    toolbarHeight > 0 && viewMode !== 'grand' ? toolbarHeight / 2 : 0,
+    isToolbarVisible ? toolbarHeight : 0,
   );
   const overlayOffsetRef = useRef(overlayOffsetY);
   overlayOffsetRef.current = overlayOffsetY;
@@ -151,7 +153,7 @@ export const DtourViewer = ({
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
 
       // Overlay pixel offset
-      setOverlayOffsetY((currentT * t) / 2);
+      setOverlayOffsetY((currentT * t));
 
       if (progress < 1) {
         insetAnimRef.current = requestAnimationFrame(tick);
@@ -303,6 +305,7 @@ export const DtourViewer = ({
               previewCanvases={previewCanvasesRef.current}
               containerWidth={containerSize.width}
               containerHeight={containerSize.height}
+              isToolbarVisible={isToolbarVisible}
             />
           )}
 

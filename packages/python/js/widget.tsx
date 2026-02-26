@@ -21,6 +21,7 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   camera_pan_x: 'cameraPanX',
   camera_pan_y: 'cameraPanY',
   camera_zoom: 'cameraZoom',
+  view_mode: 'viewMode',
 };
 
 const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
@@ -29,12 +30,21 @@ const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
 // Helpers
 // ---------------------------------------------------------------------------
 
-function dataViewToArrayBuffer(dv: DataView): ArrayBuffer {
-  return dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength);
+/** Convert any binary buffer type into an ArrayBuffer. */
+function toArrayBuffer(buf: DataView | ArrayBuffer | Uint8Array): ArrayBuffer {
+  if (buf instanceof ArrayBuffer) return buf;
+  if (buf instanceof DataView)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  if (buf instanceof Uint8Array)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  return buf as ArrayBuffer;
 }
 
-function parseViews(dv: DataView, nDims: number): Float32Array[] {
-  const buf = dataViewToArrayBuffer(dv);
+function parseViews(
+  raw: DataView | ArrayBuffer | Uint8Array,
+  nDims: number,
+): Float32Array[] {
+  const buf = toArrayBuffer(raw);
   const flat = new Float32Array(buf);
   const stride = nDims * 2;
   const nViews = Math.floor(flat.length / stride);
@@ -68,17 +78,21 @@ function Widget() {
 
   // Custom messages → data / views / metrics (binary buffers from Python)
   useEffect(() => {
-    function onMsg(msg: { type: string; n_dims?: number }, buffers: DataView[]) {
+    // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
+    function onMsg(msg: { type: string; n_dims?: number }, buffers: any[]) {
       if (msg.type === 'data' && buffers[0]) {
-        setData(dataViewToArrayBuffer(buffers[0]));
+        setData(toArrayBuffer(buffers[0]));
       } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
         setViews(parseViews(buffers[0], msg.n_dims));
       } else if (msg.type === 'metrics' && buffers[0]) {
-        setMetrics(dataViewToArrayBuffer(buffers[0]));
+        setMetrics(toArrayBuffer(buffers[0]));
       }
     }
     model.on('msg:custom', onMsg);
+
+    // Signal ready so Python (re-)sends binary data
     model.send({ type: 'ready' });
+
     return () => model.off('msg:custom', onMsg);
   }, [model]);
 
@@ -117,7 +131,7 @@ function Widget() {
   const height: number = model.get('height') ?? 600;
 
   return (
-    <div className="w-full" style={{ height: `${height}px` }}>
+    <div className="w-full" style={{ height: `${height}px`, position: 'relative' }}>
       <Dtour
         data={data}
         views={views}

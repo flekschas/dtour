@@ -1,3 +1,8 @@
+# /// script
+# [tool.marimo.display]
+# theme = "dark"
+# ///
+
 import marimo
 
 __generated_with = "0.20.2"
@@ -20,6 +25,25 @@ def _():
     return
 
 
+@app.cell(hide_code=True)
+def _(df, dtour, pl, tour):
+    # Combine embedding columns with the categorical label for coloring.
+    # The scatter engine uses numeric columns for projection and categorical
+    # columns for per-point color encoding.
+    widget_df = pl.DataFrame(
+        {f"dim_{i}": tour.embedding[:, i] for i in range(tour.embedding.shape[1])}
+    ).with_columns(df["faustLabels"])
+
+    w = dtour.Widget(
+        data=widget_df,
+        tour=tour,
+        preview_count=8,
+        point_color="faustLabels",
+    )
+    w
+    return
+
+
 @app.cell
 def _():
     from pathlib import Path
@@ -28,12 +52,14 @@ def _():
     import polars as pl
     from sklearn.preprocessing import StandardScaler
 
-    return StandardScaler, np, pl
+    return Path, StandardScaler, np, pl
 
 
 @app.cell
 def _(pl):
-    df = pl.read_parquet("https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq")
+    df = pl.read_parquet(
+        "https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq"
+    )
 
     win_cols = [c for c in df.columns if c.endswith("Windsorized")]
     df.select(win_cols).head()
@@ -48,25 +74,16 @@ def _(StandardScaler, df, np, win_cols):
 
 
 @app.cell
-def _(X_scaled):
+def _(Path, X_scaled):
     import dtour
 
-    tour = dtour.little_umap_tour(X_scaled, n_components=8)
-    return
-
-
-app._unparsable_cell(
-    r"""
-        w = dtour.Widget(
-            data=tour.embedding,
-            tour=tour,
-            preview_count=8,
-            point_color="faustLabels",
-        )
-        w
-    """,
-    name="_"
-)
+    tour_path = Path("tour_cache.npz")
+    if tour_path.exists():
+        tour = dtour.TourResult.load(tour_path)
+    else:
+        tour = dtour.little_umap_tour(X_scaled, n_components=8)
+        tour.save(tour_path)
+    return dtour, tour
 
 
 if __name__ == "__main__":

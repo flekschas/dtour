@@ -1,2 +1,32 @@
 packages:
   - 'packages/*'
+
+catalog:
+  # Build
+  vite: ^7.3.1
+  '@vitejs/plugin-react': ^5.1.4
+
+  # React
+  react: ^19.2.4
+  react-dom: ^19.2.4
+  '@types/react': ^19.2.4
+  '@types/react-dom': ^19.2.4
+
+  # Tailwind
+  tailwindcss: ^4.2.1
+  '@tailwindcss/vite': ^4.2.1
+
+  # State
+  jotai: ^2.18.0
+
+  # UI primitives (shadcn)
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  tailwind-merge: ^3.5.0
+  '@radix-ui/react-slot': ^1.2.4
+
+  # Data
+  '@uwdata/flechette': ^2.3.0
+
+  # Validation
+  zod: ^4.3.6

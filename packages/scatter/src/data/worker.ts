@@ -71,7 +71,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       // Send raw column buffers directly to GPU worker (zero-copy transfer).
       // Normalization happens on the GPU via per-dim mins/ranges.
       const buffers = parsed.columns.map((c) => c.values);
-      const transferables = buffers.map((b) => b.buffer);
+      const transferables = [...new Set(buffers.map((b) => b.buffer))];
 
       const dataMsg: DataToGpu = {
         type: 'data',

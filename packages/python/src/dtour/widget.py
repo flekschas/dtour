@@ -20,9 +20,13 @@ _STATIC = Path(__file__).parent / "static"
 class Widget(anywidget.AnyWidget):
     """Interactive dtour scatter widget for Jupyter / Marimo.
 
-    Data is sent via custom messages (not binary traitlets) so it works
-    reliably in both Jupyter and Marimo.  All programmable settings are
-    exposed as individual traitlets that map 1:1 to the JS ``DtourSpec``.
+    Binary data (Arrow IPC, tour views, metrics) is sent via custom messages
+    so it arrives as proper ArrayBuffer/DataView on the JS side — Marimo
+    serialises ``Bytes`` traitlets as plain JSON ``number[]`` arrays, making
+    them unusable for large binary payloads.
+
+    The JS frontend signals readiness via ``model.send({ type: "ready" })``.
+    Python receives it in ``on_msg`` and (re-)sends all binary buffers.
 
     Parameters
     ----------
@@ -53,8 +57,14 @@ class Widget(anywidget.AnyWidget):
     tour_direction = t.Unicode("forward").tag(sync=True)
     preview_count = t.Int(4).tag(sync=True)
     preview_padding = t.Float(12.0).tag(sync=True)
-    point_size = t.Float(0.012).tag(sync=True)
-    point_opacity = t.Float(0.7).tag(sync=True)
+    point_size = t.Union(
+        [t.Float(), t.Unicode()],
+        default_value="auto",
+    ).tag(sync=True)
+    point_opacity = t.Union(
+        [t.Float(), t.Unicode()],
+        default_value="auto",
+    ).tag(sync=True)
     point_color = t.Union(
         [t.List(t.Float()), t.Unicode()],
         default_value=[0.25, 0.5, 0.9],
@@ -62,9 +72,10 @@ class Widget(anywidget.AnyWidget):
     camera_pan_x = t.Float(0.0).tag(sync=True)
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1.0).tag(sync=True)
+    view_mode = t.Unicode("guided").tag(sync=True)
 
     # ── Layout ───────────────────────────────────────────────────────────
-    height = t.Int(600).tag(sync=True)
+    height = t.Int(720).tag(sync=True)
 
     # ── Validators ───────────────────────────────────────────────────────
     @t.validate("preview_count")
@@ -79,6 +90,13 @@ class Widget(anywidget.AnyWidget):
         value = proposal["value"]
         if value not in ("forward", "backward"):
             raise t.TraitError(f"tour_direction must be 'forward' or 'backward'; got {value!r}")
+        return value
+
+    @t.validate("view_mode")
+    def _validate_view_mode(self, proposal: t.Bunch) -> str:
+        value = proposal["value"]
+        if value not in ("guided", "manual", "grand"):
+            raise t.TraitError(f"view_mode must be 'guided', 'manual', or 'grand'; got {value!r}")
         return value
 
     # ── Init ─────────────────────────────────────────────────────────────
@@ -116,11 +134,14 @@ class Widget(anywidget.AnyWidget):
         self._metrics_buf = metric_result.to_arrow_ipc()
         self.send({"type": "metrics"}, buffers=[self._metrics_buf])
 
-    # ── Custom message handler ───────────────────────────────────────────
-    def _handle_custom_msg(self, _widget: object, content: dict, _buffers: list) -> None:
-        """Re-send data, views, and metrics when the JS frontend signals it is ready."""
-        if content.get("type") != "ready":
-            return
+    # ── Custom message handler ──────────────────────────────────────────
+    def _handle_custom_msg(self, data: dict, _buffers: list) -> None:
+        """Handle messages from JS (2-arg signature for anywidget on_msg)."""
+        if data.get("type") == "ready":
+            self._send_all_buffers()
+
+    def _send_all_buffers(self) -> None:
+        """(Re-)send all cached binary buffers to the JS frontend."""
         if self._data_buf is not None:
             self.send({"type": "data"}, buffers=[self._data_buf])
         if self._views_buf is not None:

@@ -65,7 +65,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (lassoMode) return;
+      if (lassoMode || e.button !== 0) return;
       startPos.current = [e.clientX, e.clientY];
 
       showIndicator(e.clientX, e.clientY);

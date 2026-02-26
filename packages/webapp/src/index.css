@@ -1,11 +1,19 @@
 @import "tailwindcss";
 @import "@dtour/viewer/dist/viewer.css";
 
+@theme {
+  --color-dtour-bg: #0f0f14;
+  --color-dtour-surface: #1a1a24;
+  --color-dtour-border: #2a2a3a;
+  --color-dtour-text: #cccccc;
+  --color-dtour-text-muted: #888899;
+  --color-dtour-accent: #4080e8;
+  --color-dtour-accent-hover: #5090f0;
+}
+
 html,
 body,
 #root {
-  margin: 0;
-  padding: 0;
   width: 100%;
   height: 100%;
 }

@@ -397,7 +397,15 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         tour: null,
         style: { pointSize: 0.012, opacity: 0.7, color: [0.25, 0.5, 0.9] },
         styleFlags: { usePerPointColor: false, useSelectionMask: false },
-        camera: { panX: 0, panY: 0, zoom: 1, aspect: 1, viewportHeight: 1, insetOffsetY: 0, insetZoom: 1 },
+        camera: {
+          panX: 0,
+          panY: 0,
+          zoom: 1,
+          aspect: 1,
+          viewportHeight: 1,
+          insetOffsetY: 0,
+          insetZoom: 1,
+        },
         colorBuffer: null,
         selectionBuffer: null,
         directBasis: null,
@@ -500,31 +508,6 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
     state.directBasis = msg.basis;
     projectAndRender(msg.basis, 0, state.camera, state.projectionBindGroup, state.renderBindGroup);
     postMain({ type: 'rendered', viewIndex: 0 });
-    return;
-  }
-
-  if (msg.type === 'setColors') {
-    const { colors } = msg;
-    const { device } = state;
-
-    if (state.colorBuffer) {
-      state.colorBuffer.destroy();
-    }
-
-    state.colorBuffer = device.createBuffer({
-      label: 'point-colors',
-      size: colors.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-    device.queue.writeBuffer(state.colorBuffer, 0, colors as Uint32Array<ArrayBuffer>);
-
-    state.styleFlags.usePerPointColor = true;
-    writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
-    rebuildBindGroups();
-
-    if ((state.tour || state.directBasis) && state.projectionResources) {
-      renderAllViews();
-    }
     return;
   }
 

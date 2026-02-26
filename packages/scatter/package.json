@@ -19,12 +19,12 @@
     "dev": "vite build --watch"
   },
   "dependencies": {
-    "@uwdata/flechette": "^2.3.0",
+    "@uwdata/flechette": "catalog:",
     "hyparquet": "^1.25.0",
     "hyparquet-compressors": "^1.1.1"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.54",
-    "vite": "^6.0.11"
+    "vite": "catalog:"
   }
 }

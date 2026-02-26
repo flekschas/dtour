@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -39,7 +40,43 @@ class TourResult:
         Layout: ``n_views`` contiguous blocks of ``p * 2`` float32 values,
         each in column-major order ``[x0 .. xp-1, y0 .. yp-1]``.
         """
-        return np.stack([b.flatten() for b in self.views]).astype(np.float32).tobytes()
+        return np.stack([b.flatten("F") for b in self.views]).astype(np.float32).tobytes()
+
+    def save(self, path: str | Path) -> None:
+        """Save the tour to a ``.npz`` file for later reuse.
+
+        The embedding (if present) and all basis matrices are stored so
+        the tour can be restored without recomputation.
+        """
+        path = Path(path)
+        arrays: dict[str, np.ndarray] = {
+            "n_views": np.array([self.n_views]),
+            "n_dims": np.array([self.n_dims]),
+            "explained_variance_ratio": np.asarray(self.explained_variance_ratio, dtype=np.float64),
+        }
+        for i, v in enumerate(self.views):
+            arrays[f"view_{i}"] = v
+        if self.embedding is not None:
+            arrays["embedding"] = self.embedding
+        np.savez_compressed(path, **arrays)
+
+    @classmethod
+    def load(cls, path: str | Path) -> TourResult:
+        """Load a tour previously saved with :meth:`save`."""
+        data = np.load(path)
+        n_views = int(data["n_views"][0])
+        n_dims = int(data["n_dims"][0])
+        views = [data[f"view_{i}"].astype(np.float32) for i in range(n_views)]
+        evr_key = "explained_variance_ratio"
+        evr = data[evr_key].tolist() if evr_key in data else []
+        embedding = data["embedding"] if "embedding" in data else None
+        return cls(
+            views=views,
+            n_views=n_views,
+            n_dims=n_dims,
+            explained_variance_ratio=evr,
+            embedding=embedding,
+        )
 
 
 def _to_float32(X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table) -> np.ndarray:
