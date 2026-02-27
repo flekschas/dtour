@@ -61,7 +61,7 @@ export const DtourViewer = ({
   const setMetadata = useSetAtom(metadataAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const viewMode = useAtomValue(viewModeAtom);
-  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
@@ -85,17 +85,21 @@ export const DtourViewer = ({
   }, [views, metadata, previewCount]);
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
-  // modes (manual, zen) can initialize from the current projection.
+  // modes (manual, grand) can initialize from the current projection.
   // Only update in guided mode — in manual/grand the atom is owned by
   // AxisOverlay / useGrandTour respectively.
+  // Skip when guidedSuspended: the GPU is still showing a directBasis
+  // from the previous mode (grand/manual), not the tour interpolation,
+  // so overwriting currentBasisAtom here would cause a jump on re-entry.
   useEffect(() => {
     if (viewMode !== 'guided') return;
+    if (guidedSuspended) return;
     if (!resolvedViews || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
     const out = new Float32Array(dims * 2);
     interpolateAtPosition(out, resolvedViews, arcLengths, dims, position);
     setCurrentBasis(out);
-  }, [viewMode, resolvedViews, arcLengths, metadata, position, setCurrentBasis]);
+  }, [viewMode, guidedSuspended, resolvedViews, arcLengths, metadata, position, setCurrentBasis]);
 
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(
