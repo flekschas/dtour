@@ -164,8 +164,6 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
           col = 0;
         }
 
-        console.log(i, col, row);
-
         const verticalAlignment = row === 0 ? 'items-start' : row < k ? 'items-center' : 'items-end';
         const horizontalAlignment = col === 0 ? 'justify-start' : col < k ? 'justify-center' : 'justify-end';
 

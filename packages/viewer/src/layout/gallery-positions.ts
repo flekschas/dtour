@@ -49,7 +49,8 @@ export const computeGalleryPositions = (
   previewCount: number,
 ): { positions: PreviewPosition[]; previewSize: number; padX: number; padY: number } => {
   const k = Math.max(1, previewCount / 4);
-  const shortSide = Math.min(containerWidth, containerHeight);
+  // Subtract the gallery padding from the container size via `- 2 * GAP`
+  const shortSide = Math.min(containerWidth, containerHeight) - 2 * GAP;
 
   // Each edge visually shows k+1 previews (k emitted + the next corner).
   // The ratio sum along the short-side edge determines baseSize.
@@ -58,7 +59,7 @@ export const computeGalleryPositions = (
   for (let j = 0; j <= k; j++) {
     ratioSum += sizeRatio(j, k);
   }
-  const baseSize = Math.min(MAX_BASE, (shortSide - (k + 1) * GAP) / ratioSum);
+  const baseSize = Math.min(MAX_BASE, (shortSide - k * GAP) / ratioSum);
 
   // Largest preview size (for padding computation)
   const maxSize = baseSize * RATIOS[0];
