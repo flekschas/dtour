@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { computeGalleryPositions } from '../layout/gallery-positions.ts';
+import { computeGallerySizes } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import {
   guidedSuspendedAtom,
@@ -37,9 +37,13 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
   const animRef = useRef<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  const { positions } = useMemo(
-    () => computeGalleryPositions(containerWidth, containerHeight, previewCount),
-    [containerWidth, containerHeight, previewCount],
+  // Grid area = container minus its CSS insets (top-8 left-8 right-8 bottom-8/18)
+  const gridWidth = containerWidth - 64; // left-8 + right-8 = 64px
+  const gridHeight = containerHeight - 32 - (isToolbarVisible ? 72 : 32); // top-8 + bottom-8/18
+
+  const { gridTemplateColumns, gridTemplateRows, sizes } = useMemo(
+    () => computeGallerySizes(gridWidth, gridHeight, previewCount),
+    [gridWidth, gridHeight, previewCount],
   );
 
   // Adopt each canvas into its wrapper div (once, on mount)
@@ -136,17 +140,17 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
   );
 
   const k = previewCount / 4;
-  const numCols = k + 1;
 
   return (
     <div
       className={cn(
-        `absolute top-8 left-8 right-8 grid gap-8 pointer-events-none grid-cols-${numCols} grid-rows-${numCols} transition-all duration-300 ease-in-out`,
+        'absolute top-8 left-8 right-8 grid gap-8 justify-between content-between pointer-events-none transition-all duration-300 ease-in-out',
         isToolbarVisible ? 'bottom-18' : 'bottom-8',
       )}
+      style={{ gridTemplateColumns, gridTemplateRows }}
     >
       {previewCanvases.map((_, i) => {
-        const pos = i < positions.length ? positions[i]! : null;
+        const visible = i < previewCount;
 
         let col: number;
         let row: number;
@@ -178,17 +182,17 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
               ref={(el) => {
                 wrapperRefs.current[i] = el;
               }}
-              onClick={pos ? () => handleClick(i) : undefined}
+              onClick={visible ? () => handleClick(i) : undefined}
               onKeyDown={undefined}
-              onMouseEnter={pos ? () => setHoveredIndex(i) : undefined}
-              onMouseLeave={pos ? () => setHoveredIndex(null) : undefined}
+              onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
+              onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
               className={cn(
                 'pointer-events-auto overflow-hidden border-2 border-solid rounded-sm transition-[border-color,box-shadow] duration-200 ease-in-out z-20',
-                pos ? 'block cursor-pointer' : 'hidden',
+                visible ? 'block cursor-pointer' : 'hidden',
               )}
               style={{
-                width: pos?.size ?? 0,
-                height: pos?.size ?? 0,
+                width: visible ? sizes[i] : 0,
+                height: visible ? sizes[i] : 0,
                 borderColor: getBorderColor(i),
                 boxShadow: getBoxShadow(i),
               }}

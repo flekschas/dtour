@@ -8,7 +8,7 @@ import { Gallery } from './components/Gallery.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { useScatter } from './hooks/useScatter.ts';
-import { computeGalleryPositions } from './layout/gallery-positions.ts';
+import { computeGallerySizes } from './layout/gallery-positions.ts';
 import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
@@ -182,7 +182,7 @@ export const DtourViewer = ({
 
   // Compute gallery positions + padding for canvas insets
   const { previewSize, padX, padY } = useMemo(
-    () => computeGalleryPositions(containerSize.width, containerSize.height, previewCount),
+    () => computeGallerySizes(containerSize.width, containerSize.height, previewCount),
     [containerSize.width, containerSize.height, previewCount],
   );
 
