@@ -2,11 +2,11 @@
 @import "tailwindcss/utilities";
 
 @theme {
-  --color-dtour-bg: #0f0f14;
-  --color-dtour-surface: #1a1a24;
-  --color-dtour-border: #2a2a3a;
-  --color-dtour-text: #cccccc;
-  --color-dtour-text-muted: #888899;
+  --color-dtour-bg: #000000;
+  --color-dtour-surface: #222222;
+  --color-dtour-border: #333333;
+  --color-dtour-text: #bbbbbb;
+  --color-dtour-text-muted: #888888;
   --color-dtour-accent: #4080e8;
   --color-dtour-accent-hover: #5090f0;
 }

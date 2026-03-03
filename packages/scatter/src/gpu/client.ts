@@ -11,6 +11,8 @@ import type { GpuToMain, MainToGpu } from './messages.ts';
 export type ScatterOptions = {
   /** All canvases to render into. Index 0 = main view, 1+ = previews. */
   canvases: HTMLCanvasElement[];
+  /** Initial camera zoom level. Default 1. */
+  zoom?: number;
 };
 
 export type ScatterStatus =
@@ -56,6 +58,8 @@ export type ScatterInstance = {
   setDirectBasis: (basis: Float32Array) => void;
   /** Encode a column as per-point colors. Column can be categorical or numeric. */
   encodeColor: (column: string, palette?: string) => void;
+  /** Set the background clear color (RGB 0–1). */
+  setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
   clearColor: () => void;
   /** Set a selection mask (1 = selected, 0 = dimmed). */
@@ -96,7 +100,7 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  * ```
  */
 export const createScatter = (options: ScatterOptions): ScatterInstance => {
-  const { canvases } = options;
+  const { canvases, zoom: initialZoom = 1 } = options;
 
   if (canvases.length === 0) {
     throw new Error('createScatter requires at least one canvas');
@@ -140,7 +144,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   const offscreens = canvases.map((c) => c.transferControlToOffscreen());
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
-  sendToGpu(gpuWorker, { type: 'init', canvases: offscreens, dataPort: channel.port2 }, [
+  sendToGpu(gpuWorker, { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom }, [
     ...offscreens,
     channel.port2,
   ]);
@@ -151,7 +155,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     opacity: 0.7,
     color: [0.25, 0.5, 0.9] as [number, number, number],
   };
-  let currentCamera = { pan: [0, 0] as [number, number], zoom: 1, insetOffsetY: 0, insetZoom: 1 };
+  let currentCamera = { pan: [0, 0] as [number, number], zoom: initialZoom, insetOffsetY: 0, insetZoom: 1 };
 
   const loadData = (buffer: ArrayBuffer): void => {
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
@@ -216,6 +220,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToData(dataWorker, msg);
   };
 
+  const setBackgroundColor = (color: [number, number, number]): void => {
+    sendToGpu(gpuWorker, { type: 'setBackgroundColor', color });
+  };
+
   const clearColor = (): void => {
     sendToGpu(gpuWorker, { type: 'clearColors' });
   };
@@ -253,6 +261,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     render,
     setDirectBasis,
     encodeColor,
+    setBackgroundColor,
     clearColor,
     setSelectionMask,
     lassoSelect,

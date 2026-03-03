@@ -31,6 +31,7 @@ export const renderPoints = (
   pointPipeline: PointPipeline,
   bindGroup: GPUBindGroup,
   numPoints: number,
+  clearColor: [number, number, number] = [0, 0, 0],
 ): GPUCommandBuffer => {
   const colorTexture = view.context.getCurrentTexture();
   const colorView = colorTexture.createView();
@@ -40,7 +41,7 @@ export const renderPoints = (
     colorAttachments: [
       {
         view: colorView,
-        clearValue: { r: 0.06, g: 0.06, b: 0.08, a: 1.0 },
+        clearValue: { r: clearColor[0], g: clearColor[1], b: clearColor[2], a: 1.0 },
         loadOp: 'clear',
         storeOp: 'store',
       },

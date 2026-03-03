@@ -58,6 +58,8 @@ type GpuState = {
   // Sticky direct basis — when set, renderMainView/renderAllViews use this
   // for the main view instead of tour interpolation. Cleared by setTourPosition.
   directBasis: Float32Array | null;
+  // Background clear color (RGB 0–1)
+  backgroundColor: [number, number, number];
 };
 
 let state: GpuState | null = null;
@@ -100,6 +102,7 @@ const projectAndRender = (
     state.pointPipeline,
     renBindGroup,
     numPoints,
+    state.backgroundColor,
   );
 
   device.queue.submit([computeCmd, renderCmd]);
@@ -400,7 +403,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         camera: {
           panX: 0,
           panY: 0,
-          zoom: 1,
+          zoom: msg.zoom,
           aspect: 1,
           viewportHeight: 1,
           insetOffsetY: 0,
@@ -409,6 +412,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         colorBuffer: null,
         selectionBuffer: null,
         directBasis: null,
+        backgroundColor: [0, 0, 0],
       };
 
       msg.dataPort.onmessage = onDataMessage;
@@ -520,6 +524,14 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
     writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 
+    if ((state.tour || state.directBasis) && state.projectionResources) {
+      renderAllViews();
+    }
+    return;
+  }
+
+  if (msg.type === 'setBackgroundColor') {
+    state.backgroundColor = msg.color;
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }

@@ -4,6 +4,7 @@ import {
   CompassIcon,
   CursorIcon,
   GaugeIcon,
+  MagnifyingGlassMinusIcon,
   PathIcon,
   PauseIcon,
   PlayIcon,
@@ -11,14 +12,15 @@ import {
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback } from 'react';
+import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import {
+  cameraZoomAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
   metadataAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
-  tourPositionAtom,
   tourSpeedAtom,
   viewModeAtom,
 } from '../state/atoms.ts';
@@ -43,8 +45,8 @@ const MODE_CONFIG: { mode: ViewMode; label: string; icon: typeof PathIcon }[] = 
 
 export const DtourToolbar = () => {
   const [playing, setPlaying] = useAtom(tourPlayingAtom);
-  const setPosition = useSetAtom(tourPositionAtom);
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
+  const [zoom, setZoom] = useAtom(cameraZoomAtom);
   const metadata = useAtomValue(metadataAtom);
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
@@ -54,24 +56,27 @@ export const DtourToolbar = () => {
   // Activate the rAF playback loop
   usePlayback();
 
+  const { animateTo, cancelAnimation } = useAnimatePosition();
+
   const handlePlayPause = useCallback(() => {
+    cancelAnimation();
     setGuidedSuspended(false);
     if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [playing, setPlaying, setGuidedSuspended, setSelectedKeyframe]);
+  }, [playing, setPlaying, setGuidedSuspended, setSelectedKeyframe, cancelAnimation]);
 
   const handleReset = useCallback(() => {
     setGuidedSuspended(false);
     setPlaying(false);
-    setPosition(0);
-  }, [setPlaying, setPosition, setGuidedSuspended]);
+    animateTo(0);
+  }, [setPlaying, setGuidedSuspended, animateTo]);
 
   return (
-    <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-border bg-dtour-bg px-3 text-dtour-text">
+    <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-surface bg-dtour-bg px-3 text-dtour-text">
       {/* Left: branding + mode switcher */}
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold tracking-wide text-white">dtour</span>
-        <div className="ml-2 flex items-center rounded-md border border-dtour-border">
+        <div className="ml-2 flex items-center rounded-md border border-dtour-surface">
           {MODE_CONFIG.map(({ mode, label, icon: Icon }) => (
             <Button
               key={mode}
@@ -142,7 +147,7 @@ export const DtourToolbar = () => {
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="z-50 flex flex-col items-center gap-2 rounded-md border border-dtour-border bg-dtour-surface p-3 shadow-md"
+                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md"
               >
                 <span className="text-xs text-dtour-text-muted">Speed</span>
                 <Slider
@@ -161,6 +166,37 @@ export const DtourToolbar = () => {
             </Popover.Portal>
           </Popover.Root>
         )}
+
+        {/* Zoom (distance) */}
+        <Popover.Root>
+          <Popover.Trigger asChild>
+            <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
+              <MagnifyingGlassMinusIcon size={16} />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              side="bottom"
+              align="center"
+              sideOffset={4}
+              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md"
+            >
+              <span className="text-xs text-dtour-text-muted">Distance</span>
+              <Slider
+                orientation="vertical"
+                min={0}
+                max={DISTANCE_STEPS.length - 1}
+                step={1}
+                value={[distanceToStep(zoomToDistance(zoom))]}
+                onValueChange={([step]: number[]) => {
+                  if (step !== undefined) setZoom(1 / stepToDistance(step));
+                }}
+                className="h-[120px]"
+              />
+              <span className="text-xs font-medium text-white">{zoomToDistance(zoom)}x</span>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       </div>
 
       {/* Right: data info + settings */}
@@ -209,3 +245,36 @@ const speedToStep = (speed: number): number => {
 };
 
 const stepToSpeed = (step: number): number => SPEED_STEPS[step] ?? 1;
+
+// Map between camera zoom and discrete distance steps
+const DISTANCE_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4] as const;
+
+const zoomToDistance = (zoom: number): number => {
+  const d = 1 / zoom;
+  // Snap to nearest step for display
+  let best = 0;
+  let bestDist = Math.abs(d - DISTANCE_STEPS[0]!);
+  for (let i = 1; i < DISTANCE_STEPS.length; i++) {
+    const dist = Math.abs(d - DISTANCE_STEPS[i]!);
+    if (dist < bestDist) {
+      best = i;
+      bestDist = dist;
+    }
+  }
+  return DISTANCE_STEPS[best]!;
+};
+
+const distanceToStep = (distance: number): number => {
+  let best = 0;
+  let bestDist = Math.abs(distance - DISTANCE_STEPS[0]!);
+  for (let i = 1; i < DISTANCE_STEPS.length; i++) {
+    const dist = Math.abs(distance - DISTANCE_STEPS[i]!);
+    if (dist < bestDist) {
+      best = i;
+      bestDist = dist;
+    }
+  }
+  return best;
+};
+
+const stepToDistance = (step: number): number => DISTANCE_STEPS[step] ?? 1.25;

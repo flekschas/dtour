@@ -3,6 +3,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
 import { hexToRgb, isHexColor } from '../lib/color-utils.ts';
 import {
+  backgroundColorAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -29,7 +30,20 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const panX = useAtomValue(cameraPanXAtom);
   const panY = useAtomValue(cameraPanYAtom);
   const zoom = useAtomValue(cameraZoomAtom);
+  const backgroundColor = useAtomValue(backgroundColorAtom);
   const setMetadata = useSetAtom(metadataAtom);
+
+  // Forward background color
+  useEffect(() => {
+    scatter?.setBackgroundColor(backgroundColor);
+  }, [scatter, backgroundColor]);
+
+  // Forward camera — registered first so the worker receives setCamera before
+  // setTourPosition (which triggers a render). Otherwise the first render uses
+  // the client's default zoom=1 instead of the atom value.
+  useEffect(() => {
+    scatter?.setCamera({ pan: [panX, panY], zoom });
+  }, [scatter, panX, panY, zoom]);
 
   // Forward tour position (skipped when suspended after returning from manual/grand)
   useEffect(() => {
@@ -55,11 +69,6 @@ export const useScatter = (scatter: ScatterInstance | null) => {
       scatter.encodeColor(color);
     }
   }, [scatter, pointSize, opacity, color]);
-
-  // Forward camera
-  useEffect(() => {
-    scatter?.setCamera({ pan: [panX, panY], zoom });
-  }, [scatter, panX, panY, zoom]);
 
   // Subscribe to scatter status events and update metadata atom.
   // Use a ref so the setMetadata closure never goes stale.

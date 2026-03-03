@@ -15,6 +15,7 @@ export const dtourSpecSchema = z.object({
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
   pointColor: z.union([z.tuple([z.number(), z.number(), z.number()]), z.string()]).optional(),
+  backgroundColor: z.tuple([z.number(), z.number(), z.number()]).optional(),
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
   cameraZoom: z.number().positive().optional(),
@@ -33,8 +34,9 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   pointSize: 'auto',
   pointOpacity: 'auto',
   pointColor: [0.25, 0.5, 0.9],
+  backgroundColor: [0, 0, 0],
   cameraPanX: 0,
   cameraPanY: 0,
-  cameraZoom: 1,
+  cameraZoom: 1 / 1.5,
   viewMode: 'guided',
 };

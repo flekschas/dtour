@@ -1,5 +1,6 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { computeGallerySizes } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import {
@@ -9,11 +10,6 @@ import {
   tourPlayingAtom,
   tourPositionAtom,
 } from '../state/atoms.ts';
-
-/** 360° of travel = 1000ms animation */
-const MS_PER_FULL_ROTATION = 1000;
-/** Minimum animation duration to keep it perceptible */
-const MIN_ANIMATION_MS = 80;
 
 export type GalleryProps = {
   /** Fixed pool of preview canvas elements (created at scatter init). */
@@ -30,11 +26,10 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
   const previewCount = useAtomValue(previewCountAtom);
   const position = useAtomValue(tourPositionAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
-  const setPosition = useSetAtom(tourPositionAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const { animateTo } = useAnimatePosition();
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const animRef = useRef<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Grid area = container minus its CSS insets (top-8 left-8 right-8 bottom-8/18)
@@ -57,20 +52,19 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
     }
   }, [previewCanvases]);
 
-  // Cleanup animation on unmount
-  useEffect(() => {
-    return () => {
-      if (animRef.current !== null) cancelAnimationFrame(animRef.current);
-    };
-  }, []);
-
   const currentKeyframe = Math.round(position * previewCount) % previewCount;
 
-  const getBorderColor = (i: number): string => {
+  const getBorderColor = (i: number): string | undefined => {
     const isActive = i === selectedKeyframe || i === currentKeyframe;
     if (isActive) return '#e8a040';
     if (i === hoveredIndex) return '#ffffff';
-    return '#2a2a3a'; // matches toolbar border (dtour-border)
+    return undefined;
+  };
+
+  const getBorderWidth = (i: number): number | undefined => {
+    const isActive = i === selectedKeyframe || i === currentKeyframe;
+    if (isActive || i === hoveredIndex) return 2;
+    return undefined;
   };
 
   const getBoxShadow = (i: number): string => {
@@ -82,61 +76,12 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
 
   const handleClick = useCallback(
     (i: number) => {
-      // Cancel any running animation
-      if (animRef.current !== null) {
-        cancelAnimationFrame(animRef.current);
-        animRef.current = null;
-      }
-
       setGuidedSuspended(false);
       setSelectedKeyframe(i);
       setPlaying(false);
-
-      const target = i / previewCount;
-
-      // Read current position via the atom getter callback
-      setPosition((current) => {
-        // Shortest angular distance on [0,1) circle
-        let delta = target - current;
-        if (delta > 0.5) delta -= 1;
-        if (delta < -0.5) delta += 1;
-
-        const absDelta = Math.abs(delta);
-        const durationMs = Math.max(MIN_ANIMATION_MS, absDelta * MS_PER_FULL_ROTATION) * 1.5;
-
-        // If already there, no animation needed
-        if (absDelta < 0.001) return target;
-
-        // Start animation from current
-        const startPos = current;
-        const startTime = performance.now();
-
-        const tick = (now: number) => {
-          const elapsed = now - startTime;
-          const t = Math.min(1, elapsed / durationMs);
-          // Ease-out cubic
-          const eased = 1 - (1 - t) * (1 - t) * (1 - t);
-
-          let pos = startPos + delta * eased;
-          // Wrap to [0, 1)
-          pos = pos - Math.floor(pos);
-
-          setPosition(pos);
-
-          if (t < 1) {
-            animRef.current = requestAnimationFrame(tick);
-          } else {
-            animRef.current = null;
-          }
-        };
-
-        animRef.current = requestAnimationFrame(tick);
-
-        // Return current unchanged — the rAF will drive updates
-        return current;
-      });
+      animateTo(i / previewCount);
     },
-    [previewCount, setSelectedKeyframe, setPlaying, setPosition, setGuidedSuspended],
+    [previewCount, setSelectedKeyframe, setPlaying, setGuidedSuspended, animateTo],
   );
 
   const k = previewCount / 4;
@@ -187,13 +132,14 @@ export const Gallery = ({ previewCanvases, containerWidth, containerHeight, isTo
               onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
               onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
               className={cn(
-                'pointer-events-auto overflow-hidden border-2 border-solid rounded-sm transition-[border-color,box-shadow] duration-200 ease-in-out z-20',
+                'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20',
                 visible ? 'block cursor-pointer' : 'hidden',
               )}
               style={{
                 width: visible ? sizes[i] : 0,
                 height: visible ? sizes[i] : 0,
                 borderColor: getBorderColor(i),
+                borderWidth: getBorderWidth(i),
                 boxShadow: getBoxShadow(i),
               }}
             />

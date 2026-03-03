@@ -4,8 +4,12 @@ import { cn } from '../lib/utils';
 export type CircularSliderProps = {
   /** Current position [0, 1]. */
   value: number;
-  /** Called when the user drags the handle. */
+  /** Called on each drag move (immediate position update). */
   onChange: (value: number) => void;
+  /** Called on initial click/tap (animated seek). Falls back to onChange if omitted. */
+  onSeek?: (value: number) => void;
+  /** Called on first drag move after mousedown (lets parent cancel animations). */
+  onDragStart?: () => void;
   /** Number of tick marks around the ring (typically = number of tour views). */
   tickCount?: number;
   /** SVG diameter in px. Default 200. */
@@ -15,10 +19,13 @@ export type CircularSliderProps = {
 export const CircularSlider = ({
   value,
   onChange,
+  onSeek,
+  onDragStart,
   tickCount = 8,
   size = 200,
 }: CircularSliderProps) => {
   const [isDragging, setIsDragging] = useState(false);
+  const hasDraggedRef = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const prevValue = useRef(value);
 
@@ -48,16 +55,25 @@ export const CircularSlider = ({
   const handlePointerDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       setIsDragging(true);
+      hasDraggedRef.current = false;
       const pt = 'touches' in e ? e.touches[0] : e;
-      if (pt) onChange(angleFromPointer(pt.clientX, pt.clientY));
+      if (pt) {
+        const pos = angleFromPointer(pt.clientX, pt.clientY);
+        // Animated seek on click; falls back to immediate onChange
+        (onSeek ?? onChange)(pos);
+      }
     },
-    [angleFromPointer, onChange],
+    [angleFromPointer, onChange, onSeek],
   );
 
   useEffect(() => {
     if (!isDragging) return;
 
     const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!hasDraggedRef.current) {
+        hasDraggedRef.current = true;
+        onDragStart?.(); // let parent cancel any running animation
+      }
       const pt = 'touches' in e ? e.touches[0] : e;
       if (pt) onChange(angleFromPointer(pt.clientX, pt.clientY));
       if ('touches' in e) e.preventDefault();
@@ -75,7 +91,7 @@ export const CircularSlider = ({
       document.removeEventListener('touchmove', onMove);
       document.removeEventListener('touchend', onUp);
     };
-  }, [isDragging, angleFromPointer, onChange]);
+  }, [isDragging, angleFromPointer, onChange, onDragStart]);
 
   // Convert value [0,1] back to handle position
   // 10:30 start = -135° from +x axis

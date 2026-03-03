@@ -1,11 +1,12 @@
 import { computeArcLengths, createScatter, interpolateAtPosition } from '@dtour/scatter';
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AxisOverlay } from './components/AxisOverlay.tsx';
 import { CircularSlider } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
+import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { computeGallerySizes } from './layout/gallery-positions.ts';
@@ -13,11 +14,14 @@ import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import {
+  animationGenAtom,
+  cameraZoomAtom,
   canvasSizeAtom,
   currentBasisAtom,
   guidedSuspendedAtom,
   metadataAtom,
   previewCountAtom,
+  tourPlayingAtom,
   tourPositionAtom,
   viewModeAtom,
 } from './state/atoms.ts';
@@ -62,7 +66,9 @@ export const DtourViewer = ({
   const previewCount = useAtomValue(previewCountAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
+  const setPlaying = useSetAtom(tourPlayingAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
+  const store = useStore();
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
   const onStatusRef = useRef(onStatus);
@@ -226,7 +232,10 @@ export const DtourViewer = ({
     }
     previewCanvasesRef.current = previews;
 
-    const scatter = createScatter({ canvases: [mainCanvas, ...previews] });
+    const scatter = createScatter({
+      canvases: [mainCanvas, ...previews],
+      zoom: store.get(cameraZoomAtom),
+    });
     scatterRef.current = scatter;
 
     scatter.subscribe((s: ScatterStatus) => {
@@ -246,6 +255,10 @@ export const DtourViewer = ({
     });
     ro.observe(container);
 
+    // Reset so the data-send effect re-triggers after scatter recreation
+    // (e.g. on HMR, where useRef values survive but the scatter is new).
+    lastDataRef.current = undefined;
+
     return () => {
       ro.disconnect();
       scatter.destroy();
@@ -254,7 +267,7 @@ export const DtourViewer = ({
       for (const c of previews) c.remove();
       previewCanvasesRef.current = [];
     };
-  }, [previewCount, setMetadata, setCanvasSize]);
+  }, [previewCount, setMetadata, setCanvasSize, store]);
 
   // Send data when it changes
   useEffect(() => {
@@ -278,6 +291,25 @@ export const DtourViewer = ({
     scatter.render();
   }, [views, metadata, previewCount]);
 
+  const { animateTo, cancelAnimation } = useAnimatePosition();
+
+  // Slider click → animated seek to the clicked position
+  const handlePositionSeek = useCallback(
+    (pos: number) => {
+      setGuidedSuspended(false);
+      setPlaying(false);
+      animateTo(pos);
+    },
+    [setGuidedSuspended, setPlaying, animateTo],
+  );
+
+  // Slider drag start → cancel animation, switch to immediate updates
+  const handleDragStart = useCallback(() => {
+    cancelAnimation();
+    setGuidedSuspended(false);
+  }, [cancelAnimation, setGuidedSuspended]);
+
+  // Slider drag move → immediate position update
   const handlePositionChange = useCallback(
     (pos: number) => {
       setGuidedSuspended(false);
@@ -286,8 +318,41 @@ export const DtourViewer = ({
     [setPosition, setGuidedSuspended],
   );
 
+  // Wheel → scrub tour position (guided mode) or zoom (Shift+wheel, all modes).
+  // Imperative listener with { passive: false } so preventDefault() works.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handler = (e: WheelEvent) => {
+      if (e.shiftKey) {
+        // Shift+wheel → zoom (camera distance)
+        e.preventDefault();
+        store.set(cameraZoomAtom, (prev) => {
+          // deltaY > 0 = scroll down = zoom out (smaller zoom value)
+          const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
+          // Clamp to distance range [1x, 4x] → zoom range [0.25, 1]
+          return Math.min(1, Math.max(0.25, prev * factor));
+        });
+        return;
+      }
+      if (store.get(viewModeAtom) !== 'guided') return;
+      e.preventDefault();
+      // Cancel any running position animation before wheel scrub
+      store.set(animationGenAtom, (g) => g + 1);
+      store.set(tourPlayingAtom, false);
+      store.set(guidedSuspendedAtom, false);
+      store.set(tourPositionAtom, (prev) => {
+        let next = prev + e.deltaY * 0.002;
+        next = next - Math.floor(next);
+        return next;
+      });
+    };
+    container.addEventListener('wheel', handler, { passive: false });
+    return () => container.removeEventListener('wheel', handler);
+  }, [store]);
+
   const tickCount = views?.length ?? previewCount;
-  const hasData = !!data;
+  const hasData = !!data && !!metadata;
 
   if (import.meta.env.DEV && views && views.length !== previewCount) {
     console.warn(
@@ -351,6 +416,8 @@ export const DtourViewer = ({
               <CircularSlider
                 value={position}
                 onChange={handlePositionChange}
+                onSeek={handlePositionSeek}
+                onDragStart={handleDragStart}
                 tickCount={tickCount}
                 size={selectorSize}
               />

@@ -4,6 +4,7 @@ export type MainToGpu =
       type: 'init';
       canvases: OffscreenCanvas[];
       dataPort: MessagePort;
+      zoom: number;
     }
   | {
       // Array of p×2 column-major basis matrices, one per view.
@@ -34,6 +35,7 @@ export type MainToGpu =
       basis: Float32Array;
     }
   | { type: 'clearColors' }
+  | { type: 'setBackgroundColor'; color: [number, number, number] }
   | { type: 'setSelectionMask'; mask: Uint32Array }
   | { type: 'clearSelectionMask' }
   | {

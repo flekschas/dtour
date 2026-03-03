@@ -27,12 +27,18 @@ export const pointOpacityAtom = atom<number | 'auto'>('auto');
 export const pointColorAtom = atom<[number, number, number] | string>([0.25, 0.5, 0.9]);
 
 // ---------------------------------------------------------------------------
+// Background color — WebGPU clear color (RGB 0–1)
+// ---------------------------------------------------------------------------
+
+export const backgroundColorAtom = atom<[number, number, number]>([0, 0, 0]);
+
+// ---------------------------------------------------------------------------
 // Camera state — 2D pan and zoom
 // ---------------------------------------------------------------------------
 
 export const cameraPanXAtom = atom(0);
 export const cameraPanYAtom = atom(0);
-export const cameraZoomAtom = atom(1);
+export const cameraZoomAtom = atom(1 / 1.5);
 
 // ---------------------------------------------------------------------------
 // View mode — controls which UI is shown (guided, manual, grand)
@@ -58,6 +64,18 @@ export const grandExitTargetAtom = atom<'guided' | 'manual' | null>(null);
  * can initialize from the current view without jumping.
  */
 export const currentBasisAtom = atom<Float32Array | null>(null);
+
+// ---------------------------------------------------------------------------
+// Animation coordination — generation counter for cancellation
+// ---------------------------------------------------------------------------
+
+/**
+ * Incremented each time a position animation starts or is cancelled.
+ * Running animations bail out when their captured generation doesn't
+ * match the current value, ensuring only one animation drives the
+ * position at a time — even across different components.
+ */
+export const animationGenAtom = atom(0);
 
 // ---------------------------------------------------------------------------
 // Canvas size — tracked for auto opacity/size computation
