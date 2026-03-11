@@ -89,10 +89,12 @@ fn vs_main(
   // Aspect-correct the offset so circles stay circular on non-square canvases
   let offset = vec2f(q.x / camera.aspect, q.y) * (point_size * 0.5);
 
-  // When the clamp enlarged points beyond the intended size, reduce opacity
-  // proportionally to the area increase to preserve the paint budget.
+  // Scale opacity by zoom² to keep constant visual fill density (Reusser).
+  // Zooming out compresses points → more overlap → must reduce opacity.
+  // Also compensate when the clamp enlarged points beyond intended size.
+  let z = camera.zoom * camera.inset_zoom;
   let enlarge = max(1.0, point_size / max(uni.point_size, 0.0001));
-  let eff_opacity = uni.opacity / (enlarge * enlarge);
+  let eff_opacity = uni.opacity * z * z / (enlarge * enlarge);
 
   // Resolve per-point color
   var col: vec4f;
