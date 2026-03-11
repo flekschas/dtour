@@ -1,5 +1,6 @@
 @import "tailwindcss/theme";
 @import "tailwindcss/utilities";
+@import "tw-animate-css";
 
 @theme {
   --color-dtour-bg: #000000;
@@ -9,4 +10,152 @@
   --color-dtour-text-muted: #888888;
   --color-dtour-accent: #4080e8;
   --color-dtour-accent-hover: #5090f0;
+  --color-dtour-highlight: #e8a040;
+}
+
+@keyframes dtour-d-dash {
+  0% {
+    stroke-dashoffset: -26;
+    stroke-width: 1.245;
+  }
+  75% {
+    stroke-width: 1.245;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    stroke-width: 2;
+  }
+}
+
+@utility animate-dtour-d-dash {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: dtour-d-dash 0.7s cubic-bezier(.17,.17,0,1) forwards;
+}
+
+@keyframes dtour-t1-dash {
+  0% {
+      stroke-dashoffset: 4.43;
+  }
+  100% {
+      stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-t1-dash {
+  stroke-dasharray: 4.43;
+  stroke-dashoffset: 4.43;
+  animation: dtour-t1-dash 0.5s cubic-bezier(.17,.17,0,1) 0.35s forwards;
+}
+
+@keyframes dtour-t2-dash {
+  0% {
+    stroke-dashoffset: 9.75;
+    stroke-width: 1.256;
+  }
+  50% {
+    stroke-width: 1.256;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    stroke-width: 1.5;
+  }
+}
+
+@utility animate-dtour-t2-dash {
+  stroke-dasharray: 9.75;
+  stroke-dashoffset: 9.75;
+  animation: dtour-t2-dash 0.5s cubic-bezier(.17,.17,0,1) 0.35s forwards;
+}
+
+@keyframes dtour-o-dash {
+  0% {
+    stroke-dashoffset: 16.8;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-o-dash {
+  stroke-dasharray: 16.8;
+  stroke-dashoffset: 16.8;
+  animation: dtour-o-dash 0.5s cubic-bezier(.17,.17,0,1) 0.5s forwards;
+}
+
+@keyframes dtour-u1-dash {
+  0% {
+    stroke-dashoffset: 11.15;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-u1-dash {
+  stroke-dasharray: 11.15;
+  stroke-dashoffset: 11.15;
+  animation: dtour-u1-dash 0.5s cubic-bezier(.17,.17,0,1) 0.7s forwards;
+}
+
+@keyframes dtour-u2-dash {
+  0% {
+    stroke-dashoffset: 6.5;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-u2-dash {
+  stroke-dasharray: 6.5;
+  stroke-dashoffset: 6.5;
+  animation: dtour-u2-dash 0.5s cubic-bezier(.17,.17,0,1) 0.7s forwards;
+}
+
+@keyframes dtour-r1-dash {
+  0% {
+    stroke-dashoffset: 6.5;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-r1-dash {
+  stroke-dasharray: 6.5;
+  stroke-dashoffset: 6.5;
+  animation: dtour-r1-dash 0.5s cubic-bezier(.17,.17,0,1) 0.85s forwards;
+}
+
+@keyframes dtour-r2-dash {
+  0% {
+    stroke-dashoffset: 7.74;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-dtour-r2-dash {
+  stroke-dasharray: 7.74;
+  stroke-dashoffset: 7.74;
+  animation: dtour-r2-dash 0.5s cubic-bezier(.17,.17,0,1) 0.7s forwards;
+}
+
+/* --- Animation easing utility for tw-animate-css --- */
+
+@utility animate-ease-out {
+  animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-delay: 0ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
 }
