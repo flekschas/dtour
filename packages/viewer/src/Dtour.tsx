@@ -1,12 +1,13 @@
 import type { ScatterStatus } from '@dtour/scatter';
-import { Provider, createStore, useAtomValue } from 'jotai';
-import { useMemo } from 'react';
+import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
+import { useEffect, useMemo } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
+import { useSettingsPersistence } from './hooks/useSettingsPersistence.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
-import { viewModeAtom } from './state/atoms.ts';
+import { dataNameAtom, viewModeAtom } from './state/atoms.ts';
 import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
 export type DtourProps = {
@@ -26,6 +27,10 @@ export type DtourProps = {
   onStatus?: (status: ScatterStatus) => void;
   /** Hide the toolbar. Default false. */
   hideToolbar?: boolean;
+  /** Called when the user requests loading new data via the toolbar file picker. */
+  onLoadData?: (data: ArrayBuffer, fileName: string) => void;
+  /** Name identifying the current dataset (e.g. filename). Used as localStorage key for settings persistence. */
+  dataName?: string;
 };
 
 export const Dtour = ({
@@ -37,6 +42,8 @@ export const Dtour = ({
   onSpecChange,
   onStatus,
   hideToolbar = false,
+  onLoadData,
+  dataName,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -58,6 +65,8 @@ export const Dtour = ({
         onSpecChange={onSpecChange}
         onStatus={onStatus}
         hideToolbar={hideToolbar}
+        onLoadData={onLoadData}
+        dataName={dataName}
       />
     </Provider>
   );
@@ -73,6 +82,8 @@ const DtourInner = ({
   onSpecChange,
   onStatus,
   hideToolbar,
+  onLoadData,
+  dataName,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -82,9 +93,18 @@ const DtourInner = ({
   onSpecChange: ((spec: Required<DtourSpec>) => void) | undefined;
   onStatus: ((status: ScatterStatus) => void) | undefined;
   hideToolbar: boolean;
+  onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
+  dataName: string | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
+  useSettingsPersistence();
+
+  // Sync dataName prop → atom for settings persistence
+  const setDataName = useSetAtom(dataNameAtom);
+  useEffect(() => {
+    setDataName(dataName ?? null);
+  }, [dataName, setDataName]);
 
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';
@@ -107,7 +127,7 @@ const DtourInner = ({
             isGrand ? '-translate-y-full' : 'translate-y-0'
           }`}
         >
-          <DtourToolbar />
+          <DtourToolbar onLoadData={onLoadData} />
         </div>
       )}
     </div>

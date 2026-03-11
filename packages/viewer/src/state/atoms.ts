@@ -88,3 +88,9 @@ export const canvasSizeAtom = atom({ width: 0, height: 0 });
 // ---------------------------------------------------------------------------
 
 export const metadataAtom = atom<Metadata | null>(null);
+
+// ---------------------------------------------------------------------------
+// Settings persistence — localStorage keyed by data name
+// ---------------------------------------------------------------------------
+
+export const dataNameAtom = atom<string | null>(null);

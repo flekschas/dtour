@@ -9,7 +9,7 @@ import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { useScatter } from './hooks/useScatter.ts';
-import { computeGallerySizes } from './layout/gallery-positions.ts';
+import { computeSelectorSize } from './layout/selector-size.ts';
 import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
@@ -44,10 +44,10 @@ export type DtourViewerProps = {
   toolbarHeight?: number | undefined;
 };
 
-const MIN_SELECTOR_SIZE = 80;
 const PREVIEW_PHYSICAL_SIZE = 300; // Physical pixels per preview canvas
 
 const INSET_ANIMATION_MS = 300;
+const SELECTOR_PADDING = 16;
 
 export const DtourViewer = ({
   data,
@@ -122,7 +122,7 @@ export const DtourViewer = ({
   // The shader shifts + scales content to center it below the toolbar.
   // We also track the current pixel offset for positioning overlays.
   const [overlayOffsetY, setOverlayOffsetY] = useState(
-    isToolbarVisible ? toolbarHeight : 0,
+    isToolbarVisible ? toolbarHeight / 2 : 0,
   );
   const overlayOffsetRef = useRef(overlayOffsetY);
   overlayOffsetRef.current = overlayOffsetY;
@@ -163,7 +163,7 @@ export const DtourViewer = ({
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
 
       // Overlay pixel offset
-      setOverlayOffsetY((currentT * t));
+      setOverlayOffsetY(currentT * t / 2);
 
       if (progress < 1) {
         insetAnimRef.current = requestAnimationFrame(tick);
@@ -186,18 +186,17 @@ export const DtourViewer = ({
   // Grand mode: Givens-rotation grand tour
   useGrandTour(scatterRef.current, viewMode, metadata);
 
-  // Compute gallery positions + padding for canvas insets
-  const { previewSize, padX, padY } = useMemo(
-    () => computeGallerySizes(containerSize.width, containerSize.height, previewCount),
-    [containerSize.width, containerSize.height, previewCount],
-  );
-
-  // Selector radius: min(canvas area) - X/2 where X = previewSize/2
-  const canvasWidth = containerSize.width - 2 * padX;
-  const canvasHeight = containerSize.height - 2 * padY;
-  const selectorSize = Math.max(
-    MIN_SELECTOR_SIZE,
-    Math.min(canvasWidth, canvasHeight) - previewSize / 2,
+  // Largest selector diameter that doesn't overlap any gallery preview
+  const selectorSize = useMemo(
+    () =>
+      computeSelectorSize(
+        containerSize.width,
+        containerSize.height,
+        previewCount,
+        isToolbarVisible,
+        SELECTOR_PADDING,
+      ),
+    [containerSize.width, containerSize.height, previewCount, isToolbarVisible],
   );
 
   // Initialize scatter — create main + preview canvases imperatively

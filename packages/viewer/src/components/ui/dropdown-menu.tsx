@@ -15,7 +15,7 @@ export const DropdownMenuContent = ({
       sideOffset={sideOffset}
       className={cn(
         'z-50 min-w-[8rem] overflow-hidden rounded-md border border-dtour-border bg-dtour-surface p-1 text-dtour-text shadow-md',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+        'origin-(--radix-dropdown-menu-content-transform-origin) animate-ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
         className,
       )}
       {...props}
@@ -29,7 +29,7 @@ export const DropdownMenuItem = ({
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>) => (
   <DropdownMenuPrimitive.Item
     className={cn(
-      'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-dtour-accent focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-dtour-border focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className,
     )}
     {...props}
@@ -44,6 +44,37 @@ export const DropdownMenuLabel = ({
     className={cn('px-2 py-1.5 text-xs font-semibold text-dtour-text-muted', className)}
     {...props}
   />
+);
+
+export const DropdownMenuCheckboxItem = ({
+  className,
+  children,
+  checked = false,
+  ...props
+}: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    className={cn(
+      'relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-dtour-border focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      className,
+    )}
+    checked={checked}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path
+            d="M11.5 3.5L5.5 9.5L2.5 6.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.CheckboxItem>
 );
 
 export const DropdownMenuSeparator = ({

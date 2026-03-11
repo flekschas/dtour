@@ -4,10 +4,17 @@ import { Button } from './components/ui/button.tsx';
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
+  const [fileName, setFileName] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadFile = useCallback(async (file: File) => {
     setData(await file.arrayBuffer());
+    setFileName(file.name);
+  }, []);
+
+  const handleLoadData = useCallback((buffer: ArrayBuffer, name: string) => {
+    setData(buffer);
+    setFileName(name);
   }, []);
 
   const handleDrop = useCallback(
@@ -42,12 +49,12 @@ const App = () => {
         className="hidden"
         onChange={handleFileSelect}
       />
-      <Dtour data={data} />
+      <Dtour data={data} dataName={fileName} onLoadData={handleLoadData} />
       {!data && (
-        <div className="absolute inset-0 flex items-center justify-center z-20">
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
           <Button
             variant="ghost"
-            className="flex flex-col items-center gap-3 px-6 py-4 h-auto"
+            className="flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto"
             onClick={() => inputRef.current?.click()}
           >
             <svg
@@ -67,7 +74,7 @@ const App = () => {
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <span className="text-sm">Drop a Parquet or Arrow file to start</span>
+            <span className="text-sm select-none">Drop a Parquet or Arrow file to start</span>
           </Button>
         </div>
       )}
