@@ -53,7 +53,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
   const lastPointTime = useRef(0);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const { show: showIndicator, hide: hideIndicator } = useLongPressIndicator(overlayRef);
+  const { show: showIndicator, hide: hideIndicator } = useLongPressIndicator();
 
   const clearLongPress = useCallback(() => {
     if (longPressTimer.current) {

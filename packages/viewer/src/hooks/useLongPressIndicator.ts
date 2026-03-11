@@ -330,7 +330,7 @@ const safeRemove = (indices: RuleIndices, key: keyof RuleIndices) => {
 };
 
 // --- The hook ---
-export const useLongPressIndicator = (parentRef: React.RefObject<HTMLElement | null>) => {
+export const useLongPressIndicator = () => {
   const elementsRef = useRef<ReturnType<typeof createElements> | null>(null);
   const ruleIndicesRef = useRef<RuleIndices>(emptyIndices());
   const isStarting = useRef(false);
@@ -341,14 +341,15 @@ export const useLongPressIndicator = (parentRef: React.RefObject<HTMLElement | n
     created.root.style.color = INDICATOR_COLOR;
     elementsRef.current = created;
 
-    const parent = parentRef.current ?? document.body;
-    parent.appendChild(created.root);
+    // Always append to document.body so `position: fixed` is relative to
+    // the viewport — a transformed ancestor would break fixed positioning.
+    document.body.appendChild(created.root);
 
     return () => {
       created.root.remove();
       elementsRef.current = null;
     };
-  }, [parentRef]);
+  }, []);
 
   const show = useCallback((x: number, y: number) => {
     const el = elementsRef.current;
