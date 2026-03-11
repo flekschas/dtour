@@ -1,15 +1,15 @@
 /** Gap between adjacent previews (CSS px). */
-const GAP = 32;
+export const GAP = 32;
 /** Maximum preview size (CSS px). */
-const MAX_SIZE = 320;
-/** Size ratios: corner = 1.0, one from corner = 0.8, interior = 0.6. */
-const RATIOS = [1.0, 0.8, 0.6] as const;
+export const MAX_SIZE = 320;
+/** Size ratios: corner = 1.0, one from corner = 0.75, interior = 0.5. */
+export const RATIOS = [1.0, 0.75, 0.5] as const;
 
 /**
  * Size ratio for position `j` on an edge of `k` emitted points.
- * distFromCorner = min(j, k - j) → 0 = 1.0×, 1 = 0.8×, 2+ = 0.6×
+ * distFromCorner = min(j, k - j) → 0 = 1.0×, 1 = 0.75×, 2+ = 0.5×
  */
-function sizeRatio(j: number, k: number): number {
+export function sizeRatio(j: number, k: number): number {
   const dist = Math.min(j, k - j);
   return RATIOS[Math.min(dist, RATIOS.length - 1)] ?? RATIOS[0];
 }

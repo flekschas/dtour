@@ -162,34 +162,31 @@ export const CircularSlider = ({
         <path
           d={`M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${handleX} ${handleY}`}
           fill="none"
-          stroke="#e8a040"
+          stroke="var(--color-dtour-highlight)"
           strokeWidth="4"
           strokeLinecap="round"
           className="pointer-events-none"
         />
       )}
       {/* Center dot */}
-      <circle
-        cx={center}
-        cy={center}
-        r="3"
-        fill="#666"
-        className="pointer-events-none"
-      />
+      <circle cx={center} cy={center} r="3" fill="#666" className="pointer-events-none" />
       {/* Transparent hit area for handle — larger for easier grabbing */}
       <circle
         cx={handleX}
         cy={handleY}
         r="16"
         fill="transparent"
-        className={cn("cursor-grab pointer-events-auto", isDragging ? 'cursor-grabbing' : 'cursor-grab')}
+        className={cn(
+          'cursor-grab pointer-events-auto',
+          isDragging ? 'cursor-grabbing' : 'cursor-grab',
+        )}
       />
       {/* Handle */}
       <circle
         cx={handleX}
         cy={handleY}
         r="8"
-        fill="#e8a040"
+        fill="var(--color-dtour-highlight)"
         stroke="#1a1a2e"
         strokeWidth="2"
         className="pointer-events-none"
