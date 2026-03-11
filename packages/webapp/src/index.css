@@ -1,7 +1,17 @@
 @import "tailwindcss";
 @import "@dtour/viewer/dist/viewer.css";
 
+@font-face {
+  font-family: "Manrope";
+  src:
+    url("/manrope.woff2") format("woff2"),
+    url("/manrope.woff") format("woff");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 @theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --color-dtour-bg: #0f0f14;
   --color-dtour-surface: #1a1a24;
   --color-dtour-border: #2a2a3a;
