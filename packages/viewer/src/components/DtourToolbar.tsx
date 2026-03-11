@@ -16,6 +16,7 @@ import { useCallback, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import {
+  activeColumnsAtom,
   cameraZoomAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
@@ -63,6 +64,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
   const [pointColor, setPointColor] = useAtom(pointColorAtom);
+  const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,6 +108,29 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
       setPointColor((prev) => (prev === columnName ? DEFAULT_COLOR : columnName));
     },
     [setPointColor],
+  );
+
+  const activeCount =
+    activeColumns === null ? (metadata?.columnNames.length ?? 0) : activeColumns.size;
+
+  const handleToggleColumn = useCallback(
+    (dimIndex: number) => {
+      setActiveColumns((prev) => {
+        const current =
+          prev ?? new Set(Array.from({ length: metadata?.dimCount ?? 0 }, (_, i) => i));
+        const next = new Set(current);
+        if (next.has(dimIndex)) {
+          if (next.size <= 2) return prev;
+          next.delete(dimIndex);
+        } else {
+          next.add(dimIndex);
+        }
+        // Optimize: return null when all columns are active
+        if (metadata && next.size === metadata.dimCount) return null;
+        return next;
+      });
+    },
+    [metadata, setActiveColumns],
   );
 
   return (
@@ -250,7 +275,10 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
-                {metadata.rowCount.toLocaleString()} pts &times; {metadata.dimCount} dims
+                {metadata.rowCount.toLocaleString()} pts &times;{' '}
+                {activeCount === metadata.dimCount
+                  ? `${metadata.dimCount} dims`
+                  : `${activeCount}/${metadata.dimCount} dims`}
                 <CaretDownIcon size={12} />
               </Button>
             </DropdownMenuTrigger>
@@ -259,16 +287,21 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
               {metadata.columnNames.length > 0 && (
                 <>
                   <DropdownMenuLabel className="text-xs font-semibold">Numerical</DropdownMenuLabel>
-                  {metadata.columnNames.map((col) => (
-                    <ColumnRow
-                      checked
-                      key={col}
-                      name={col}
-                      dtype="num"
-                      isColorActive={activeColorColumn === col}
-                      onToggleColor={() => toggleColorBy(col)}
-                    />
-                  ))}
+                  {metadata.columnNames.map((col, index) => {
+                    const isActive = activeColumns === null || activeColumns.has(index);
+                    return (
+                      <ColumnRow
+                        key={col}
+                        name={col}
+                        dtype="num"
+                        checked={isActive}
+                        onCheckedChange={() => handleToggleColumn(index)}
+                        disabled={isActive && activeCount <= 2}
+                        isColorActive={activeColorColumn === col}
+                        onToggleColor={() => toggleColorBy(col)}
+                      />
+                    );
+                  })}
                 </>
               )}
 
@@ -327,17 +360,23 @@ const ColumnRow = ({
   isColorActive,
   onToggleColor,
   checked,
+  onCheckedChange,
+  disabled,
 }: {
   name: string;
   dtype: 'num' | 'cat';
   isColorActive: boolean;
   onToggleColor: () => void;
   checked?: boolean;
+  onCheckedChange?: () => void;
+  disabled?: boolean;
 }) => (
   <DropdownMenuCheckboxItem
     onSelect={(e) => e.preventDefault()}
     className="flex items-center gap-2 pr-1"
     checked={checked ?? false}
+    {...(onCheckedChange ? { onCheckedChange } : {})}
+    {...(disabled ? { disabled } : {})}
   >
     <span className="flex-1 truncate text-xs">{name}</span>
     <button

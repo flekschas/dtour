@@ -14,6 +14,8 @@ import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import {
+  activeColumnsAtom,
+  activeIndicesAtom,
   animationGenAtom,
   cameraZoomAtom,
   canvasSizeAtom,
@@ -70,7 +72,10 @@ export const DtourViewer = ({
   const setCanvasSize = useSetAtom(canvasSizeAtom);
   const store = useStore();
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const activeIndices = useAtomValue(activeIndicesAtom);
+  const setActiveColumns = useSetAtom(activeColumnsAtom);
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
+  const prevDimCountRef = useRef<number | null>(null);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
 
@@ -82,13 +87,14 @@ export const DtourViewer = ({
   // so we can track the current tour basis on the main thread.
   const { resolvedViews, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
+    if (activeIndices.length < 2) return { resolvedViews: null, arcLengths: null };
     const dims = metadata.dimCount;
     const rb =
       views && views.length > 0
         ? views.map((b) => new Float32Array(b))
-        : createDefaultViews(dims, previewCount);
+        : createDefaultViews(dims, previewCount, activeIndices);
     return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
-  }, [views, metadata, previewCount]);
+  }, [views, metadata, previewCount, activeIndices]);
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
   // modes (manual, grand) can initialize from the current projection.
@@ -121,9 +127,7 @@ export const DtourViewer = ({
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
   // We also track the current pixel offset for positioning overlays.
-  const [overlayOffsetY, setOverlayOffsetY] = useState(
-    isToolbarVisible ? toolbarHeight / 2 : 0,
-  );
+  const [overlayOffsetY, setOverlayOffsetY] = useState(isToolbarVisible ? toolbarHeight / 2 : 0);
   const overlayOffsetRef = useRef(overlayOffsetY);
   overlayOffsetRef.current = overlayOffsetY;
   const insetAnimRef = useRef<number | null>(null);
@@ -163,7 +167,7 @@ export const DtourViewer = ({
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
 
       // Overlay pixel offset
-      setOverlayOffsetY(currentT * t / 2);
+      setOverlayOffsetY((currentT * t) / 2);
 
       if (progress < 1) {
         insetAnimRef.current = requestAnimationFrame(tick);
@@ -268,6 +272,15 @@ export const DtourViewer = ({
     };
   }, [previewCount, setMetadata, setCanvasSize, store]);
 
+  // Reset active columns when a new dataset loads (different dim count)
+  useEffect(() => {
+    if (!metadata) return;
+    if (prevDimCountRef.current !== null && prevDimCountRef.current !== metadata.dimCount) {
+      setActiveColumns(null);
+    }
+    prevDimCountRef.current = metadata.dimCount;
+  }, [metadata, setActiveColumns]);
+
   // Send data when it changes
   useEffect(() => {
     if (!data || !scatterRef.current || data === lastDataRef.current) return;
@@ -281,14 +294,14 @@ export const DtourViewer = ({
     if (!scatter) return;
     if (views && views.length > 0) {
       scatter.setBases(views.map((b) => new Float32Array(b)));
-    } else if (metadata && metadata.dimCount >= 2) {
-      const defaultViews = createDefaultViews(metadata.dimCount, previewCount);
+    } else if (metadata && metadata.dimCount >= 2 && activeIndices.length >= 2) {
+      const defaultViews = createDefaultViews(metadata.dimCount, previewCount, activeIndices);
       scatter.setBases(defaultViews);
     }
     // Safety: explicitly request a full re-render after views are set,
     // ensuring all preview canvases get painted even if messages race.
     scatter.render();
-  }, [views, metadata, previewCount]);
+  }, [views, metadata, previewCount, activeIndices]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 

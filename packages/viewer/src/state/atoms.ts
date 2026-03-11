@@ -90,6 +90,29 @@ export const canvasSizeAtom = atom({ width: 0, height: 0 });
 export const metadataAtom = atom<Metadata | null>(null);
 
 // ---------------------------------------------------------------------------
+// Column visibility — which numeric dimensions participate in the tour
+// ---------------------------------------------------------------------------
+
+/**
+ * Set of active dimension indices. `null` means all columns are active
+ * (initial state before metadata loads or when all are enabled).
+ */
+export const activeColumnsAtom = atom<Set<number> | null>(null);
+
+/**
+ * Resolved active dimension indices — never null after metadata loads.
+ * Returns sorted array for deterministic iteration in basis generation,
+ * grand tour, and manual mode.
+ */
+export const activeIndicesAtom = atom<number[]>((get) => {
+  const active = get(activeColumnsAtom);
+  const meta = get(metadataAtom);
+  if (!meta) return [];
+  if (active === null) return Array.from({ length: meta.dimCount }, (_, i) => i);
+  return Array.from(active).sort((a, b) => a - b);
+});
+
+// ---------------------------------------------------------------------------
 // Settings persistence — localStorage keyed by data name
 // ---------------------------------------------------------------------------
 

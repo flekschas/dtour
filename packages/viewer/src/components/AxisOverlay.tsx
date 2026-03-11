@@ -1,8 +1,9 @@
 import type { ScatterInstance } from '@dtour/scatter';
 import { useAtomValue, useSetAtom, useStore } from 'jotai';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { gramSchmidt } from '../lib/gram-schmidt.ts';
 import {
+  activeIndicesAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -38,6 +39,7 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
   const panX = useAtomValue(cameraPanXAtom);
   const panY = useAtomValue(cameraPanYAtom);
   const zoom = useAtomValue(cameraZoomAtom);
+  const activeIndices = useAtomValue(activeIndicesAtom);
   const store = useStore();
   const setCurrentBasis = useSetAtom(currentBasisAtom);
 
@@ -48,24 +50,34 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
   const dims = metadata?.dimCount ?? 0;
   const columnNames = metadata?.columnNames ?? [];
 
+  const activeSet = useMemo(() => new Set(activeIndices), [activeIndices]);
+
   // Initialize basis from the current projection (read imperatively to avoid
   // subscribing). This preserves the view when switching into manual mode.
+  // Re-runs when activeIndices change to zero out inactive dimensions.
   useEffect(() => {
-    if (dims < 2) return;
+    if (dims < 2 || activeIndices.length < 2) return;
     const current = store.get(currentBasisAtom);
     let basis: Float32Array;
     if (current && current.length === dims * 2) {
       basis = new Float32Array(current);
     } else {
-      // Fallback: dim 0 → x, dim 1 → y
       basis = new Float32Array(dims * 2);
-      basis[0] = 1;
-      basis[dims + 1] = 1;
+      basis[activeIndices[0]!] = 1;
+      basis[dims + activeIndices[1]!] = 1;
     }
+    // Zero out inactive dimensions and re-orthonormalize
+    for (let d = 0; d < dims; d++) {
+      if (!activeSet.has(d)) {
+        basis[d] = 0;
+        basis[dims + d] = 0;
+      }
+    }
+    gramSchmidt(basis, dims);
     basisRef.current = basis;
     forceRender((n) => n + 1);
     // No setDirectBasis here — the GPU already shows this projection
-  }, [dims, store]);
+  }, [dims, activeIndices, activeSet, store]);
 
   const sendBasis = useCallback(() => {
     if (!scatter || !basisRef.current) return;
@@ -140,7 +152,7 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      {Array.from({ length: dims }, (_, d) => {
+      {activeIndices.map((d) => {
         // Basis row d gives (x, y) projection weights
         const bx = basis[d]!;
         const by = basis[dims + d]!;
