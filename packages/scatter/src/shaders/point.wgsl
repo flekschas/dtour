@@ -82,8 +82,9 @@ fn vs_main(
   );
 
   let q = quad_vertex(vi);
-  // Clamp point size to [2, 32] pixels (physical)
-  let min_ndc = 4.0 / camera.viewport_height;
+  // Clamp point size to [1, 32] pixels (physical).
+  // min_ndc ensures points are always at least 1px — below that they vanish.
+  let min_ndc = 2.0 / camera.viewport_height;
   let max_ndc = 64.0 / camera.viewport_height;
   let point_size = clamp(uni.point_size, min_ndc, max_ndc);
   // Aspect-correct the offset so circles stay circular on non-square canvases
@@ -91,7 +92,9 @@ fn vs_main(
 
   // Scale opacity by zoom² to keep constant visual fill density (Reusser).
   // Zooming out compresses points → more overlap → must reduce opacity.
-  // Also compensate when the clamp enlarged points beyond intended size.
+  // Also compensate when the min-clamp enlarged points beyond intended size:
+  // enlarge² corrects for the increased pixel coverage, keeping preview
+  // thumbnails (small viewports) brightness-matched with the main view.
   let z = camera.zoom * camera.inset_zoom;
   let enlarge = max(1.0, point_size / max(uni.point_size, 0.0001));
   let eff_opacity = uni.opacity * z * z / (enlarge * enlarge);
