@@ -191,6 +191,41 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
+
+
+      <Popover.Root>
+          <Popover.Trigger asChild>
+            <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
+              <MagnifyingGlassMinusIcon size={16} />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content
+              side="bottom"
+              align="center"
+              sideOffset={4}
+              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+            >
+              <span className="text-xs text-center font-semibold text-dtour-text-muted">
+                Zoom
+              </span>
+              <Slider
+                orientation="vertical"
+                min={0}
+                max={DISTANCE_STEPS.length - 1}
+                step={1}
+                ticks={DISTANCE_STEPS.length}
+                value={[distanceToStep(zoomToDistance(zoom))]}
+                onValueChange={([step]: number[]) => {
+                  if (step !== undefined) setZoom(1 / stepToDistance(step));
+                }}
+                className="h-[120px]"
+              />
+              <span className="text-xs font-medium text-white">{zoomToDistance(zoom)}x</span>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+
         {viewMode === 'guided' && (
           <>
             <Button variant="ghost" size="icon" onClick={handleReset} title="Reset to start">
@@ -225,12 +260,15 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 sideOffset={4}
                 className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
               >
-                <span className="text-xs text-dtour-text-muted">Speed</span>
+                <div className="text-xs text-center font-semibold text-dtour-text-muted">
+                  Speed
+                </div>
                 <Slider
                   orientation="vertical"
                   min={0}
                   max={SPEED_STEPS.length - 1}
                   step={1}
+                  ticks={SPEED_STEPS.length}
                   value={[speedToStep(speed)]}
                   onValueChange={([step]: number[]) => {
                     if (step !== undefined) setSpeed(stepToSpeed(step));
@@ -242,36 +280,6 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             </Popover.Portal>
           </Popover.Root>
         )}
-
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
-              <MagnifyingGlassMinusIcon size={16} />
-            </Button>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Content
-              side="bottom"
-              align="center"
-              sideOffset={4}
-              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
-            >
-              <span className="text-xs text-dtour-text-muted">Distance</span>
-              <Slider
-                orientation="vertical"
-                min={0}
-                max={DISTANCE_STEPS.length - 1}
-                step={1}
-                value={[distanceToStep(zoomToDistance(zoom))]}
-                onValueChange={([step]: number[]) => {
-                  if (step !== undefined) setZoom(1 / stepToDistance(step));
-                }}
-                className="h-[120px]"
-              />
-              <span className="text-xs font-medium text-white">{zoomToDistance(zoom)}x</span>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
 
         {viewMode === 'guided' && (
           <Popover.Root>
@@ -287,23 +295,28 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 sideOffset={4}
                 className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
               >
-                <div className="flex gap-4">
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="text-xs text-dtour-text-muted">Count</span>
-                    <PreviewStepSlider
-                      steps={PREVIEW_COUNT_STEPS}
-                      value={previewCount}
-                      onCommit={setPreviewCount}
-                    />
+                <div className="flex flex-col gap-2">
+                  <div className="text-xs text-center font-semibold text-dtour-text-muted">
+                    Preview
                   </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="text-xs text-dtour-text-muted">Size</span>
-                    <PreviewStepSlider
-                      steps={PREVIEW_SCALE_STEPS}
-                      value={previewScale}
-                      onCommit={setPreviewScale}
-                      formatLabel={SCALE_LABELS}
-                    />
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-xs text-dtour-text-muted">Count</span>
+                      <PreviewStepSlider
+                        steps={PREVIEW_COUNT_STEPS}
+                        value={previewCount}
+                        onCommit={setPreviewCount}
+                      />
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-xs text-dtour-text-muted">Size</span>
+                      <PreviewStepSlider
+                        steps={PREVIEW_SCALE_STEPS}
+                        value={previewScale}
+                        onCommit={setPreviewScale}
+                        formatLabel={SCALE_LABELS}
+                      />
+                    </div>
                   </div>
                 </div>
               </Popover.Content>
@@ -467,6 +480,7 @@ function PreviewStepSlider<T extends number>({
         min={0}
         max={steps.length - 1}
         step={1}
+        ticks={steps.length}
         value={[localStep]}
         onValueChange={([step]: number[]) => {
           if (step !== undefined) setLocalStep(step);
