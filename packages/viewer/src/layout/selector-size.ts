@@ -26,6 +26,7 @@ export function computeSelectorSize(
   previewCount: number,
   isToolbarVisible: boolean,
   padding: number,
+  scale = 1,
 ): number {
   if (previewCount === 0 || containerWidth <= 0 || containerHeight <= 0) {
     return Math.max(MIN_SIZE, Math.min(containerWidth, containerHeight));
@@ -53,7 +54,7 @@ export function computeSelectorSize(
   }
   const shortSide = Math.min(gridW, gridH);
   const availableForCells = shortSide - (numTracks - 1) * GAP;
-  const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum);
+  const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum) * scale;
   const trackSizes = ratios.map((r) => baseSize * r);
   const trackTotal = trackSizes.reduce((a, b) => a + b, 0);
 

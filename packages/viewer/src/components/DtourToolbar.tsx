@@ -4,6 +4,7 @@ import {
   CompassIcon,
   CursorIcon,
   GaugeIcon,
+  ImageSquareIcon,
   MagnifyingGlassMinusIcon,
   PaletteIcon,
   PathIcon,
@@ -12,7 +13,7 @@ import {
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import {
@@ -22,6 +23,8 @@ import {
   guidedSuspendedAtom,
   metadataAtom,
   pointColorAtom,
+  previewCountAtom,
+  previewScaleAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
   tourSpeedAtom,
@@ -65,6 +68,8 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
   const [pointColor, setPointColor] = useAtom(pointColorAtom);
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
+  const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
+  const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,7 +155,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
       <div className="flex items-center gap-2">
         <div className="relative text-sm font-semibold tracking-wide text-white">
           <div className="opacity-0 pointer-events-none">dtour</div>
-          <div className="absolute inset-0">
+          <div className="absolute inset-0" data-logo-target>
             <Logo />
           </div>
         </div>
@@ -267,6 +272,44 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
+
+        {viewMode === 'guided' && (
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <Button variant="ghost" size="icon" title={`Previews: ${previewCount}`}>
+                <ImageSquareIcon size={16} />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                side="bottom"
+                align="center"
+                sideOffset={4}
+                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+              >
+                <div className="flex gap-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-xs text-dtour-text-muted">Count</span>
+                    <PreviewStepSlider
+                      steps={PREVIEW_COUNT_STEPS}
+                      value={previewCount}
+                      onCommit={setPreviewCount}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-xs text-dtour-text-muted">Size</span>
+                    <PreviewStepSlider
+                      steps={PREVIEW_SCALE_STEPS}
+                      value={previewScale}
+                      onCommit={setPreviewScale}
+                      formatLabel={SCALE_LABELS}
+                    />
+                  </div>
+                </div>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+        )}
       </div>
 
       {/* Right: data info + settings */}
@@ -394,6 +437,49 @@ const ColumnRow = ({
     </button>
   </DropdownMenuCheckboxItem>
 );
+
+// ---------------------------------------------------------------------------
+// Preview step slider — generic discrete slider with local drag state
+// ---------------------------------------------------------------------------
+
+const PREVIEW_COUNT_STEPS: (4 | 8 | 12 | 16)[] = [4, 8, 12, 16];
+const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];
+const SCALE_LABELS: Record<number, string> = { 1: 'L', 0.75: 'M', 0.5: 'S' };
+
+function PreviewStepSlider<T extends number>({
+  steps,
+  value,
+  onCommit,
+  formatLabel,
+}: {
+  steps: T[];
+  value: T;
+  onCommit: (v: T) => void;
+  formatLabel?: Record<number, string>;
+}) {
+  const [localStep, setLocalStep] = useState(() => steps.indexOf(value));
+  const display = formatLabel?.[steps[localStep]!] ?? String(steps[localStep] ?? value);
+
+  return (
+    <>
+      <Slider
+        orientation="vertical"
+        min={0}
+        max={steps.length - 1}
+        step={1}
+        value={[localStep]}
+        onValueChange={([step]: number[]) => {
+          if (step !== undefined) setLocalStep(step);
+        }}
+        onValueCommit={([step]: number[]) => {
+          if (step !== undefined) onCommit(steps[step]!);
+        }}
+        className="h-[120px]"
+      />
+      <span className="text-xs font-medium text-white">{display}</span>
+    </>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Speed / distance step helpers

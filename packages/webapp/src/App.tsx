@@ -1,21 +1,52 @@
 import { Dtour } from '@dtour/viewer';
+import { motion, useReducedMotion } from 'motion/react';
 import { useCallback, useRef, useState } from 'react';
+import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
+
+type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
   const [fileName, setFileName] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const loadFile = useCallback(async (file: File) => {
-    setData(await file.arrayBuffer());
-    setFileName(file.name);
-  }, []);
+  const prefersReducedMotion = useReducedMotion();
+  const [logoPhase, setLogoPhase] = useState<LogoPhase>(prefersReducedMotion ? 'done' : 'drawing');
+  const pendingDataRef = useRef<{ buffer: ArrayBuffer; name: string } | null>(null);
+  const drawCompleteRef = useRef(false);
 
-  const handleLoadData = useCallback((buffer: ArrayBuffer, name: string) => {
-    setData(buffer);
-    setFileName(name);
-  }, []);
+  const loadFile = useCallback(
+    async (file: File) => {
+      const buffer = await file.arrayBuffer();
+      const name = file.name;
+      if (logoPhase === 'done') {
+        setData(buffer);
+        setFileName(name);
+      } else {
+        pendingDataRef.current = { buffer, name };
+        if (drawCompleteRef.current) {
+          setLogoPhase('moving');
+        }
+      }
+    },
+    [logoPhase],
+  );
+
+  const handleLoadData = useCallback(
+    (buffer: ArrayBuffer, name: string) => {
+      if (logoPhase === 'done') {
+        setData(buffer);
+        setFileName(name);
+      } else {
+        pendingDataRef.current = { buffer, name };
+        if (drawCompleteRef.current) {
+          setLogoPhase('moving');
+        }
+      }
+    },
+    [logoPhase],
+  );
 
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
@@ -36,6 +67,26 @@ const App = () => {
     [loadFile],
   );
 
+  const handleDrawComplete = useCallback(() => {
+    drawCompleteRef.current = true;
+    if (pendingDataRef.current) {
+      setLogoPhase('moving');
+    }
+  }, []);
+
+  const handleMoveComplete = useCallback(() => {
+    setLogoPhase('moved');
+    // Delay data loading so toolbar can fade in first
+    setTimeout(() => {
+      if (pendingDataRef.current) {
+        setData(pendingDataRef.current.buffer);
+        setFileName(pendingDataRef.current.name);
+        pendingDataRef.current = null;
+      }
+      setLogoPhase('done');
+    }, 300);
+  }, []);
+
   return (
     <div
       className="flex flex-col w-screen h-screen"
@@ -49,12 +100,28 @@ const App = () => {
         className="hidden"
         onChange={handleFileSelect}
       />
-      <Dtour data={data} dataName={fileName} onLoadData={handleLoadData} />
-      {!data && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+      <Dtour
+        data={data}
+        dataName={fileName}
+        onLoadData={handleLoadData}
+        hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
+      />
+      {!data && logoPhase !== 'moving' && (
+        <motion.div
+          className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
+            logoPhase !== 'done' ? 'justify-end pb-[40vh]' : 'justify-center'
+          }`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{
+            delay: logoPhase === 'drawing' ? 0.75 : 0,
+            duration: 0.5,
+            ease: 'easeOut',
+          }}
+        >
           <Button
             variant="ghost"
-            className="flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto"
+            className="cursor-pointer flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto"
             onClick={() => inputRef.current?.click()}
           >
             <svg
@@ -76,7 +143,14 @@ const App = () => {
             </svg>
             <span className="text-sm select-none">Drop a Parquet or Arrow file to start</span>
           </Button>
-        </div>
+        </motion.div>
+      )}
+      {logoPhase !== 'done' && (
+        <AnimatedLogo
+          phase={logoPhase}
+          onDrawComplete={handleDrawComplete}
+          onMoveComplete={handleMoveComplete}
+        />
       )}
     </div>
   );

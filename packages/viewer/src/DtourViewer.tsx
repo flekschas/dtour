@@ -23,6 +23,7 @@ import {
   guidedSuspendedAtom,
   metadataAtom,
   previewCountAtom,
+  previewScaleAtom,
   tourPlayingAtom,
   tourPositionAtom,
   viewModeAtom,
@@ -66,6 +67,7 @@ export const DtourViewer = ({
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const previewCount = useAtomValue(previewCountAtom);
+  const previewScale = useAtomValue(previewScaleAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
@@ -76,6 +78,8 @@ export const DtourViewer = ({
   const setActiveColumns = useSetAtom(activeColumnsAtom);
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
   const prevDimCountRef = useRef<number | null>(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
 
@@ -199,8 +203,9 @@ export const DtourViewer = ({
         previewCount,
         isToolbarVisible,
         SELECTOR_PADDING,
+        previewScale,
       ),
-    [containerSize.width, containerSize.height, previewCount, isToolbarVisible],
+    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale],
   );
 
   // Initialize scatter — create main + preview canvases imperatively
@@ -258,9 +263,14 @@ export const DtourViewer = ({
     });
     ro.observe(container);
 
-    // Reset so the data-send effect re-triggers after scatter recreation
-    // (e.g. on HMR, where useRef values survive but the scatter is new).
-    lastDataRef.current = undefined;
+    // Re-send data to the new scatter instance (e.g. after previewCount change
+    // or HMR where the scatter is recreated but data hasn't changed).
+    if (dataRef.current) {
+      scatter.loadData(dataRef.current.slice(0));
+      lastDataRef.current = dataRef.current;
+    } else {
+      lastDataRef.current = undefined;
+    }
 
     return () => {
       ro.disconnect();

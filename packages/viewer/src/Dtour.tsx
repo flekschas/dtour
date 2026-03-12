@@ -121,15 +121,13 @@ const DtourInner = ({
           toolbarHeight={hideToolbar ? 0 : 40}
         />
       </div>
-      {!hideToolbar && (
-        <div
-          className={`absolute inset-x-0 top-0 z-10 h-10 transition-transform duration-300 ease-in-out ${
-            isGrand ? '-translate-y-full' : 'translate-y-0'
-          }`}
-        >
-          <DtourToolbar onLoadData={onLoadData} />
-        </div>
-      )}
+      <div
+        className={`absolute inset-x-0 top-0 z-10 h-10 transition-[transform,opacity] duration-300 ease-out ${
+          isGrand ? '-translate-y-full' : 'translate-y-0'
+        } ${hideToolbar ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+      >
+        <DtourToolbar onLoadData={onLoadData} />
+      </div>
     </div>
   );
 };

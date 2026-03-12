@@ -16,6 +16,7 @@
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "jotai": "catalog:",
+    "motion": "^12.35.2",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwind-merge": "catalog:",

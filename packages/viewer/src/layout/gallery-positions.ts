@@ -2,16 +2,30 @@
 export const GAP = 32;
 /** Maximum preview size (CSS px). */
 export const MAX_SIZE = 320;
-/** Size ratios: corner = 1.0, one from corner = 0.75, interior = 0.5. */
-export const RATIOS = [1.0, 0.75, 0.5] as const;
+/**
+ * Per-edge-count ratio arrays.
+ *   k=1 (4 previews)  → [1]             all same
+ *   k=2 (8 previews)  → [1, 0.5]        corners 1, middle 0.5
+ *   k=3 (12 previews) → [1, 0.75]       corners 1, mid 0.75
+ *   k=4 (16 previews) → [1, 0.75, 0.5]  corners 1, near-corner 0.75, middle 0.5
+ */
+const RATIOS_BY_K: Record<number, readonly number[]> = {
+  1: [1],
+  2: [1, 0.5],
+  3: [1, 0.75],
+  4: [1, 0.75, 0.5],
+};
+
+const FALLBACK_RATIOS: readonly number[] = [1, 0.75, 0.5];
 
 /**
  * Size ratio for position `j` on an edge of `k` emitted points.
- * distFromCorner = min(j, k - j) → 0 = 1.0×, 1 = 0.75×, 2+ = 0.5×
+ * distFromCorner = min(j, k - j), then looked up in the per-k ratio table.
  */
 export function sizeRatio(j: number, k: number): number {
+  const ratios = RATIOS_BY_K[k] ?? FALLBACK_RATIOS;
   const dist = Math.min(j, k - j);
-  return RATIOS[Math.min(dist, RATIOS.length - 1)] ?? RATIOS[0];
+  return ratios[Math.min(dist, ratios.length - 1)] ?? 1;
 }
 
 export type GallerySizes = {
@@ -46,6 +60,7 @@ export function computeGallerySizes(
   containerWidth: number,
   containerHeight: number,
   previewCount: number,
+  scale = 1,
 ): GallerySizes {
   const k = Math.max(1, previewCount / 4);
   const numTracks = k + 1;
@@ -64,10 +79,10 @@ export function computeGallerySizes(
   // baseSize is the unit; corner = 1.0×base, mid-edge = 0.8×base, etc.
   const shortSide = Math.min(containerWidth, containerHeight);
   const availableForCells = shortSide - (numTracks - 1) * GAP;
-  const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum);
+  const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum) * scale;
 
   const template = ratios.map((r) => `${Math.round(baseSize * r)}px`).join(' ');
-  const previewSize = baseSize * RATIOS[0];
+  const previewSize = baseSize;
 
   // Per-preview sizes: each preview's size depends on its edge position.
   // Preview i sits at edge position j = i % k, sized by sizeRatio(j, k).

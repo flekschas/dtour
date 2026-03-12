@@ -15,6 +15,7 @@ export const tourDirectionAtom = atom<1 | -1>(1);
 // ---------------------------------------------------------------------------
 
 export const previewCountAtom = atom<4 | 8 | 12 | 16>(4);
+export const previewScaleAtom = atom<1 | 0.75 | 0.5>(1);
 export const previewPaddingAtom = atom(12);
 export const selectedKeyframeAtom = atom<number | null>(null);
 

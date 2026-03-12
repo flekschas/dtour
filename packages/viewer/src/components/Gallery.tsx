@@ -6,6 +6,7 @@ import { cn } from '../lib/utils.ts';
 import {
   guidedSuspendedAtom,
   previewCountAtom,
+  previewScaleAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -29,6 +30,7 @@ export const Gallery = ({
   isToolbarVisible,
 }: GalleryProps) => {
   const previewCount = useAtomValue(previewCountAtom);
+  const previewScale = useAtomValue(previewScaleAtom);
   const position = useAtomValue(tourPositionAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
@@ -46,8 +48,8 @@ export const Gallery = ({
   const gridHeight = containerHeight - 2 * verticalInset;
 
   const { gridTemplateColumns, gridTemplateRows, sizes } = useMemo(
-    () => computeGallerySizes(gridWidth, gridHeight, previewCount),
-    [gridWidth, gridHeight, previewCount],
+    () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale),
+    [gridWidth, gridHeight, previewCount, previewScale],
   );
 
   // Adopt each canvas into its wrapper div (once, on mount)
