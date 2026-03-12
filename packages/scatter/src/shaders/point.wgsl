@@ -82,9 +82,10 @@ fn vs_main(
   );
 
   let q = quad_vertex(vi);
-  // Clamp point size to [1, 32] pixels (physical).
-  // min_ndc ensures points are always at least 1px — below that they vanish.
-  let min_ndc = 2.0 / camera.viewport_height;
+  // Clamp point size to [2, 32] pixels (physical).
+  // min_ndc ensures points are always at least 2px — 1px quads can miss pixel
+  // centers entirely depending on sub-pixel alignment, producing no fragments.
+  let min_ndc = 4.0 / camera.viewport_height;
   let max_ndc = 64.0 / camera.viewport_height;
   let point_size = clamp(uni.point_size, min_ndc, max_ndc);
   // Aspect-correct the offset so circles stay circular on non-square canvases
