@@ -8,7 +8,10 @@ import {
   cameraPanYAtom,
   cameraZoomAtom,
   guidedSuspendedAtom,
+  legendClearGenAtom,
+  legendSelectionAtom,
   metadataAtom,
+  paletteAtom,
   pointColorAtom,
   tourPositionAtom,
 } from '../state/atoms.ts';
@@ -31,7 +34,12 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const panY = useAtomValue(cameraPanYAtom);
   const zoom = useAtomValue(cameraZoomAtom);
   const backgroundColor = useAtomValue(backgroundColorAtom);
+  const palette = useAtomValue(paletteAtom);
+  const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
+  const legendSelection = useAtomValue(legendSelectionAtom);
+  const legendClearGen = useAtomValue(legendClearGenAtom);
+  const setLegendSelection = useSetAtom(legendSelectionAtom);
 
   // Forward background color
   useEffect(() => {
@@ -66,20 +74,73 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     } else {
       // Column name — encode per-point colors via data worker
       scatter.setStyle({ pointSize, opacity });
-      scatter.encodeColor(color);
+      scatter.encodeColor(color, palette);
     }
-  }, [scatter, pointSize, opacity, color]);
+  }, [scatter, pointSize, opacity, color, palette]);
+
+  // Forward legend selection → scatter.selectByColumn
+  useEffect(() => {
+    if (!scatter || !metadata || legendSelection === null || legendSelection.size === 0) return;
+
+    // Determine the active color column
+    if (typeof color !== 'string' || isHexColor(color)) return;
+    const column = color;
+
+    const isCategorical = metadata.categoricalColumnNames.includes(column);
+
+    if (isCategorical) {
+      scatter.selectByColumn(column, { labelIndices: Array.from(legendSelection) });
+    } else {
+      // Continuous: 13 stops (indices 0–12). Middle stops each cover range/12,
+      // end stops (0 and 12) cover half that (range/24).
+      const colIndex = metadata.columnNames.indexOf(column);
+      if (colIndex === -1) return;
+      const min = metadata.mins[colIndex]!;
+      const max = metadata.maxes[colIndex]!;
+      const range = max - min;
+      const midWidth = range / 12;
+      const endWidth = midWidth / 2;
+
+      const ranges: number[] = [];
+      for (const stopIdx of legendSelection) {
+        const lo = stopIdx === 0 ? min : min + endWidth + (stopIdx - 1) * midWidth;
+        const hi = stopIdx === 12 ? max : min + endWidth + stopIdx * midWidth;
+        ranges.push(lo, hi);
+      }
+
+      scatter.selectByColumn(column, { valueRanges: new Float32Array(ranges) });
+    }
+  }, [scatter, legendSelection, color, metadata]);
+
+  // Clear scatter selection when legend explicitly deselects (gen bumped by ColorLegend)
+  useEffect(() => {
+    if (!scatter || legendClearGen === 0) return;
+    scatter.clearSelection();
+  }, [scatter, legendClearGen]);
+
+  // Reset legend selection when color column changes
+  const prevColorRef = useRef(color);
+  useEffect(() => {
+    if (prevColorRef.current !== color) {
+      prevColorRef.current = color;
+      setLegendSelection(null);
+    }
+  }, [color, setLegendSelection]);
 
   // Subscribe to scatter status events and update metadata atom.
   // Use a ref so the setMetadata closure never goes stale.
   const setMetadataRef = useRef(setMetadata);
   setMetadataRef.current = setMetadata;
 
+  const setLegendSelectionRef = useRef(setLegendSelection);
+  setLegendSelectionRef.current = setLegendSelection;
+
   useEffect(() => {
     if (!scatter) return;
     return scatter.subscribe((s: ScatterStatus) => {
       if (s.type === 'metadata') {
         setMetadataRef.current(s.metadata);
+        setLegendSelectionRef.current(null);
       }
     });
   }, [scatter]);

@@ -148,7 +148,10 @@ fn fs_main(
     }
   }
 
-  // Additive intensity — accumulates light on the dark background
   let intensity = edge * effective_opacity * point_color.a * sel_factor;
-  return vec4f(point_color.rgb * intensity, 0.0);
+  // When per-point colors are active, use premultiplied-over output so the
+  // normal-blend pipeline preserves label hues.  When off, output zero alpha
+  // so the additive pipeline accumulates light on the dark background.
+  let out_alpha = select(0.0, intensity, uni.usePerPointColor > 0.5);
+  return vec4f(point_color.rgb * intensity, out_alpha);
 }

@@ -1,13 +1,15 @@
 import type { ScatterStatus } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Group, Panel, type PanelImperativeHandle, Separator } from 'react-resizable-panels';
 import { DtourViewer } from './DtourViewer.tsx';
+import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSettingsPersistence } from './hooks/useSettingsPersistence.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
-import { dataNameAtom, viewModeAtom } from './state/atoms.ts';
+import { dataNameAtom, legendVisibleAtom, viewModeAtom } from './state/atoms.ts';
 import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
 export type DtourProps = {
@@ -100,6 +102,10 @@ const DtourInner = ({
   useModeCycling();
   useSettingsPersistence();
 
+  const [mounted, setMounted] = useState(false);
+
+  const viewerRef = useRef<HTMLDivElement>(null);
+
   // Sync dataName prop → atom for settings persistence
   const setDataName = useSetAtom(dataNameAtom);
   useEffect(() => {
@@ -108,19 +114,33 @@ const DtourInner = ({
 
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';
+  const legendVisible = useAtomValue(legendVisibleAtom);
+  const legendPanelRef = useRef<PanelImperativeHandle>(null);
+
+  // Sync derived legendVisible → imperative panel collapse/expand
+  useEffect(() => {
+    const panel = legendPanelRef.current;
+    if (!panel) return;
+    if (legendVisible && panel.isCollapsed()) panel.expand();
+    if (!legendVisible && !panel.isCollapsed()) panel.collapse();
+  }, [legendVisible]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      console.log(width, height);
+    });
+    ro.observe(viewer);
+    setMounted(true);
+    return () => ro.disconnect();
+  }, []);
 
   return (
     <div className="relative w-full h-full overflow-hidden">
-      <div className="absolute inset-0">
-        <DtourViewer
-          data={data}
-          views={views}
-          metrics={metrics}
-          metricTracks={metricTracks}
-          onStatus={onStatus}
-          toolbarHeight={hideToolbar ? 0 : 40}
-        />
-      </div>
+      {/* Toolbar — full width, above everything */}
       <div
         className={`absolute inset-x-0 top-0 z-10 h-10 transition-[transform,opacity] duration-300 ease-out ${
           isGrand ? '-translate-y-full' : 'translate-y-0'
@@ -128,6 +148,46 @@ const DtourInner = ({
       >
         <DtourToolbar onLoadData={onLoadData} />
       </div>
+      {/* Canvas + legend panels */}
+      <Group orientation="horizontal" className="h-full">
+        <Panel
+          defaultSize="80%"
+          minSize="50%"
+          className="relative"
+        >
+          <div ref={viewerRef} className="absolute inset-0 overflow-hidden">
+            {mounted && (
+              <DtourViewer
+                data={data}
+                views={views}
+                metrics={metrics}
+                metricTracks={metricTracks}
+                onStatus={onStatus}
+                toolbarHeight={hideToolbar ? 0 : 40}
+              />
+            )}
+          </div>
+        </Panel>
+        <Separator
+          className={`
+            w-px
+            transition-colors
+            ${
+            legendVisible
+              ? 'bg-dtour-surface data-[separator="hover"]:bg-dtour-text-muted data-[separator="active"]:bg-white'
+              : 'pointer-events-none'
+          }`}
+        />
+        <Panel
+          panelRef={legendPanelRef}
+          defaultSize="20%"
+          minSize={64}
+          maxSize="40%"
+          collapsible
+        >
+          <ColorLegend />
+        </Panel>
+      </Group>
     </div>
   );
 };

@@ -26,6 +26,7 @@ export const selectedKeyframeAtom = atom<number | null>(null);
 export const pointSizeAtom = atom<number | 'auto'>('auto');
 export const pointOpacityAtom = atom<number | 'auto'>('auto');
 export const pointColorAtom = atom<[number, number, number] | string>([0.25, 0.5, 0.9]);
+export const paletteAtom = atom<'viridis' | 'magma'>('viridis');
 
 // ---------------------------------------------------------------------------
 // Background color — WebGPU clear color (RGB 0–1)
@@ -112,6 +113,33 @@ export const activeIndicesAtom = atom<number[]>((get) => {
   if (active === null) return Array.from({ length: meta.dimCount }, (_, i) => i);
   return Array.from(active).sort((a, b) => a - b);
 });
+
+// ---------------------------------------------------------------------------
+// Legend — collapsible color legend panel
+// ---------------------------------------------------------------------------
+
+/** User preference for showing the legend panel. */
+export const showLegendAtom = atom(true);
+
+/**
+ * Derived: legend is visible only when showLegend is true AND points are
+ * colored by a data column (string that isn't a hex color).
+ */
+export const legendVisibleAtom = atom((get) => {
+  if (!get(showLegendAtom)) return false;
+  const color = get(pointColorAtom);
+  return typeof color === 'string' && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color);
+});
+
+// ---------------------------------------------------------------------------
+// Legend selection — which legend entries are actively selected
+// ---------------------------------------------------------------------------
+
+/** Which legend entries are selected, or null when no legend selection is active. */
+export const legendSelectionAtom = atom<Set<number> | null>(null);
+
+/** Bumped when ColorLegend explicitly deselects — triggers scatter.clearSelection(). */
+export const legendClearGenAtom = atom(0);
 
 // ---------------------------------------------------------------------------
 // Settings persistence — localStorage keyed by data name

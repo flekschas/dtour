@@ -1,7 +1,10 @@
 import pointShader from '../shaders/point.wgsl?raw';
 
 export type PointPipeline = {
-  pipeline: GPURenderPipeline;
+  /** Additive blend pipeline — accumulates light on dark background. */
+  additivePipeline: GPURenderPipeline;
+  /** Normal (premultiplied-over) blend pipeline — preserves label colors. */
+  normalPipeline: GPURenderPipeline;
   bindGroupLayout: GPUBindGroupLayout;
   uniformBuffer: GPUBuffer;
   cameraBuffer: GPUBuffer;
@@ -114,13 +117,14 @@ export const createPointPipeline = (
     ],
   });
 
-  const pipeline = device.createRenderPipeline({
-    label: 'point-pipeline',
-    layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-    vertex: {
-      module: shaderModule,
-      entryPoint: 'vs_main',
-    },
+  const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+
+  // Additive blending — accumulate light on dark background.
+  // Dense regions saturate toward white; sparse areas glow softly.
+  const additivePipeline = device.createRenderPipeline({
+    label: 'point-pipeline-additive',
+    layout: pipelineLayout,
+    vertex: { module: shaderModule, entryPoint: 'vs_main' },
     fragment: {
       module: shaderModule,
       entryPoint: 'fs_main',
@@ -128,10 +132,30 @@ export const createPointPipeline = (
         {
           format: canvasFormat,
           blend: {
-            // Additive blending — accumulate light on dark background.
-            // Dense regions saturate toward white; sparse areas glow softly.
             color: { srcFactor: 'one', dstFactor: 'one' },
-            alpha: { srcFactor: 'zero', dstFactor: 'one' }, // preserve clear alpha (1.0)
+            alpha: { srcFactor: 'zero', dstFactor: 'one' },
+          },
+        },
+      ],
+    },
+    primitive: { topology: 'triangle-list' },
+  });
+
+  // Normal (premultiplied-over) blending — preserves per-point label colors.
+  // Each point composites over the background with standard alpha blending.
+  const normalPipeline = device.createRenderPipeline({
+    label: 'point-pipeline-normal',
+    layout: pipelineLayout,
+    vertex: { module: shaderModule, entryPoint: 'vs_main' },
+    fragment: {
+      module: shaderModule,
+      entryPoint: 'fs_main',
+      targets: [
+        {
+          format: canvasFormat,
+          blend: {
+            color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
           },
         },
       ],
@@ -169,7 +193,8 @@ export const createPointPipeline = (
   writeCamera(device, cameraBuffer, DEFAULT_CAMERA);
 
   return {
-    pipeline,
+    additivePipeline,
+    normalPipeline,
     bindGroupLayout,
     uniformBuffer,
     cameraBuffer,

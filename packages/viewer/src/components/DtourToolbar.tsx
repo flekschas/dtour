@@ -10,6 +10,7 @@ import {
   PathIcon,
   PauseIcon,
   PlayIcon,
+  SidebarSimpleIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
@@ -21,11 +22,13 @@ import {
   cameraZoomAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
+  legendVisibleAtom,
   metadataAtom,
   pointColorAtom,
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
+  showLegendAtom,
   tourPlayingAtom,
   tourSpeedAtom,
   viewModeAtom,
@@ -70,6 +73,8 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
   const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
+  const [showLegend, setShowLegend] = useAtom(showLegendAtom);
+  const legendVisible = useAtomValue(legendVisibleAtom);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,9 +196,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
-
-
-      <Popover.Root>
+        <Popover.Root>
           <Popover.Trigger asChild>
             <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
               <MagnifyingGlassMinusIcon size={16} />
@@ -206,9 +209,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
               sideOffset={4}
               className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
             >
-              <span className="text-xs text-center font-semibold text-dtour-text-muted">
-                Zoom
-              </span>
+              <span className="text-xs text-center font-semibold text-dtour-text-muted">Zoom</span>
               <Slider
                 orientation="vertical"
                 min={0}
@@ -260,9 +261,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 sideOffset={4}
                 className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
               >
-                <div className="text-xs text-center font-semibold text-dtour-text-muted">
-                  Speed
-                </div>
+                <div className="text-xs text-center font-semibold text-dtour-text-muted">Speed</div>
                 <Slider
                   orientation="vertical"
                   min={0}
@@ -401,6 +400,15 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             No data
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowLegend((v) => !v)}
+          title={showLegend ? 'Hide legend' : 'Show legend'}
+          className={legendVisible || showLegend ? '' : 'opacity-40'}
+        >
+          <SidebarSimpleIcon size={16} weight={showLegend ? 'fill' : 'regular'} />
+        </Button>
       </div>
     </div>
   );

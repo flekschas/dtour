@@ -1,5 +1,5 @@
 ### Development
 
 ```sh
-uv run --extra dev marimo edit demo.py
+uv run --extra dev marimo edit notebooks/demo.py
 ```

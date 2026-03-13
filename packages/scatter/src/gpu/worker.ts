@@ -94,12 +94,17 @@ const projectAndRender = (
     viewportHeight: canvas.height,
   });
 
+  // Select blend pipeline: normal (over) for per-point colors, additive for density
+  const activePipeline = state.styleFlags.usePerPointColor
+    ? state.pointPipeline.normalPipeline
+    : state.pointPipeline.additivePipeline;
+
   // Dispatch compute then render — single submit for efficiency
   const computeCmd = dispatchProjection(device, projectionPipeline, projBindGroup, numPoints);
   const renderCmd = renderPoints(
     device,
     state.views[viewIndex]!,
-    state.pointPipeline,
+    activePipeline,
     renBindGroup,
     numPoints,
     state.backgroundColor,
@@ -277,6 +282,31 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     device.queue.writeBuffer(state.colorBuffer, 0, colors as Uint32Array<ArrayBuffer>);
 
     state.styleFlags.usePerPointColor = true;
+    writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
+    rebuildBindGroups();
+
+    if ((state.tour || state.directBasis) && state.projectionResources) {
+      renderAllViews();
+    }
+    return;
+  }
+
+  if (event.data.type === 'selectionMask') {
+    const { mask } = event.data;
+    const { device } = state;
+
+    if (state.selectionBuffer) {
+      state.selectionBuffer.destroy();
+    }
+
+    state.selectionBuffer = device.createBuffer({
+      label: 'selection-mask',
+      size: mask.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
+
+    state.styleFlags.useSelectionMask = true;
     writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 

@@ -106,7 +106,7 @@ const App = () => {
         onLoadData={handleLoadData}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
       />
-      {!data && logoPhase !== 'moving' && (
+      {!data && logoPhase !== 'moving' && logoPhase !== 'moved' && (
         <motion.div
           className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
             logoPhase !== 'done' ? 'justify-end pb-[40vh]' : 'justify-center'

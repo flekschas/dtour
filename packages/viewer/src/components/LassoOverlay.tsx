@@ -7,6 +7,7 @@ import {
   cameraPanYAtom,
   cameraZoomAtom,
   guidedSuspendedAtom,
+  legendSelectionAtom,
   viewModeAtom,
 } from '../state/atoms.ts';
 
@@ -44,6 +45,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
   const viewMode = useAtomValue(viewModeAtom);
   const setViewMode = useSetAtom(viewModeAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const setLegendSelection = useSetAtom(legendSelectionAtom);
 
   const [lassoMode, setLassoMode] = useState(false);
   const [path, setPath] = useState<[number, number][]>([]);
@@ -117,6 +119,27 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     [lassoMode, clearLongPress],
   );
 
+  const handlePointerLeave = useCallback(() => {
+    // Pointer left the canvas area (e.g. moved to sidebar / resize handle).
+    // Cancel the long-press timer so we don't accidentally enter lasso mode.
+    if (!lassoMode) {
+      clearLongPress();
+      startPos.current = null;
+    }
+  }, [lassoMode, clearLongPress]);
+
+  // Also cancel on window blur (e.g. user switches tabs/apps mid-press)
+  useEffect(() => {
+    const handleBlur = () => {
+      if (!lassoMode) {
+        clearLongPress();
+        startPos.current = null;
+      }
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [lassoMode, clearLongPress]);
+
   const handlePointerUp = useCallback(() => {
     clearLongPress();
     hideIndicator();
@@ -136,15 +159,17 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     }
 
     scatter.lassoSelect(polygon);
+    setLegendSelection(null);
 
     setLassoMode(false);
     setPath([]);
-  }, [lassoMode, path, scatter, width, height, panX, panY, zoom, clearLongPress, hideIndicator]);
+  }, [lassoMode, path, scatter, width, height, panX, panY, zoom, clearLongPress, hideIndicator, setLegendSelection]);
 
   // Double-click or Escape clears selection
   const handleDoubleClick = useCallback(() => {
     scatter?.clearSelection();
-  }, [scatter]);
+    setLegendSelection(null);
+  }, [scatter, setLegendSelection]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -156,6 +181,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
         } else {
           scatter?.clearSelection();
         }
+        setLegendSelection(null);
         setLassoMode(false);
         setPath([]);
         clearLongPress();
@@ -163,7 +189,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scatter, clearLongPress, viewMode, setViewMode, setGuidedSuspended]);
+  }, [scatter, clearLongPress, viewMode, setViewMode, setGuidedSuspended, setLegendSelection]);
 
   // Build path string for SVG polygon
   const pathStr = path.map(([x, y]) => `${x},${y}`).join(' ');
@@ -176,6 +202,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
       onDoubleClick={handleDoubleClick}
     >
       {/* Lasso polygon */}

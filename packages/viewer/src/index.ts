@@ -40,6 +40,9 @@ export {
   cameraZoomAtom,
   // View mode
   viewModeAtom,
+  // Legend
+  showLegendAtom,
+  legendVisibleAtom,
   // Read-only
   metadataAtom,
 } from './state/atoms.ts';

@@ -3,6 +3,7 @@ const STORAGE_PREFIX = 'dtour:';
 type PersistedSettings = {
   pointColor: [number, number, number] | string;
   activeColumns?: number[] | null;
+  showLegend?: boolean;
 };
 
 export const saveSettings = (dataName: string, settings: PersistedSettings): void => {

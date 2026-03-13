@@ -2,7 +2,7 @@
 
 import { encodeCategoricalColors, encodeContinuousColors } from './color.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
-import { GLASBEY_DARK, OKABE_ITO, VIRIDIS_20 } from './palettes.ts';
+import { GLASBEY_DARK, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';
 import type { CategoricalColumn } from './types.ts';
 
@@ -13,6 +13,7 @@ let numericData = new Map<string, Float32Array>();
 let numericMins = new Map<string, number>();
 let numericRanges = new Map<string, number>();
 let categoricalData = new Map<string, CategoricalColumn>();
+let rowCount = 0;
 
 self.onmessage = async (event: MessageEvent<MainToData>) => {
   const msg = event.data;
@@ -32,7 +33,8 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     try {
       const parsed = await parseBuffer(msg.buffer);
 
-      // Retain copies of column data for later color encoding
+      // Retain copies of column data for later color encoding / selection
+      rowCount = parsed.rowCount;
       numericData = new Map();
       numericMins = new Map();
       numericRanges = new Map();
@@ -99,7 +101,12 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     // Check categorical columns first
     const cat = categoricalData.get(column);
     if (cat) {
-      const pal = palette === 'glasbey_dark' ? GLASBEY_DARK : OKABE_ITO;
+      const pal = cat.labels.length <= OKABE_ITO.length
+        ? OKABE_ITO
+        : [
+            ...OKABE_ITO,
+            ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / GLASBEY_DARK.length)).fill(undefined).flatMap(() => GLASBEY_DARK)
+          ] as [number, number, number][];
       const colors = encodeCategoricalColors(cat.indices, pal);
       gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
       return;
@@ -110,8 +117,41 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     if (numCol) {
       const min = numericMins.get(column) ?? 0;
       const range = numericRanges.get(column) ?? 1;
-      const colors = encodeContinuousColors(numCol, min, range, VIRIDIS_20);
+      const colors = encodeContinuousColors(numCol, min, range, palette === 'magma' ? MAGMA_25 : VIRIDIS_25);
       gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
     }
+  }
+
+  if (msg.type === 'selectByColumn') {
+    if (!gpuPort || rowCount === 0) return;
+
+    const { column, labelIndices, valueRanges } = msg;
+    const mask = new Uint32Array(rowCount);
+
+    // Categorical: select points whose label index is in the set
+    const cat = categoricalData.get(column);
+    if (cat && labelIndices) {
+      const selected = new Set(labelIndices);
+      for (let i = 0; i < cat.indices.length; i++) {
+        if (selected.has(cat.indices[i]!)) mask[i] = 1;
+      }
+    }
+
+    // Continuous: select points whose value falls in any [lo, hi] range
+    const numCol = numericData.get(column);
+    if (numCol && valueRanges && valueRanges.length >= 2) {
+      const numRanges = valueRanges.length / 2;
+      for (let i = 0; i < numCol.length; i++) {
+        const v = numCol[i]!;
+        for (let r = 0; r < numRanges; r++) {
+          if (v >= valueRanges[r * 2]! && v <= valueRanges[r * 2 + 1]!) {
+            mask[i] = 1;
+            break;
+          }
+        }
+      }
+    }
+
+    gpuPort.postMessage({ type: 'selectionMask', mask } as DataToGpu, [mask.buffer]);
   }
 };

@@ -1,5 +1,3 @@
-import type { PointPipeline } from './gpu/pipeline.ts';
-
 export type CanvasView = {
   canvas: OffscreenCanvas;
   context: GPUCanvasContext;
@@ -28,7 +26,7 @@ export const configureCanvas = (canvas: OffscreenCanvas, device: GPUDevice): Can
 export const renderPoints = (
   device: GPUDevice,
   view: CanvasView,
-  pointPipeline: PointPipeline,
+  pipeline: GPURenderPipeline,
   bindGroup: GPUBindGroup,
   numPoints: number,
   clearColor: [number, number, number] = [0, 0, 0],
@@ -49,7 +47,7 @@ export const renderPoints = (
   });
 
   if (numPoints > 0) {
-    pass.setPipeline(pointPipeline.pipeline);
+    pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(6, numPoints);
   }

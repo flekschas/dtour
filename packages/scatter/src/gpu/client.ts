@@ -62,6 +62,8 @@ export type ScatterInstance = {
   setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
   clearColor: () => void;
+  /** Select points by column value. Mask is built in the data worker. */
+  selectByColumn: (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }) => void;
   /** Set a selection mask (1 = selected, 0 = dimmed). */
   setSelectionMask: (mask: Uint32Array) => void;
   /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
@@ -228,6 +230,12 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'clearColors' });
   };
 
+  const selectByColumn = (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }): void => {
+    const transfers: Transferable[] = [];
+    if (opts.valueRanges) transfers.push(opts.valueRanges.buffer);
+    sendToData(dataWorker, { type: 'selectByColumn', column, ...opts }, transfers);
+  };
+
   const setSelectionMask = (mask: Uint32Array): void => {
     sendToGpu(gpuWorker, { type: 'setSelectionMask', mask }, [mask.buffer]);
   };
@@ -263,6 +271,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     encodeColor,
     setBackgroundColor,
     clearColor,
+    selectByColumn,
     setSelectionMask,
     lassoSelect,
     clearSelection,

@@ -7,16 +7,17 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
-  previewPaddingAtom,
-  previewScaleAtom,
   pointColorAtom,
   pointOpacityAtom,
   pointSizeAtom,
+  previewCountAtom,
+  previewPaddingAtom,
+  previewScaleAtom,
+  showLegendAtom,
   tourDirectionAtom,
   tourPlayingAtom,
   tourPositionAtom,
   tourSpeedAtom,
-  previewCountAtom,
   viewModeAtom,
 } from './atoms.ts';
 
@@ -58,6 +59,7 @@ const SPEC_ATOM_MAP = {
   cameraPanY: entry(cameraPanYAtom),
   cameraZoom: entry(cameraZoomAtom),
   viewMode: entry(viewModeAtom),
+  showLegend: entry(showLegendAtom),
 } as const;
 
 type SpecKey = keyof typeof SPEC_ATOM_MAP;
