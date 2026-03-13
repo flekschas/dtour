@@ -1,7 +1,6 @@
 import type { ScatterStatus } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Panel, type PanelImperativeHandle, Separator } from 'react-resizable-panels';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
@@ -115,15 +114,39 @@ const DtourInner = ({
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';
   const legendVisible = useAtomValue(legendVisibleAtom);
-  const legendPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Sync derived legendVisible → imperative panel collapse/expand
-  useEffect(() => {
-    const panel = legendPanelRef.current;
-    if (!panel) return;
-    if (legendVisible && panel.isCollapsed()) panel.expand();
-    if (!legendVisible && !panel.isCollapsed()) panel.collapse();
-  }, [legendVisible]);
+  // Sidebar width state — remembered across open/close cycles
+  const [sidebarWidth, setSidebarWidth] = useState(200);
+  const [dragging, setDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-resize handler
+  const onHandleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!legendVisible) return;
+      e.preventDefault();
+      setDragging(true);
+
+      const onMouseMove = (me: MouseEvent) => {
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const maxWidth = rect.width * 0.4;
+        const newWidth = Math.min(maxWidth, Math.max(64, rect.right - me.clientX));
+        setSidebarWidth(newWidth);
+      };
+
+      const onMouseUp = () => {
+        setDragging(false);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    },
+    [legendVisible],
+  );
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -138,56 +161,54 @@ const DtourInner = ({
     return () => ro.disconnect();
   }, []);
 
+  const displayWidth = legendVisible ? sidebarWidth : 0;
+
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      {/* Toolbar — full width, above everything */}
-      <div
-        className={`absolute inset-x-0 top-0 z-10 h-10 transition-[transform,opacity] duration-300 ease-out ${
-          isGrand ? '-translate-y-full' : 'translate-y-0'
-        } ${hideToolbar ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-      >
-        <DtourToolbar onLoadData={onLoadData} />
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden flex">
+      {/* Canvas panel — grows to fill remaining space */}
+      <div className="relative flex-1 min-w-0">
+        {/* Toolbar — inside left panel so it shrinks with the legend */}
+        <div
+          className={`absolute inset-x-0 top-0 z-10 h-10 transition-[transform,opacity] duration-300 ease-out ${
+            isGrand ? '-translate-y-full' : 'translate-y-0'
+          } ${hideToolbar ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+        >
+          <DtourToolbar onLoadData={onLoadData} />
+        </div>
+        <div ref={viewerRef} className="absolute inset-0 overflow-hidden">
+          {mounted && (
+            <DtourViewer
+              data={data}
+              views={views}
+              metrics={metrics}
+              metricTracks={metricTracks}
+              onStatus={onStatus}
+              toolbarHeight={hideToolbar ? 0 : 40}
+            />
+          )}
+        </div>
       </div>
-      {/* Canvas + legend panels */}
-      <Group orientation="horizontal" className="h-full">
-        <Panel
-          defaultSize="80%"
-          minSize="50%"
-          className="relative"
-        >
-          <div ref={viewerRef} className="absolute inset-0 overflow-hidden">
-            {mounted && (
-              <DtourViewer
-                data={data}
-                views={views}
-                metrics={metrics}
-                metricTracks={metricTracks}
-                onStatus={onStatus}
-                toolbarHeight={hideToolbar ? 0 : 40}
-              />
-            )}
-          </div>
-        </Panel>
-        <Separator
-          className={`
-            w-px
-            transition-colors
-            ${
-            legendVisible
-              ? 'bg-dtour-surface data-[separator="hover"]:bg-dtour-text-muted data-[separator="active"]:bg-white'
-              : 'pointer-events-none'
-          }`}
-        />
-        <Panel
-          panelRef={legendPanelRef}
-          defaultSize="20%"
-          minSize={64}
-          maxSize="40%"
-          collapsible
-        >
+      {/* Drag handle */}
+      <div
+        className={`w-px shrink-0 transition-colors ${
+          legendVisible
+            ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-white'
+            : 'pointer-events-none'
+        }`}
+        onMouseDown={onHandleMouseDown}
+      />
+      {/* Legend sidebar */}
+      <div
+        className="shrink-0 overflow-hidden"
+        style={{
+          width: displayWidth,
+          transition: dragging ? 'none' : 'width 300ms cubic-bezier(.1,.1,0,1)',
+        }}
+      >
+        <div className="h-full" style={{ width: sidebarWidth }}>
           <ColorLegend />
-        </Panel>
-      </Group>
+        </div>
+      </div>
     </div>
   );
 };

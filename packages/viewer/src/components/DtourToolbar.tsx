@@ -400,15 +400,17 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             No data
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setShowLegend((v) => !v)}
-          title={showLegend ? 'Hide legend' : 'Show legend'}
-          className={legendVisible || showLegend ? '' : 'opacity-40'}
-        >
-          <SidebarSimpleIcon size={16} weight={showLegend ? 'fill' : 'regular'} />
-        </Button>
+        {activeColorColumn && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowLegend((v) => !v)}
+            title={showLegend ? 'Hide legend' : 'Show legend'}
+            className={legendVisible || showLegend ? '' : 'opacity-40'}
+          >
+            <SidebarSimpleIcon size={16} weight={showLegend ? 'fill' : 'regular'} />
+          </Button>
+        )}
       </div>
     </div>
   );

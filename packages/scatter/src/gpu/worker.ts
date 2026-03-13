@@ -64,6 +64,12 @@ type GpuState = {
 
 let state: GpuState | null = null;
 
+// Messages received before init completes are buffered here and replayed
+// in order once state is ready. Without this, the async initDevice() causes
+// the onmessage handler to yield, and subsequent messages hit the
+// `if (!state) return` guard and are silently dropped.
+let pendingMessages: MainToGpu[] | null = [];
+
 const postMain = (msg: GpuToMain): void => {
   self.postMessage(msg);
 };
@@ -404,59 +410,8 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
 
 // ─── Main thread messages ──────────────────────────────────────────────────
 
-self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
-  const msg = event.data;
-
-  if (msg.type === 'init') {
-    try {
-      const { device } = await initDevice();
-
-      const views = msg.canvases.map((canvas) => configureCanvas(canvas, device));
-      const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-
-      const pointPipeline = createPointPipeline(device, canvasFormat);
-      const projectionPipeline = createProjectionPipeline(device);
-
-      state = {
-        device,
-        views,
-        pointPipeline,
-        renderBindGroup: null,
-        projectionPipeline,
-        projectionResources: null,
-        projectionBindGroup: null,
-        numPoints: 0,
-        numDims: 0,
-        tour: null,
-        style: { pointSize: 0.012, opacity: 0.7, color: [0.25, 0.5, 0.9] },
-        styleFlags: { usePerPointColor: false, useSelectionMask: false },
-        camera: {
-          panX: 0,
-          panY: 0,
-          zoom: msg.zoom,
-          aspect: 1,
-          viewportHeight: 1,
-          insetOffsetY: 0,
-          insetZoom: 1,
-        },
-        colorBuffer: null,
-        selectionBuffer: null,
-        directBasis: null,
-        backgroundColor: [0, 0, 0],
-      };
-
-      msg.dataPort.onmessage = onDataMessage;
-
-      postMain({ type: 'ready' });
-    } catch (err) {
-      postMain({
-        type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return;
-  }
-
+/** Process a single non-init message. Requires state to be initialized. */
+const handleMessage = (msg: MainToGpu): void => {
   if (!state) return;
 
   if (msg.type === 'setBases') {
@@ -685,4 +640,77 @@ const pointInPolygon = (
     }
   }
   return inside;
+};
+
+// ─── Main thread messages ──────────────────────────────────────────────────
+
+self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
+  const msg = event.data;
+
+  if (msg.type === 'init') {
+    try {
+      const { device } = await initDevice();
+
+      const views = msg.canvases.map((canvas) => configureCanvas(canvas, device));
+      const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+
+      const pointPipeline = createPointPipeline(device, canvasFormat);
+      const projectionPipeline = createProjectionPipeline(device);
+
+      state = {
+        device,
+        views,
+        pointPipeline,
+        renderBindGroup: null,
+        projectionPipeline,
+        projectionResources: null,
+        projectionBindGroup: null,
+        numPoints: 0,
+        numDims: 0,
+        tour: null,
+        style: { pointSize: 0.012, opacity: 0.7, color: [0.25, 0.5, 0.9] },
+        styleFlags: { usePerPointColor: false, useSelectionMask: false },
+        camera: {
+          panX: 0,
+          panY: 0,
+          zoom: msg.zoom,
+          aspect: 1,
+          viewportHeight: 1,
+          insetOffsetY: 0,
+          insetZoom: 1,
+        },
+        colorBuffer: null,
+        selectionBuffer: null,
+        directBasis: null,
+        backgroundColor: [0, 0, 0],
+      };
+
+      msg.dataPort.onmessage = onDataMessage;
+
+      // Replay any messages that arrived while init was awaiting
+      const buffered = pendingMessages;
+      pendingMessages = null;
+      if (buffered) {
+        for (const m of buffered) {
+          handleMessage(m);
+        }
+      }
+
+      postMain({ type: 'ready' });
+    } catch (err) {
+      postMain({
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
+
+  // If init hasn't completed yet, buffer the message for replay
+  if (pendingMessages) {
+    pendingMessages.push(msg);
+    return;
+  }
+
+  handleMessage(msg);
 };

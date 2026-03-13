@@ -79,9 +79,11 @@ export const ColorLegend = () => {
         ...Array(Math.ceil((labels.length - OKABE_ITO.length) / GLASBEY_DARK.length)).fill(undefined).flatMap(() => GLASBEY_DARK)
       ] as [number, number, number][];
     return (
-      <div className="flex h-full flex-col overflow-hidden border-l border-dtour-surface bg-dtour-bg px-3 pb-3 pt-12 text-xs text-dtour-text">
-        <div className="mb-2 shrink-0 font-semibold text-white truncate">{column}</div>
-        <div className="flex flex-col gap-1.5 overflow-y-auto">
+      <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
+        <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-white truncate">
+          {column}
+        </div>
+        <div className="flex flex-col gap-1.5 overflow-y-auto px-3 pt-3 pb-3">
           {labels.map((label, i) => {
             const [r, g, b] = colors[i % colors.length]!;
             const dimmed = hasSelection && !legendSelection.has(i);
@@ -121,9 +123,11 @@ export const ColorLegend = () => {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-dtour-bg px-3 pb-3 pt-12 text-xs text-dtour-text">
-      <div className="mb-2 shrink-0 font-semibold text-white truncate">{column}</div>
-      <div className="flex flex-col gap-0.5 overflow-y-auto">
+    <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
+      <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-white truncate">
+        {column}
+      </div>
+      <div className="flex flex-col gap-0.5 overflow-y-auto px-3 pt-3 pb-3">
         {stops.reverse().map(({ value, color: [r, g, b], stopIdx }) => {
           const dimmed = hasSelection && !legendSelection.has(stopIdx);
           const showLabel = stopIdx % 2 === 0;
