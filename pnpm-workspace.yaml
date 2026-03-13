@@ -2,13 +2,12 @@ packages:
   - 'packages/*'
 
 onlyBuiltDependencies:
-  - esbuild
   - '@rolldown/binding-darwin-arm64'
 
 catalog:
   # Build
-  vite: npm:rolldown-vite@latest
-  '@vitejs/plugin-react': ^5.1.4
+  vite: ^8.0.0
+  '@vitejs/plugin-react': ^6.0.1
 
   # React
   react: ^19.2.4

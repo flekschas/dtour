@@ -16,7 +16,7 @@ export default defineConfig({
 			formats: ['es'],
 			fileName: 'widget',
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			// Bundle everything — Jupyter has no module resolution.
 			external: [],
 		},

@@ -13,7 +13,7 @@ export default defineConfig({
       formats: ['es'],
       cssFileName: 'viewer',
     },
-    rollupOptions: {
+    rolldownOptions: {
       // Peer dependencies — consumers provide these
       external: ['react', 'react-dom', 'react/jsx-runtime', 'jotai'],
     },

@@ -9,7 +9,7 @@ export default defineConfig({
       fileName: 'scatter',
       formats: ['es'],
     },
-    rollupOptions: {
+    rolldownOptions: {
       // flechette and hyparquet are bundled in (needed inside workers)
       external: [],
     },
@@ -18,7 +18,7 @@ export default defineConfig({
     // Inline workers as Blob URLs — consumers get a single JS file,
     // no separate worker files to serve.
     format: 'es',
-    rollupOptions: {
+    rolldownOptions: {
       // Workers are self-contained; bundle all deps
     },
   },
