@@ -1,12 +1,11 @@
-<h1>
 <p align="center">
-  <img src="./assets/logo-color.svg" alt="dtour logo" width="90">
-  <br>dtour
-</h1>
-  <p align="center">
-    <span>take a d(e)tour from your usual 2D embedding visualization</span>
-  </p>
+  <img src="https://storage.googleapis.com/dtour/dtour-logo-plate.svg" alt="dtour" width="240">
 </p>
+<p align="center">
+  <em>take a detour from your usual 2D embedding visualization</em>
+</p>
+
+---
 
 **dtour** is a visualization tool for exploring high-dimensional data through guided, manual, and grand tours.
 
