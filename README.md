@@ -2,16 +2,22 @@
   <img src="https://storage.googleapis.com/dtour/dtour-logo-plate.svg" alt="dtour" width="240">
 </p>
 <p align="center">
-  <em>take a detour from your usual 2D embedding visualization</em>
+  <em>take a detour from your usual 2D embedding visualization → <a href="https://dtour.dev" target="_blank">dtour.dev</a></em>
 </p>
 
 ---
 
 **dtour** is a visualization tool for exploring high-dimensional data through guided, manual, and grand tours.
 
-- **Fast** ⚡ built with WebGPU, Web Workers, and OffscreenCanvas to scale to millions of data points
-- **Flexible** 🔄 browse the web app, integrate the viewer, or use as a widget
-- **Fingertrippy** 🖱️ play and rewind tours, manipulate axes, or get hypnotized by an endless grand tour animation
+- ⚡ **Fast**: built with WebGPU, Web Workers, and OffscreenCanvas to scale to millions of data points
+- 🔄 **Flexible**: explore data with the web app, integrate the viewer in your own React app, or use as a Python widget for data analysis
+- 🖱️ **Fingertrippy**: play and rewind tours, manipulate axes, or get hypnotized by an endless grand tour animation
+
+<p align="center">
+  <img src="https://storage.googleapis.com/dtour/dtour-teaser-60fps.gif" alt="dtour teaser" width="480">
+</p>
+
+A single 2D projection can only capture a fraction of high-dimensional structure. That's not a flaw of the embedding, it's a constraint of two axes. dtour lets you fly through multiple projections so you can build a sense for the full space.
 
 ## Web
 
