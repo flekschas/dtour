@@ -67,14 +67,13 @@ export const Gallery = ({
 
   const getBorderColor = (i: number): string | undefined => {
     const isActive = i === selectedKeyframe || i === currentKeyframe;
-    if (isActive) return 'var(--color-dtour-highlight)';
-    if (i === hoveredIndex) return '#ffffff';
+    if (isActive || i === hoveredIndex) return 'var(--color-dtour-highlight)';
     return undefined;
   };
 
   const getBorderWidth = (i: number): number | undefined => {
     const isActive = i === selectedKeyframe || i === currentKeyframe;
-    if (isActive || i === hoveredIndex) return 2;
+    if (isActive) return 2;
     return undefined;
   };
 
