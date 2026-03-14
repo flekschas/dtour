@@ -119,7 +119,7 @@ export const CircularSlider = ({
         y1={center + r1 * Math.sin(tickRad)}
         x2={center + r2 * Math.cos(tickRad)}
         y2={center + r2 * Math.sin(tickRad)}
-        stroke="#555"
+        stroke="var(--color-dtour-text-muted)"
         strokeWidth="2"
       />
     );
@@ -151,7 +151,7 @@ export const CircularSlider = ({
         cy={center}
         r={radius}
         fill="none"
-        stroke="#333"
+        stroke="var(--color-dtour-border)"
         strokeWidth="3"
         className="pointer-events-none"
       />
@@ -169,7 +169,7 @@ export const CircularSlider = ({
         />
       )}
       {/* Center dot */}
-      <circle cx={center} cy={center} r="3" fill="#666" className="pointer-events-none" />
+      <circle cx={center} cy={center} r="3" fill="var(--color-dtour-text-muted)" className="pointer-events-none" />
       {/* Transparent hit area for handle — larger for easier grabbing */}
       <circle
         cx={handleX}
@@ -187,7 +187,7 @@ export const CircularSlider = ({
         cy={handleY}
         r="8"
         fill="var(--color-dtour-highlight)"
-        stroke="#1a1a2e"
+        stroke="var(--color-dtour-bg)"
         strokeWidth="2"
         className="pointer-events-none"
       />

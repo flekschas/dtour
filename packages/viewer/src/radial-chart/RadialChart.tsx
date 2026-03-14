@@ -181,7 +181,7 @@ export const RadialChart = ({
           className="absolute pointer-events-none z-50"
           style={{ left: hover.x, top: hover.y, transform: 'translate(-50%, -50%)' }}
         >
-          <div className="rounded bg-white px-3 py-1.5 text-xs text-black shadow-[0_1px_4px_rgba(0,0,0,0.6)] whitespace-nowrap">
+          <div className="rounded bg-dtour-highlight px-3 py-1.5 text-xs text-dtour-bg shadow-[0_1px_4px_rgba(0,0,0,0.6)] whitespace-nowrap">
             {hover.label}: {hover.value.toFixed(3)}
           </div>
         </div>

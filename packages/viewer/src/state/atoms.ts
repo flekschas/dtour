@@ -143,6 +143,22 @@ export const legendSelectionAtom = atom<Set<number> | null>(null);
 export const legendClearGenAtom = atom(0);
 
 // ---------------------------------------------------------------------------
+// Theme — light/dark mode with system preference support
+// ---------------------------------------------------------------------------
+
+/** User preference: explicit light/dark or follow system. */
+export const themeModeAtom = atom<'light' | 'dark' | 'system'>('dark');
+
+/** Tracks the OS-level color scheme. Updated by useSystemTheme hook. */
+export const systemThemeAtom = atom<'light' | 'dark'>('dark');
+
+/** Resolved theme after applying system preference. */
+export const resolvedThemeAtom = atom<'light' | 'dark'>((get) => {
+  const mode = get(themeModeAtom);
+  return mode === 'system' ? get(systemThemeAtom) : mode;
+});
+
+// ---------------------------------------------------------------------------
 // Settings persistence — localStorage keyed by data name
 // ---------------------------------------------------------------------------
 

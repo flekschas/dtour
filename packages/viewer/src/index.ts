@@ -46,6 +46,9 @@ export {
   // Legend
   showLegendAtom,
   legendVisibleAtom,
+  // Theme
+  themeModeAtom,
+  resolvedThemeAtom,
   // Read-only
   metadataAtom,
 } from './state/atoms.ts';

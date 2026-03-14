@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
-import { activeColumnsAtom, dataNameAtom, pointColorAtom, showLegendAtom } from '../state/atoms.ts';
+import { activeColumnsAtom, dataNameAtom, pointColorAtom, showLegendAtom, themeModeAtom } from '../state/atoms.ts';
 import { loadSettings, saveSettings } from '../state/settings-persistence.ts';
 
 /**
@@ -18,6 +18,8 @@ export const useSettingsPersistence = () => {
   const setActiveColumns = useSetAtom(activeColumnsAtom);
   const showLegend = useAtomValue(showLegendAtom);
   const setShowLegend = useSetAtom(showLegendAtom);
+  const themeMode = useAtomValue(themeModeAtom);
+  const setThemeMode = useSetAtom(themeModeAtom);
 
   // Track whether restore has fired for this dataName to avoid
   // save-on-initial-restore loops.
@@ -44,8 +46,11 @@ export const useSettingsPersistence = () => {
       if (saved.showLegend !== undefined) {
         setShowLegend(saved.showLegend);
       }
+      if (saved.themeMode !== undefined) {
+        setThemeMode(saved.themeMode);
+      }
     }
-  }, [dataName, setPointColor, setActiveColumns, setShowLegend]);
+  }, [dataName, setPointColor, setActiveColumns, setShowLegend, setThemeMode]);
 
   // Save settings when pointColor or activeColumns changes
   useEffect(() => {
@@ -63,6 +68,7 @@ export const useSettingsPersistence = () => {
       activeColumns:
         activeColumns === null ? null : Array.from(activeColumns).sort((a, b) => a - b),
       showLegend,
+      themeMode,
     });
-  }, [pointColor, activeColumns, showLegend, dataName]);
+  }, [pointColor, activeColumns, showLegend, themeMode, dataName]);
 };

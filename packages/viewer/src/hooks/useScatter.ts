@@ -13,6 +13,7 @@ import {
   metadataAtom,
   paletteAtom,
   pointColorAtom,
+  resolvedThemeAtom,
   tourPositionAtom,
 } from '../state/atoms.ts';
 import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from '../state/auto-style.ts';
@@ -35,6 +36,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const zoom = useAtomValue(cameraZoomAtom);
   const backgroundColor = useAtomValue(backgroundColorAtom);
   const palette = useAtomValue(paletteAtom);
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const legendSelection = useAtomValue(legendSelectionAtom);
@@ -74,9 +76,9 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     } else {
       // Column name — encode per-point colors via data worker
       scatter.setStyle({ pointSize, opacity });
-      scatter.encodeColor(color, palette);
+      scatter.encodeColor(color, palette, resolvedTheme);
     }
-  }, [scatter, pointSize, opacity, color, palette]);
+  }, [scatter, pointSize, opacity, color, palette, resolvedTheme]);
 
   // Forward legend selection → scatter.selectByColumn
   useEffect(() => {

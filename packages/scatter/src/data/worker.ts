@@ -2,7 +2,7 @@
 
 import { encodeCategoricalColors, encodeContinuousColors } from './color.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
-import { GLASBEY_DARK, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
+import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';
 import type { CategoricalColumn } from './types.ts';
 
@@ -96,16 +96,18 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
   if (msg.type === 'encodeColor') {
     if (!gpuPort) return;
 
-    const { column, palette } = msg;
+    const { column, palette, theme } = msg;
+    const isLight = theme === 'light';
 
     // Check categorical columns first
     const cat = categoricalData.get(column);
     if (cat) {
+      const glasbey = isLight ? GLASBEY_LIGHT : GLASBEY_DARK;
       const pal = cat.labels.length <= OKABE_ITO.length
         ? OKABE_ITO
         : [
             ...OKABE_ITO,
-            ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / GLASBEY_DARK.length)).fill(undefined).flatMap(() => GLASBEY_DARK)
+            ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
           ] as [number, number, number][];
       const colors = encodeCategoricalColors(cat.indices, pal);
       gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
@@ -117,7 +119,9 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     if (numCol) {
       const min = numericMins.get(column) ?? 0;
       const range = numericRanges.get(column) ?? 1;
-      const colors = encodeContinuousColors(numCol, min, range, palette === 'magma' ? MAGMA_25 : VIRIDIS_25);
+      const baseCmap = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
+      const cmap = isLight ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
+      const colors = encodeContinuousColors(numCol, min, range, cmap);
       gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
     }
   }

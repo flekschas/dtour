@@ -1,4 +1,4 @@
-import { GLASBEY_DARK, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from '@dtour/scatter';
+import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback } from 'react';
 import {
@@ -7,6 +7,7 @@ import {
   metadataAtom,
   paletteAtom,
   pointColorAtom,
+  resolvedThemeAtom,
 } from '../state/atoms.ts';
 
 const handleSwatchClick = (
@@ -54,6 +55,7 @@ export const ColorLegend = () => {
   const metadata = useAtomValue(metadataAtom);
   const pointColor = useAtomValue(pointColorAtom);
   const palette = useAtomValue(paletteAtom);
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const [legendSelection, setLegendSelection] = useAtom(legendSelectionAtom);
   const setClearGen = useSetAtom(legendClearGenAtom);
 
@@ -72,15 +74,16 @@ export const ColorLegend = () => {
 
   if (isCategorical) {
     const labels = metadata.categoricalLabels[column] ?? [];
+    const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
     const colors = labels.length <= OKABE_ITO.length
     ? OKABE_ITO
     : [
         ...OKABE_ITO,
-        ...Array(Math.ceil((labels.length - OKABE_ITO.length) / GLASBEY_DARK.length)).fill(undefined).flatMap(() => GLASBEY_DARK)
+        ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
       ] as [number, number, number][];
     return (
       <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
-        <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-white truncate">
+        <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-dtour-highlight truncate">
           {column}
         </div>
         <div className="flex flex-col gap-1.5 overflow-y-auto px-3 pt-3 pb-3">
@@ -91,7 +94,7 @@ export const ColorLegend = () => {
               <button
                 key={label}
                 type="button"
-                className={`flex items-center gap-2 min-w-0 cursor-pointer rounded px-1 py-0.5 transition-opacity hover:bg-white/10 ${dimmed ? 'opacity-35' : 'opacity-100'}`}
+                className={`flex items-center gap-2 min-w-0 cursor-pointer rounded px-1 py-0.5 transition-opacity hover:bg-dtour-highlight/10 ${dimmed ? 'opacity-35' : 'opacity-100'}`}
                 onClick={(e) => onSwatchClick(i, e)}
               >
                 <span
@@ -116,7 +119,8 @@ export const ColorLegend = () => {
   // 13 stops from 25-entry cmap (step 2): labeled on even stopIdx, unlabeled in between
   const step = 2;
   const stops: { value: number; color: [number, number, number]; stopIdx: number }[] = [];
-  const cmap = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
+  const baseCmap = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
+  const cmap = resolvedTheme === 'light' ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
   for (let i = 0; i < cmap.length; i += step) {
     const t = i / (cmap.length - 1);
     stops.push({ value: min + t * (max - min), color: cmap[i]!, stopIdx: i / step });
@@ -124,7 +128,7 @@ export const ColorLegend = () => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
-      <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-white truncate">
+      <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-dtour-highlight truncate">
         {column}
       </div>
       <div className="flex flex-col gap-0.5 overflow-y-auto px-3 pt-3 pb-3">
@@ -135,7 +139,7 @@ export const ColorLegend = () => {
             <button
               key={value}
               type="button"
-              className={`flex items-center gap-2 min-w-0 cursor-pointer rounded px-1 py-0.5 transition-opacity hover:bg-white/10 ${dimmed ? 'opacity-35' : 'opacity-100'}`}
+              className={`flex items-center gap-2 min-w-0 cursor-pointer rounded px-1 py-0.5 transition-opacity hover:bg-dtour-highlight/10 ${dimmed ? 'opacity-35' : 'opacity-100'}`}
               onClick={(e) => onSwatchClick(stopIdx, e)}
             >
               <span

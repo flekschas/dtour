@@ -14,6 +14,19 @@
   --color-dtour-highlight: #ffffff;
 }
 
+/* --- Light theme overrides --- */
+
+:where(.dtour-light) {
+  --color-dtour-bg: #ffffff;
+  --color-dtour-surface: #f0f0f0;
+  --color-dtour-border: #d0d0d0;
+  --color-dtour-text: #333333;
+  --color-dtour-text-muted: #777777;
+  --color-dtour-accent: #2060c0;
+  --color-dtour-accent-hover: #1850a8;
+  --color-dtour-highlight: #000000;
+}
+
 /* --- Animation easing utility for tw-animate-css --- */
 
 @utility animate-ease-out {

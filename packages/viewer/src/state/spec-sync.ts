@@ -14,6 +14,7 @@ import {
   previewPaddingAtom,
   previewScaleAtom,
   showLegendAtom,
+  themeModeAtom,
   tourDirectionAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -60,6 +61,7 @@ const SPEC_ATOM_MAP = {
   cameraZoom: entry(cameraZoomAtom),
   viewMode: entry(viewModeAtom),
   showLegend: entry(showLegendAtom),
+  themeMode: entry(themeModeAtom),
 } as const;
 
 type SpecKey = keyof typeof SPEC_ATOM_MAP;

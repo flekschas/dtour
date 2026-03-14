@@ -172,7 +172,7 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
               y1={cy}
               x2={lineEndX}
               y2={lineEndY}
-              stroke="#000"
+              stroke="var(--color-dtour-bg)"
               strokeWidth={3}
               strokeOpacity={0.6}
             />
@@ -192,7 +192,7 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
               cy={lineEndY}
               r={HANDLE_RADIUS}
               fill={color}
-              stroke="#000"
+              stroke="var(--color-dtour-bg)"
               strokeWidth={1}
               className="cursor-grab pointer-events-auto"
               onPointerDown={(e) => handlePointerDown(d, e)}
@@ -210,7 +210,7 @@ export const AxisOverlay = ({ scatter, width, height }: AxisOverlayProps) => {
               fontFamily="monospace"
               textAnchor={bx >= 0 ? 'start' : 'end'}
               className="pointer-events-none select-none"
-              stroke="black"
+              stroke="var(--color-dtour-bg)"
               strokeWidth={2}
               paintOrder="stroke"
             >

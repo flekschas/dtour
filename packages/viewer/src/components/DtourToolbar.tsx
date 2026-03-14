@@ -6,18 +6,21 @@ import {
   GaugeIcon,
   ImageSquareIcon,
   MagnifyingGlassMinusIcon,
+  MonitorIcon,
+  MoonIcon,
   PaintBrushIcon,
   PathIcon,
   PauseIcon,
   PlayIcon,
   SidebarSimpleIcon,
+  SunIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useRef, useState } from 'react';
-import { usePortalContainer } from '../portal-container.tsx';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
+import { usePortalContainer } from '../portal-container.tsx';
 import {
   activeColumnsAtom,
   cameraZoomAtom,
@@ -30,6 +33,7 @@ import {
   previewScaleAtom,
   selectedKeyframeAtom,
   showLegendAtom,
+  themeModeAtom,
   tourPlayingAtom,
   tourSpeedAtom,
   viewModeAtom,
@@ -76,6 +80,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
+  const [themeMode, setThemeMode] = useAtom(themeModeAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,7 +165,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
       {/* Left: branding + mode switcher */}
       <div className="flex items-center gap-2">
-        <div className="relative text-sm font-semibold tracking-wide text-white">
+        <div className="relative text-sm font-semibold tracking-wide text-dtour-highlight">
           <div className="opacity-0 pointer-events-none">dtour</div>
           <div className="absolute inset-0" data-logo-target>
             <Logo />
@@ -172,7 +177,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
               key={mode}
               variant="ghost"
               size="sm"
-              className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-white' : 'text-dtour-text-muted'}`}
+              className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
               onClick={() => {
                 if (viewMode === 'grand') {
                   if (mode === 'grand') {
@@ -224,7 +229,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 }}
                 className="h-[120px]"
               />
-              <span className="text-xs font-medium text-white">{zoomToDistance(zoom)}x</span>
+              <span className="text-xs font-medium text-dtour-highlight">{zoomToDistance(zoom)}x</span>
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
@@ -276,7 +281,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                   }}
                   className="h-[120px]"
                 />
-                <span className="text-xs font-medium text-white">{speed}x</span>
+                <span className="text-xs font-medium text-dtour-highlight">{speed}x</span>
               </Popover.Content>
             </Popover.Portal>
           </Popover.Root>
@@ -402,6 +407,20 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             No data
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setThemeMode((m) => m === 'dark' ? 'light' : m === 'light' ? 'system' : 'dark')}
+          title={`Theme: ${themeMode === 'dark' ? 'Dark' : themeMode === 'light' ? 'Light' : 'System'}`}
+        >
+          {themeMode === 'dark' ? (
+            <MoonIcon size={16} weight="fill" />
+          ) : themeMode === 'light' ? (
+            <SunIcon size={16} weight="fill" />
+          ) : (
+            <MonitorIcon size={16} weight="fill" />
+          )}
+        </Button>
         {activeColorColumn && (
           <Button
             variant="ghost"
@@ -454,7 +473,7 @@ const ColumnRow = ({
         onToggleColor();
       }}
       className={`shrink-0 cursor-pointer rounded p-1 transition-[color,transform] active:scale-[0.85] ${
-        isColorActive ? 'bg-dtour-highlight text-black' : 'text-dtour-text-muted hover:text-white'
+        isColorActive ? 'bg-dtour-highlight text-dtour-bg' : 'text-dtour-text-muted hover:text-dtour-highlight'
       }`}
       title={isColorActive ? `Stop coloring by ${name}` : `Color by ${name}`}
     >
@@ -502,7 +521,7 @@ function PreviewStepSlider<T extends number>({
         }}
         className="h-[120px]"
       />
-      <span className="text-xs font-medium text-white">{display}</span>
+      <span className="text-xs font-medium text-dtour-highlight">{display}</span>
     </>
   );
 }

@@ -6,4 +6,4 @@ export { createScatter } from './gpu/client.ts';
 export type { ScatterOptions, ScatterInstance, ScatterStatus } from './gpu/client.ts';
 export type { Metadata } from './data/types.ts';
 export { computeArcLengths, interpolateAtPosition } from './tour/arc-length.ts';
-export { OKABE_ITO, GLASBEY_DARK, VIRIDIS_25, MAGMA_25 } from './data/palettes.ts';
+export { OKABE_ITO, GLASBEY_DARK, GLASBEY_LIGHT, VIRIDIS_25, MAGMA_25 } from './data/palettes.ts';

@@ -22,6 +22,7 @@ export const dtourSpecSchema = z.object({
   cameraZoom: z.number().positive().optional(),
   viewMode: z.enum(['guided', 'manual', 'grand']).optional(),
   showLegend: z.boolean().optional(),
+  themeMode: z.enum(['light', 'dark', 'system']).optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
@@ -43,4 +44,5 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   cameraZoom: 1 / 1.5,
   viewMode: 'guided',
   showLegend: true,
+  themeMode: 'dark',
 };

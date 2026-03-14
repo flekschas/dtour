@@ -7,14 +7,17 @@ import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSettingsPersistence } from './hooks/useSettingsPersistence.ts';
+import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
 import {
+  backgroundColorAtom,
   dataNameAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
   pointColorAtom,
+  resolvedThemeAtom,
   viewModeAtom,
 } from './state/atoms.ts';
 import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
@@ -125,6 +128,14 @@ const DtourInner = ({
   useSpecSync(spec, onSpecChange);
   useModeCycling();
   useSettingsPersistence();
+  useSystemTheme();
+
+  // Sync resolved theme → background color + CSS class
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const setBackgroundColor = useSetAtom(backgroundColorAtom);
+  useEffect(() => {
+    setBackgroundColor(resolvedTheme === 'light' ? [1, 1, 1] : [0, 0, 0]);
+  }, [resolvedTheme, setBackgroundColor]);
 
   // Sync dataName prop → atom for settings persistence
   const setDataName = useSetAtom(dataNameAtom);
@@ -196,7 +207,7 @@ const DtourInner = ({
   const displayWidth = legendVisible ? sidebarWidth : 0;
 
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden flex">
+    <div ref={containerRef} className={`relative w-full h-full overflow-hidden flex ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}>
       {/* Canvas panel — grows to fill remaining space */}
       <div className="relative flex-1 min-w-0">
         {/* Toolbar — inside left panel so it shrinks with the legend */}
@@ -223,7 +234,7 @@ const DtourInner = ({
       <div
         className={`w-px shrink-0 transition-colors ${
           legendVisible
-            ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-white'
+            ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-dtour-highlight'
             : 'pointer-events-none'
         }`}
         onMouseDown={onHandleMouseDown}
