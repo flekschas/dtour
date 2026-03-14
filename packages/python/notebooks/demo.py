@@ -1,8 +1,3 @@
-# /// script
-# [tool.marimo.display]
-# theme = "dark"
-# ///
-
 import marimo
 
 __generated_with = "0.20.2"
@@ -40,7 +35,7 @@ def _(df, dtour, pl, tour):
         preview_count=8,
         point_color="faustLabels",
         metric_bar_width=24,
-        height=960
+        height=960,
     )
     w
     return (w,)

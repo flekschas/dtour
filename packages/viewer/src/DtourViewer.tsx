@@ -1,4 +1,4 @@
-import { computeArcLengths, createScatter, interpolateAtPosition } from '@dtour/scatter';
+import { GLASBEY_DARK, OKABE_ITO, computeArcLengths, createScatter, interpolateAtPosition } from '@dtour/scatter';
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -21,7 +21,9 @@ import {
   canvasSizeAtom,
   currentBasisAtom,
   guidedSuspendedAtom,
+  legendSelectionAtom,
   metadataAtom,
+  pointColorAtom,
   previewCountAtom,
   previewScaleAtom,
   tourPlayingAtom,
@@ -127,6 +129,41 @@ export const DtourViewer = ({
     [metrics, metricTracks, metricBarWidth],
   );
 
+  // Override confusion track color: white by default, label palette color on single selection
+  const legendSelection = useAtomValue(legendSelectionAtom);
+  const pointColor = useAtomValue(pointColorAtom);
+
+  const coloredTracks = useMemo(() => {
+    if (parsedTracks.length === 0) return parsedTracks;
+    const confusionIdx = parsedTracks.findIndex((t) => t.label === 'confusion');
+    if (confusionIdx === -1) return parsedTracks;
+
+    let confusionColor = '#ffffff';
+
+    if (
+      legendSelection &&
+      legendSelection.size === 1 &&
+      typeof pointColor === 'string' &&
+      metadata?.categoricalColumnNames.includes(pointColor)
+    ) {
+      const selectedIndex = legendSelection.values().next().value as number;
+      const labels = metadata.categoricalLabels[pointColor] ?? [];
+      const colors =
+        labels.length <= OKABE_ITO.length
+          ? OKABE_ITO
+          : ([...OKABE_ITO, ...GLASBEY_DARK] as [number, number, number][]);
+      const [r, g, b] = colors[selectedIndex % colors.length]!;
+      confusionColor = `rgb(${r},${g},${b})`;
+    }
+
+    const currentTrack = parsedTracks[confusionIdx]!;
+    if (currentTrack.color === confusionColor) return parsedTracks;
+
+    const result = [...parsedTracks];
+    result[confusionIdx] = { ...currentTrack, color: confusionColor };
+    return result;
+  }, [parsedTracks, legendSelection, pointColor, metadata]);
+
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatterRef.current);
 
@@ -208,9 +245,9 @@ export const DtourViewer = ({
         isToolbarVisible,
         SELECTOR_PADDING,
         previewScale,
-        parsedTracks.length,
+        coloredTracks.length,
       ),
-    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale, parsedTracks.length],
+    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale, coloredTracks.length],
   );
 
   // Initialize scatter — create main + preview canvases imperatively
@@ -435,10 +472,10 @@ export const DtourViewer = ({
         {isGuidedMode && hasData && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             {/* Radial chart — behind selector */}
-            {parsedTracks.length > 0 && (
+            {coloredTracks.length > 0 && (
               <div className="absolute">
                 <RadialChart
-                  tracks={parsedTracks}
+                  tracks={coloredTracks}
                   keyframeCount={tickCount}
                   position={position}
                   size={selectorSize}

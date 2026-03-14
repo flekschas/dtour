@@ -48,7 +48,8 @@ class Widget(anywidget.AnyWidget):
     """
 
     _esm = _STATIC / "widget.js"
-    _css = _STATIC / "widget.css"
+    # CSS is inlined into the JS bundle and injected into the Shadow DOM
+    # at runtime — no separate _css file needed.
 
     # ── DtourSpec fields (flat traitlets, snake_case) ────────────────────
     tour_position = t.Float(0.0).tag(sync=True)
@@ -77,6 +78,9 @@ class Widget(anywidget.AnyWidget):
         [t.Int(), t.Unicode()],
         default_value="full",
     ).tag(sync=True)
+
+    # ── Selection state (JS → Python) ───────────────────────────────────
+    selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
 
     # ── Layout ───────────────────────────────────────────────────────────
     height = t.Int(720).tag(sync=True)

@@ -1,6 +1,7 @@
 import { createRender, useModel } from '@anywidget/react';
 import { Dtour } from '@dtour/viewer';
-import '@dtour/viewer/dist/viewer.css';
+// Import CSS as a string so we can inject it into the Shadow DOM
+import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import type { DtourSpec } from '@dtour/viewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -76,6 +77,25 @@ function Widget() {
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
   const suppressRef = useRef(false);
 
+  // Detect Shadow DOM and create a dedicated portal container inside it so
+  // Radix popovers/dropdowns/tooltips render within the shadow boundary and
+  // inherit scoped styles instead of escaping to document.body.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | undefined>();
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const root = el.getRootNode();
+    if (root instanceof ShadowRoot) {
+      const portal = document.createElement('div');
+      portal.setAttribute('data-dtour-portal', '');
+      root.appendChild(portal);
+      setPortalContainer(portal);
+      return () => portal.remove();
+    }
+  }, []);
+
   // Custom messages → data / views / metrics (binary buffers from Python)
   useEffect(() => {
     // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
@@ -128,6 +148,15 @@ function Widget() {
     [model],
   );
 
+  // Selection → traitlet sync (JS → Python)
+  const handleSelectionChange = useCallback(
+    (labels: string[]) => {
+      model.set('selected_labels', labels);
+      model.save_changes();
+    },
+    [model],
+  );
+
   const height: number = model.get('height') ?? 600;
   const [metricBarWidth, setMetricBarWidth] = useState<'full' | number>(
     () => model.get('metric_bar_width') ?? 'full',
@@ -142,7 +171,7 @@ function Widget() {
   }, [model]);
 
   return (
-    <div className="w-full" style={{ height: `${height}px`, position: 'relative' }}>
+    <div ref={wrapperRef} className="w-full" style={{ height: `${height}px`, position: 'relative' }}>
       <Dtour
         data={data}
         views={views}
@@ -150,9 +179,38 @@ function Widget() {
         metricBarWidth={metricBarWidth}
         spec={spec}
         onSpecChange={handleSpecChange}
+        onSelectionChange={handleSelectionChange}
+        portalContainer={portalContainer}
       />
     </div>
   );
 }
 
-export default { render: createRender(Widget) };
+// ---------------------------------------------------------------------------
+// Shadow DOM render wrapper
+// ---------------------------------------------------------------------------
+// anywidget's createRender handles the React root + model context.
+// We wrap it to mount everything inside a Shadow DOM for style isolation.
+
+const innerRender = createRender(Widget);
+
+export default {
+  // biome-ignore lint/suspicious/noExplicitAny: anywidget render protocol
+  render(props: any) {
+    const shadow = (props.el as HTMLElement).attachShadow({ mode: 'open' });
+
+    // Inject scoped CSS into the shadow root (not <head>)
+    const style = document.createElement('style');
+    style.textContent = viewerCss;
+    shadow.appendChild(style);
+
+    // React mounts into this container
+    const container = document.createElement('div');
+    container.style.width = '100%';
+    container.style.height = '100%';
+    shadow.appendChild(container);
+
+    // Forward all props (model, experimental, etc.) with el swapped
+    return innerRender({ ...props, el: container });
+  },
+};

@@ -2,13 +2,21 @@ import type { ScatterStatus } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
+import { PortalContainerContext } from './portal-container.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSettingsPersistence } from './hooks/useSettingsPersistence.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
-import { dataNameAtom, legendVisibleAtom, viewModeAtom } from './state/atoms.ts';
+import {
+  dataNameAtom,
+  legendSelectionAtom,
+  legendVisibleAtom,
+  metadataAtom,
+  pointColorAtom,
+  viewModeAtom,
+} from './state/atoms.ts';
 import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
 export type DtourProps = {
@@ -34,6 +42,10 @@ export type DtourProps = {
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
   /** Name identifying the current dataset (e.g. filename). Used as localStorage key for settings persistence. */
   dataName?: string;
+  /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
+  onSelectionChange?: (labels: string[]) => void;
+  /** Element to portal Radix popups into (for Shadow DOM isolation). When omitted, portals render into document.body as usual. */
+  portalContainer?: HTMLElement;
 };
 
 export const Dtour = ({
@@ -48,6 +60,8 @@ export const Dtour = ({
   hideToolbar = false,
   onLoadData,
   dataName,
+  onSelectionChange,
+  portalContainer,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -59,21 +73,24 @@ export const Dtour = ({
   }, []);
 
   return (
-    <Provider store={store}>
-      <DtourInner
-        data={data}
-        views={views}
-        metrics={metrics}
-        metricTracks={metricTracks}
-        metricBarWidth={metricBarWidth}
-        spec={spec}
-        onSpecChange={onSpecChange}
-        onStatus={onStatus}
-        hideToolbar={hideToolbar}
-        onLoadData={onLoadData}
-        dataName={dataName}
-      />
-    </Provider>
+    <PortalContainerContext.Provider value={portalContainer}>
+      <Provider store={store}>
+        <DtourInner
+          data={data}
+          views={views}
+          metrics={metrics}
+          metricTracks={metricTracks}
+          metricBarWidth={metricBarWidth}
+          spec={spec}
+          onSpecChange={onSpecChange}
+          onStatus={onStatus}
+          hideToolbar={hideToolbar}
+          onLoadData={onLoadData}
+          dataName={dataName}
+          onSelectionChange={onSelectionChange}
+        />
+      </Provider>
+    </PortalContainerContext.Provider>
   );
 };
 
@@ -90,6 +107,7 @@ const DtourInner = ({
   hideToolbar,
   onLoadData,
   dataName,
+  onSelectionChange,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -102,6 +120,7 @@ const DtourInner = ({
   hideToolbar: boolean;
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
   dataName: string | undefined;
+  onSelectionChange: ((labels: string[]) => void) | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
@@ -112,6 +131,30 @@ const DtourInner = ({
   useEffect(() => {
     setDataName(dataName ?? null);
   }, [dataName, setDataName]);
+
+  // Forward legend selection changes to the parent as label name strings
+  const legendSelection = useAtomValue(legendSelectionAtom);
+  const pointColor = useAtomValue(pointColorAtom);
+  const metadata = useAtomValue(metadataAtom);
+
+  useEffect(() => {
+    if (!onSelectionChange) return;
+
+    if (typeof pointColor !== 'string' || !metadata) return;
+    if (!metadata.categoricalColumnNames.includes(pointColor)) return;
+
+    if (!legendSelection || legendSelection.size === 0) {
+      onSelectionChange([]);
+      return;
+    }
+
+    const allLabels = metadata.categoricalLabels[pointColor] ?? [];
+    const selectedLabels = Array.from(legendSelection)
+      .map((i) => allLabels[i])
+      .filter((l): l is string => l !== undefined);
+
+    onSelectionChange(selectedLabels.length > 0 ? selectedLabels : []);
+  }, [legendSelection, pointColor, metadata, onSelectionChange]);
 
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';

@@ -1,6 +1,7 @@
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/utils.ts';
+import { usePortalContainer } from '../../portal-container.tsx';
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -9,8 +10,10 @@ export const DropdownMenuContent = ({
   className,
   sideOffset = 4,
   ...props
-}: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>) => (
-  <DropdownMenuPrimitive.Portal>
+}: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>) => {
+  const container = usePortalContainer();
+  return (
+  <DropdownMenuPrimitive.Portal container={container}>
     <DropdownMenuPrimitive.Content
       sideOffset={sideOffset}
       className={cn(
@@ -21,7 +24,8 @@ export const DropdownMenuContent = ({
       {...props}
     />
   </DropdownMenuPrimitive.Portal>
-);
+  );
+};
 
 export const DropdownMenuItem = ({
   className,

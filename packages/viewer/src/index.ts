@@ -7,6 +7,9 @@ export type { DtourProps } from './Dtour.tsx';
 export type { DtourSpec } from './spec.ts';
 export { dtourSpecSchema, DTOUR_DEFAULTS } from './spec.ts';
 
+// Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
+export { PortalContainerContext } from './portal-container.tsx';
+
 // Advanced composable API — for users who need granular control with their own Provider
 export { DtourViewer } from './DtourViewer.tsx';
 export type { DtourViewerProps } from './DtourViewer.tsx';

@@ -15,6 +15,7 @@ import {
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useRef, useState } from 'react';
+import { usePortalContainer } from '../portal-container.tsx';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import {
@@ -76,6 +77,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
 
+  const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Activate the rAF playback loop
@@ -202,7 +204,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
               <MagnifyingGlassMinusIcon size={16} />
             </Button>
           </Popover.Trigger>
-          <Popover.Portal>
+          <Popover.Portal container={portalContainer}>
             <Popover.Content
               side="bottom"
               align="center"
@@ -254,7 +256,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 <GaugeIcon size={16} />
               </Button>
             </Popover.Trigger>
-            <Popover.Portal>
+            <Popover.Portal container={portalContainer}>
               <Popover.Content
                 side="bottom"
                 align="center"
@@ -287,7 +289,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 <ImageSquareIcon size={16} />
               </Button>
             </Popover.Trigger>
-            <Popover.Portal>
+            <Popover.Portal container={portalContainer}>
               <Popover.Content
                 side="bottom"
                 align="center"

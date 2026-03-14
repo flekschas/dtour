@@ -20,7 +20,7 @@ export default defineConfig({
 			// Bundle everything — Jupyter has no module resolution.
 			external: [],
 		},
-		// Emit CSS as a separate file (loaded via anywidget _css)
+		// CSS is inlined into JS (injected into Shadow DOM at runtime)
 		cssCodeSplit: false,
 	},
 	worker: {
