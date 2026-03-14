@@ -20,6 +20,8 @@ export type DtourProps = {
   metrics?: ArrayBuffer;
   /** Track configuration for radial bar charts. When omitted, all metrics are shown with defaults. */
   metricTracks?: RadialTrackConfig[];
+  /** Global bar width override for radial charts ('full' or px). */
+  metricBarWidth?: 'full' | number;
   /** Partial spec controlling component state. Omitted fields use defaults. */
   spec?: DtourSpec;
   /** Fires when internal state changes (debounced ~250ms). Full resolved spec. */
@@ -39,6 +41,7 @@ export const Dtour = ({
   views,
   metrics,
   metricTracks,
+  metricBarWidth,
   spec,
   onSpecChange,
   onStatus,
@@ -62,6 +65,7 @@ export const Dtour = ({
         views={views}
         metrics={metrics}
         metricTracks={metricTracks}
+        metricBarWidth={metricBarWidth}
         spec={spec}
         onSpecChange={onSpecChange}
         onStatus={onStatus}
@@ -79,6 +83,7 @@ const DtourInner = ({
   views,
   metrics,
   metricTracks,
+  metricBarWidth,
   spec,
   onSpecChange,
   onStatus,
@@ -90,6 +95,7 @@ const DtourInner = ({
   views: Float32Array[] | undefined;
   metrics: ArrayBuffer | undefined;
   metricTracks: RadialTrackConfig[] | undefined;
+  metricBarWidth: 'full' | number | undefined;
   spec: DtourSpec | undefined;
   onSpecChange: ((spec: Required<DtourSpec>) => void) | undefined;
   onStatus: ((status: ScatterStatus) => void) | undefined;
@@ -100,10 +106,6 @@ const DtourInner = ({
   useSpecSync(spec, onSpecChange);
   useModeCycling();
   useSettingsPersistence();
-
-  const [mounted, setMounted] = useState(false);
-
-  const viewerRef = useRef<HTMLDivElement>(null);
 
   // Sync dataName prop → atom for settings persistence
   const setDataName = useSetAtom(dataNameAtom);
@@ -148,19 +150,6 @@ const DtourInner = ({
     [legendVisible],
   );
 
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
-    const ro = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const { width, height } = entry.contentRect;
-      console.log(width, height);
-    });
-    ro.observe(viewer);
-    setMounted(true);
-    return () => ro.disconnect();
-  }, []);
-
   const displayWidth = legendVisible ? sidebarWidth : 0;
 
   return (
@@ -175,17 +164,16 @@ const DtourInner = ({
         >
           <DtourToolbar onLoadData={onLoadData} />
         </div>
-        <div ref={viewerRef} className="absolute inset-0 overflow-hidden">
-          {mounted && (
-            <DtourViewer
-              data={data}
-              views={views}
-              metrics={metrics}
-              metricTracks={metricTracks}
-              onStatus={onStatus}
-              toolbarHeight={hideToolbar ? 0 : 40}
-            />
-          )}
+        <div className="absolute inset-0 overflow-hidden">
+          <DtourViewer
+            data={data}
+            views={views}
+            metrics={metrics}
+            metricTracks={metricTracks}
+            metricBarWidth={metricBarWidth}
+            onStatus={onStatus}
+            toolbarHeight={hideToolbar ? 0 : 40}
+          />
         </div>
       </div>
       {/* Drag handle */}

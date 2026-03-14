@@ -1,10 +1,4 @@
-import { useMemo } from 'react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../components/ui/tooltip.tsx';
+import { useCallback, useMemo, useState } from 'react';
 import { arcPath, keyframeAngle } from './arc-path.ts';
 import type { ParsedTrack } from './types.ts';
 
@@ -20,7 +14,10 @@ export type RadialChartProps = {
 };
 
 const TRACK_GAP = 2;
+const STACK_GAP = 1;
 const BAR_PAD_RAD = 0.02; // angular padding between bars in radians
+
+type HoverInfo = { label: string; value: number; x: number; y: number };
 
 export const RadialChart = ({
   tracks,
@@ -30,9 +27,24 @@ export const RadialChart = ({
   innerRadius,
 }: RadialChartProps) => {
   const center = size / 2;
+  const [hover, setHover] = useState<HoverInfo | null>(null);
 
-  // Compute radial layout for each track (cumulative offsets)
+  const handleEnter = useCallback(
+    (label: string, value: number, x: number, y: number) => {
+      setHover({ label, value, x, y });
+    },
+    [],
+  );
+
+  const handleLeave = useCallback(() => {
+    setHover(null);
+  }, []);
+
+  const stacked = tracks.length > 0 && tracks.every((t) => t.barWidth !== 'full');
+
+  // Track-based layout: each track gets its own radial band
   const trackLayout = useMemo(() => {
+    if (stacked) return [];
     let offset = innerRadius + TRACK_GAP;
     return tracks.map((t) => {
       const rInner = offset;
@@ -40,7 +52,7 @@ export const RadialChart = ({
       offset = rOuter + TRACK_GAP;
       return { rInner, rOuter };
     });
-  }, [tracks, innerRadius]);
+  }, [tracks, innerRadius, stacked]);
 
   // Flanking keyframes based on current position
   const fractionalIndex = position * keyframeCount;
@@ -48,6 +60,7 @@ export const RadialChart = ({
   const rightKf = (leftKf + 1) % keyframeCount;
 
   const segmentAngle = (2 * Math.PI) / keyframeCount;
+  const baseR = innerRadius + STACK_GAP;
 
   if (import.meta.env.DEV) {
     for (const track of tracks) {
@@ -59,65 +72,120 @@ export const RadialChart = ({
     }
   }
 
+  // Stacked mode: bars share a common baseline per keyframe, stacked outward
+  const stackedBars = useMemo(() => {
+    if (!stacked) return [];
+    const bars: {
+      key: string;
+      d: string;
+      color: string;
+      label: string;
+      rawValue: number;
+      tipX: number;
+      tipY: number;
+    }[] = [];
+
+    // Angular half-width computed at baseR so bars grow wider outward
+    const halfAngle =
+      tracks[0] && baseR > 0 ? (tracks[0].barWidth as number) / 2 / baseR : 0;
+
+    for (let kfIdx = 0; kfIdx < keyframeCount; kfIdx++) {
+      const centerAngle = keyframeAngle(kfIdx, keyframeCount);
+      const angleStart = centerAngle - halfAngle;
+      const angleEnd = centerAngle + halfAngle;
+
+      let stackBase = baseR;
+      for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
+        const track = tracks[trackIdx]!;
+        if (kfIdx >= track.normalizedValues.length) continue;
+
+        const normVal = track.normalizedValues[kfIdx]!;
+        const barHeight = normVal * track.height;
+        const barOuter = stackBase + barHeight;
+        const rawValue = track.rawValues[kfIdx] as number;
+
+        const midR = (stackBase + barOuter) / 2;
+        const tipX = center + midR * Math.cos(centerAngle);
+        const tipY = center + midR * Math.sin(centerAngle);
+
+        bars.push({
+          key: `${track.label}-${kfIdx}`,
+          d: arcPath(stackBase, barOuter, angleStart, angleEnd),
+          color: track.color,
+          label: track.label,
+          rawValue,
+          tipX,
+          tipY,
+        });
+
+        stackBase = barOuter + STACK_GAP;
+      }
+    }
+    return bars;
+  }, [stacked, tracks, keyframeCount, baseR, center]);
+
   return (
-    <TooltipProvider delayDuration={150}>
+    <div className="relative" style={{ width: size, height: size }}>
       {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative chart, no screen reader title needed */}
       <svg width={size} height={size} className="overflow-visible pointer-events-none">
         <g transform={`translate(${center}, ${center})`}>
-          {tracks.map((track, trackIdx) => {
-            const layout = trackLayout[trackIdx]!;
-            const { rInner, rOuter } = layout;
-            return (
-              <g key={track.label}>
-                {track.normalizedValues.map((normVal, kfIdx) => {
-                  if (kfIdx >= keyframeCount) return null;
+          {stacked
+            ? stackedBars.map((bar) => (
+                <path
+                  key={bar.key}
+                  d={bar.d}
+                  fill={bar.color}
+                  className="pointer-events-auto cursor-default opacity-60 hover:opacity-100 transition-[fill-opacity] duration-150 ease-out"
+                  onMouseEnter={() => handleEnter(bar.label, bar.rawValue, bar.tipX, bar.tipY)}
+                  onMouseLeave={handleLeave}
+                />
+              ))
+            : tracks.map((track, trackIdx) => {
+                const { rInner } = trackLayout[trackIdx]!;
+                return (
+                  <g key={track.label}>
+                    {track.normalizedValues.map((normVal, kfIdx) => {
+                      if (kfIdx >= keyframeCount) return null;
 
-                  const centerAngle = keyframeAngle(kfIdx, keyframeCount);
-                  let angleStart: number;
-                  let angleEnd: number;
+                      const centerAngle = keyframeAngle(kfIdx, keyframeCount);
+                      const angleStart = centerAngle - segmentAngle / 2 + BAR_PAD_RAD;
+                      const angleEnd = centerAngle + segmentAngle / 2 - BAR_PAD_RAD;
 
-                  if (track.barWidth === 'full') {
-                    angleStart = centerAngle - segmentAngle / 2 + BAR_PAD_RAD;
-                    angleEnd = centerAngle + segmentAngle / 2 - BAR_PAD_RAD;
-                  } else {
-                    // Convert pixel width to angular width at the midpoint radius
-                    const midR = (rInner + rOuter) / 2;
-                    const halfAngle = midR > 0 ? track.barWidth / 2 / midR : 0;
-                    angleStart = centerAngle - halfAngle;
-                    angleEnd = centerAngle + halfAngle;
-                  }
+                      const barOuter = rInner + normVal * track.height;
+                      const rawValue = track.rawValues[kfIdx] as number;
 
-                  // Bar grows outward from rInner
-                  const barOuter = rInner + normVal * track.height;
-                  const isHighlighted = kfIdx === leftKf || kfIdx === rightKf;
-                  const rawValue = track.rawValues[kfIdx] as number;
+                      const midR = (rInner + barOuter) / 2;
+                      const tipX = center + midR * Math.cos(centerAngle);
+                      const tipY = center + midR * Math.sin(centerAngle);
 
-                  return (
-                    <Tooltip key={`${track.label}-${kfIdx}`}>
-                      <TooltipTrigger asChild>
+                      return (
                         <path
+                          key={`${track.label}-${kfIdx}`}
                           d={arcPath(rInner, barOuter, angleStart, angleEnd)}
                           fill={track.color}
-                          fillOpacity={0.85}
-                          className="pointer-events-auto cursor-default transition-[filter] duration-150 ease-in"
-                          style={{
-                            filter: isHighlighted
-                              ? `drop-shadow(0 0 4px ${track.color})`
-                              : undefined,
-                          }}
+                          className="pointer-events-auto cursor-default opacity-60 hover:opacity-100 transition-[fill-opacity] duration-150 ease-out"
+                          onMouseEnter={() => handleEnter(track.label, rawValue, tipX, tipY)}
+                          onMouseLeave={handleLeave}
                         />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {track.label}: {rawValue.toFixed(3)}
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-              </g>
-            );
-          })}
+                      );
+                    })}
+                  </g>
+                );
+              })}
         </g>
       </svg>
-    </TooltipProvider>
+
+      {/* Tooltip at bar center */}
+      {hover && (
+        <div
+          className="absolute pointer-events-none z-50"
+          style={{ left: hover.x, top: hover.y, transform: 'translate(-50%, -50%)' }}
+        >
+          <div className="rounded bg-white px-3 py-1.5 text-xs text-black shadow-[0_1px_4px_rgba(0,0,0,0.6)] whitespace-nowrap">
+            {hover.label}: {hover.value.toFixed(3)}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

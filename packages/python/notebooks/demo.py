@@ -39,8 +39,39 @@ def _(df, dtour, pl, tour):
         tour=tour,
         preview_count=8,
         point_color="faustLabels",
+        metric_bar_width=24,
+        height=960
     )
     w
+    return (w,)
+
+
+@app.cell
+def _(Path, df, dtour, np, tour, w):
+    _metric_names = ["neighborhood_hit", "confusion", "hdbscan_score"]
+    metrics_path = Path("metrics_cache.npz")
+    if metrics_path.exists():
+        _cached = np.load(metrics_path)
+        metrics = dtour.MetricResult(
+            values={name: _cached[name].tolist() for name in _metric_names},
+            metric_names=_metric_names,
+        )
+    else:
+        metrics = dtour.compute_metrics(
+            tour.embedding,
+            tour.views,
+            labels=df["faustLabels"].to_numpy(),
+            metrics=_metric_names,
+            exclude_labels=["0_0_0_0_0"],
+        )
+        np.savez_compressed(metrics_path, **{name: vals for name, vals in metrics.values.items()})
+    w.set_metrics(metrics)
+    return (metrics,)
+
+
+@app.cell
+def _(metrics):
+    metrics
     return
 
 

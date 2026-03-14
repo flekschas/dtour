@@ -34,7 +34,11 @@ const NUMERIC_TYPED_ARRAYS = new Set([
  * When `configs` is provided, only the listed metrics are shown in that order.
  * When omitted, all numeric columns are shown with auto-assigned colors.
  */
-export const parseMetrics = (buffer: ArrayBuffer, configs?: RadialTrackConfig[]): ParsedTrack[] => {
+export const parseMetrics = (
+  buffer: ArrayBuffer,
+  configs?: RadialTrackConfig[],
+  defaultBarWidth?: 'full' | number,
+): ParsedTrack[] => {
   const table = tableFromIPC(new Uint8Array(buffer));
   const columns = table.toColumns() as Record<string, unknown>;
 
@@ -76,8 +80,12 @@ export const parseMetrics = (buffer: ArrayBuffer, configs?: RadialTrackConfig[])
         if (v > max) max = v;
       }
     }
-    const range = max - min || 1;
-    const normalizedValues = Array.from(raw, (v) => Math.max(0, Math.min(1, (v - min) / range)));
+    // When all values are non-negative, normalize to [0, max] so bars have
+    // proportional heights (the smallest bar is still visible).
+    // When values span negative to positive (e.g. silhouette), use [min, max].
+    const base = min >= 0 ? 0 : min;
+    const range = max - base || 1;
+    const normalizedValues = Array.from(raw, (v) => Math.max(0, Math.min(1, (v - base) / range)));
 
     return {
       label: config?.label ?? metric,
@@ -85,7 +93,7 @@ export const parseMetrics = (buffer: ArrayBuffer, configs?: RadialTrackConfig[])
       normalizedValues,
       height: config?.height ?? DEFAULT_HEIGHT,
       color: config?.color ?? (PALETTE[i % PALETTE.length] as string),
-      barWidth: config?.barWidth ?? DEFAULT_BAR_WIDTH,
+      barWidth: config?.barWidth ?? defaultBarWidth ?? DEFAULT_BAR_WIDTH,
     };
   });
 };

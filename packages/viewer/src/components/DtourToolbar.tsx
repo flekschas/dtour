@@ -6,7 +6,7 @@ import {
   GaugeIcon,
   ImageSquareIcon,
   MagnifyingGlassMinusIcon,
-  PaletteIcon,
+  PaintBrushIcon,
   PathIcon,
   PauseIcon,
   PlayIcon,
@@ -456,7 +456,7 @@ const ColumnRow = ({
       }`}
       title={isColorActive ? `Stop coloring by ${name}` : `Color by ${name}`}
     >
-      <PaletteIcon size={12} weight={isColorActive ? 'fill' : 'regular'} />
+      <PaintBrushIcon size={12} weight={isColorActive ? 'fill' : 'regular'} />
     </button>
   </DropdownMenuCheckboxItem>
 );

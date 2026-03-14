@@ -129,6 +129,17 @@ function Widget() {
   );
 
   const height: number = model.get('height') ?? 600;
+  const [metricBarWidth, setMetricBarWidth] = useState<'full' | number>(
+    () => model.get('metric_bar_width') ?? 'full',
+  );
+
+  useEffect(() => {
+    function onChange() {
+      setMetricBarWidth(model.get('metric_bar_width') ?? 'full');
+    }
+    model.on('change:metric_bar_width', onChange);
+    return () => model.off('change:metric_bar_width', onChange);
+  }, [model]);
 
   return (
     <div className="w-full" style={{ height: `${height}px`, position: 'relative' }}>
@@ -136,6 +147,7 @@ function Widget() {
         data={data}
         views={views}
         metrics={metrics}
+        metricBarWidth={metricBarWidth}
         spec={spec}
         onSpecChange={handleSpecChange}
       />

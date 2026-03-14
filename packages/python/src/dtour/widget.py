@@ -73,6 +73,10 @@ class Widget(anywidget.AnyWidget):
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1.0).tag(sync=True)
     view_mode = t.Unicode("guided").tag(sync=True)
+    metric_bar_width = t.Union(
+        [t.Int(), t.Unicode()],
+        default_value="full",
+    ).tag(sync=True)
 
     # ── Layout ───────────────────────────────────────────────────────────
     height = t.Int(720).tag(sync=True)
@@ -97,6 +101,15 @@ class Widget(anywidget.AnyWidget):
         value = proposal["value"]
         if value not in ("guided", "manual", "grand"):
             raise t.TraitError(f"view_mode must be 'guided', 'manual', or 'grand'; got {value!r}")
+        return value
+
+    @t.validate("metric_bar_width")
+    def _validate_metric_bar_width(self, proposal: t.Bunch) -> int | str:
+        value = proposal["value"]
+        if isinstance(value, str) and value != "full":
+            raise t.TraitError(f"metric_bar_width must be 'full' or a positive int; got {value!r}")
+        if isinstance(value, int) and value <= 0:
+            raise t.TraitError(f"metric_bar_width must be positive; got {value}")
         return value
 
     # ── Init ─────────────────────────────────────────────────────────────

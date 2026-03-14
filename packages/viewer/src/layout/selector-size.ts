@@ -27,6 +27,8 @@ export function computeSelectorSize(
   isToolbarVisible: boolean,
   padding: number,
   scale = 1,
+  /** Number of radial metric tracks rendered outside the ring. */
+  metricTrackCount = 0,
 ): number {
   if (previewCount === 0 || containerWidth <= 0 || containerHeight <= 0) {
     return Math.max(MIN_SIZE, Math.min(containerWidth, containerHeight));
@@ -122,7 +124,12 @@ export function computeSelectorSize(
     minDist = Math.min(minDist, Math.sqrt(dx * dx + dy * dy));
   }
 
-  // The visible ring sits at size * RING_RATIO from centre, so
-  // size = (minDist - padding) / RING_RATIO.
-  return Math.max(MIN_SIZE, (minDist - padding) / RING_RATIO);
+  // The visible ring sits at size * RING_RATIO from centre. Metric tracks
+  // extend outward from the ring; each track is ~18px (16px bar + 2px gap).
+  const metricThickness = metricTrackCount * 18;
+
+  // Outermost point = size * RING_RATIO + metricThickness, so:
+  // size * RING_RATIO + metricThickness + padding ≤ minDist
+  // size = (minDist - padding - metricThickness) / RING_RATIO
+  return Math.max(MIN_SIZE, (minDist - padding - metricThickness) / RING_RATIO);
 }

@@ -40,6 +40,8 @@ export type DtourViewerProps = {
   metrics?: ArrayBuffer | undefined;
   /** Track configuration for radial bar charts. */
   metricTracks?: RadialTrackConfig[] | undefined;
+  /** Global bar width override for radial charts ('full' or px). */
+  metricBarWidth?: 'full' | number | undefined;
   /** Called on every status event from the renderer. */
   onStatus?: ((status: ScatterStatus) => void) | undefined;
   /** Height in px of an overlay toolbar above the canvas. The shader shifts
@@ -58,6 +60,7 @@ export const DtourViewer = ({
   views,
   metrics,
   metricTracks,
+  metricBarWidth,
   onStatus,
   toolbarHeight = 0,
 }: DtourViewerProps) => {
@@ -120,8 +123,8 @@ export const DtourViewer = ({
 
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(
-    () => (metrics ? parseMetrics(metrics, metricTracks) : []),
-    [metrics, metricTracks],
+    () => (metrics ? parseMetrics(metrics, metricTracks, metricBarWidth) : []),
+    [metrics, metricTracks, metricBarWidth],
   );
 
   // Bridge Jotai atoms (style, camera) → scatter instance
@@ -205,8 +208,9 @@ export const DtourViewer = ({
         isToolbarVisible,
         SELECTOR_PADDING,
         previewScale,
+        parsedTracks.length,
       ),
-    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale],
+    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale, parsedTracks.length],
   );
 
   // Initialize scatter — create main + preview canvases imperatively
@@ -443,7 +447,7 @@ export const DtourViewer = ({
               </div>
             )}
             {/* Selector — on top for drag interaction */}
-            <div className="pointer-events-none">
+            <div className="pointer-events-none relative z-10">
               <CircularSlider
                 value={position}
                 onChange={handlePositionChange}
