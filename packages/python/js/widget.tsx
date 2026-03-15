@@ -1,6 +1,7 @@
 import { createRender, useModel } from '@anywidget/react';
 import { Dtour } from '@dtour/viewer';
-// Import CSS as a string so we can inject it into the Shadow DOM
+// Import CSS as strings so we can inject them into the Shadow DOM
+import preflightCss from './preflight.css?inline';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import type { DtourSpec } from '@dtour/viewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -201,7 +202,7 @@ export default {
 
     // Inject scoped CSS into the shadow root (not <head>)
     const style = document.createElement('style');
-    style.textContent = viewerCss;
+    style.textContent = preflightCss + viewerCss;
     shadow.appendChild(style);
 
     // React mounts into this container

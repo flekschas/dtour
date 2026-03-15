@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'bg-dtour-accent text-white hover:bg-dtour-accent-hover',
-        ghost: 'text-dtour-text hover:bg-dtour-surface hover:text-white',
+        ghost: 'text-dtour-text hover:bg-dtour-surface hover:text-dtour-highlight',
         outline: 'border border-dtour-border bg-transparent text-dtour-text hover:bg-dtour-surface',
       },
       size: {

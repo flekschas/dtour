@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 type AnimatedLogoProps = {
   phase: 'drawing' | 'moving' | 'moved';
+  theme: 'light' | 'dark';
   onDrawComplete: () => void;
   onMoveComplete: () => void;
 };
@@ -50,7 +51,7 @@ const springTransition: Transition = {
   mass: 0.8,
 };
 
-export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: AnimatedLogoProps) => {
+export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: AnimatedLogoProps) => {
   const prefersReducedMotion = useReducedMotion();
   const drawFiredRef = useRef(false);
   const moveFiredRef = useRef(false);
@@ -110,6 +111,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
 
   if (!initialRect || !targetRect || prefersReducedMotion) return null;
 
+  const blendClass = theme === 'light' ? 'mix-blend-multiply' : 'mix-blend-screen';
   const isMoving = phase === 'moving';
   const atTarget = phase === 'moving' || phase === 'moved';
   const animTarget = atTarget
@@ -128,7 +130,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
 
   return (
     <motion.div
-      className="fixed z-30 text-white pointer-events-none"
+      className="fixed z-30 text-dtour-highlight pointer-events-none"
       initial={{
         left: initialRect.x,
         top: initialRect.y,
@@ -148,7 +150,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
         xmlns="http://www.w3.org/2000/svg"
         xmlSpace="preserve"
         version="1.1"
-        className="mix-blend-screen"
+        className={theme === 'light' ? 'mix-blend-multiply' : 'mix-blend-screen'}
       >
         <title>dtour</title>
 
@@ -184,7 +186,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-d mix-blend-screen"
+              className={`anim-d ${blendClass}`}
               fill="none"
               stroke={color}
               strokeLinecap="square"
@@ -200,7 +202,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-t1 mix-blend-screen"
+              className={`anim-t1 ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={1.008}
@@ -216,7 +218,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-t2 mix-blend-screen"
+              className={`anim-t2 ${blendClass}`}
               fill="none"
               stroke={color}
               clipPath="url(#anim-t)"
@@ -231,7 +233,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-o mix-blend-screen"
+              className={`anim-o ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={2}
@@ -247,7 +249,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-u1 mix-blend-screen"
+              className={`anim-u1 ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={1.5}
@@ -263,7 +265,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-u2 mix-blend-screen"
+              className={`anim-u2 ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={1.4}
@@ -279,7 +281,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
           {COLORS.map((color) => (
             <path
               key={color}
-              className="anim-r1 mix-blend-screen"
+              className={`anim-r1 ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={1.116}
@@ -296,7 +298,7 @@ export const AnimatedLogo = ({ phase, onDrawComplete, onMoveComplete }: Animated
             <path
               key={color}
               ref={index === COLORS.length - 1 ? (el) => setR2Ref(el) : null}
-              className="anim-r2 mix-blend-screen"
+              className={`anim-r2 ${blendClass}`}
               fill="none"
               stroke={color}
               strokeWidth={1.5}

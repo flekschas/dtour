@@ -1,10 +1,22 @@
 import { Dtour } from '@dtour/viewer';
+import type { DtourSpec } from '@dtour/viewer';
 import { motion, useReducedMotion } from 'motion/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 
 type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
+type ThemeMode = 'light' | 'dark' | 'system';
+
+const THEME_STORAGE_KEY = 'dtour-theme-mode';
+
+function readPersistedTheme(): ThemeMode {
+  try {
+    const v = localStorage.getItem(THEME_STORAGE_KEY);
+    if (v === 'light' || v === 'dark' || v === 'system') return v;
+  } catch {}
+  return 'dark';
+}
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
@@ -15,6 +27,28 @@ const App = () => {
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(prefersReducedMotion ? 'done' : 'drawing');
   const pendingDataRef = useRef<{ buffer: ArrayBuffer; name: string } | null>(null);
   const drawCompleteRef = useRef(false);
+
+  // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readPersistedTheme);
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  );
+  // Stable initial spec — pass persisted theme to Dtour on mount
+  const [initialSpec] = useState<DtourSpec>(() => ({ themeMode: readPersistedTheme() }));
+
+  useEffect(() => {
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemTheme(e.matches ? 'dark' : 'light');
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
+  const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
+
+  const handleSpecChange = useCallback((spec: Required<DtourSpec>) => {
+    setThemeMode(spec.themeMode);
+    try { localStorage.setItem(THEME_STORAGE_KEY, spec.themeMode); } catch {}
+  }, []);
 
   const loadFile = useCallback(
     async (file: File) => {
@@ -89,7 +123,7 @@ const App = () => {
 
   return (
     <div
-      className="flex flex-col w-screen h-screen"
+      className={`flex flex-col w-screen h-screen ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
     >
@@ -103,7 +137,9 @@ const App = () => {
       <Dtour
         data={data}
         dataName={fileName}
+        spec={initialSpec}
         onLoadData={handleLoadData}
+        onSpecChange={handleSpecChange}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
       />
       {!data && logoPhase !== 'moving' && logoPhase !== 'moved' && (
@@ -148,6 +184,7 @@ const App = () => {
       {logoPhase !== 'done' && (
         <AnimatedLogo
           phase={logoPhase}
+          theme={resolvedTheme}
           onDrawComplete={handleDrawComplete}
           onMoveComplete={handleMoveComplete}
         />
