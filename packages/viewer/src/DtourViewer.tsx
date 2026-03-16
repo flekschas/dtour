@@ -125,10 +125,15 @@ export const DtourViewer = ({
   }, [viewMode, guidedSuspended, resolvedViews, arcLengths, metadata, position, setCurrentBasis]);
 
   // Parse metrics Arrow IPC into renderable tracks
-  const parsedTracks = useMemo(
-    () => (metrics ? parseMetrics(metrics, metricTracks, metricBarWidth) : []),
-    [metrics, metricTracks, metricBarWidth],
-  );
+  const parsedTracks = useMemo(() => {
+    if (!metrics) return [];
+    const tracks = parseMetrics(metrics, metricTracks, metricBarWidth);
+    const confusion = tracks.find((t) => t.label === 'confusion');
+    if (confusion) {
+      console.log('[dtour] parsedTracks confusion:', confusion.rawValues.slice(0, 4), 'normalized:', confusion.normalizedValues.slice(0, 4));
+    }
+    return tracks;
+  }, [metrics, metricTracks, metricBarWidth]);
 
   // Override confusion track color: highlight by default, label palette color on single selection
   const legendSelection = useAtomValue(legendSelectionAtom);

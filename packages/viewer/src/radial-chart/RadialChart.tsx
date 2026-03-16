@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { arcPath, keyframeAngle } from './arc-path.ts';
+import { arcPath, keyframeAngle, rectBarPath } from './arc-path.ts';
 import type { ParsedTrack } from './types.ts';
 
 export type RadialChartProps = {
@@ -85,14 +85,10 @@ export const RadialChart = ({
       tipY: number;
     }[] = [];
 
-    // Angular half-width computed at baseR so bars grow wider outward
-    const halfAngle =
-      tracks[0] && baseR > 0 ? (tracks[0].barWidth as number) / 2 / baseR : 0;
+    const barWidthPx = (tracks[0]?.barWidth as number) ?? 0;
 
     for (let kfIdx = 0; kfIdx < keyframeCount; kfIdx++) {
       const centerAngle = keyframeAngle(kfIdx, keyframeCount);
-      const angleStart = centerAngle - halfAngle;
-      const angleEnd = centerAngle + halfAngle;
 
       let stackBase = baseR;
       for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
@@ -110,7 +106,7 @@ export const RadialChart = ({
 
         bars.push({
           key: `${track.label}-${kfIdx}`,
-          d: arcPath(stackBase, barOuter, angleStart, angleEnd),
+          d: rectBarPath(stackBase, barOuter, centerAngle, barWidthPx),
           color: track.color,
           label: track.label,
           rawValue,

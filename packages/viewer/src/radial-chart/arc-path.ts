@@ -15,6 +15,40 @@ export const keyframeAngle = (index: number, count: number): number =>
  *
  * All angles in radians. Center is at (0, 0) — use a `<g transform>` to position.
  */
+/**
+ * SVG `d` for a constant-width rectangular bar along a radial direction.
+ *
+ * Unlike arcPath (which widens with radius), this produces truly parallel
+ * sides so stacked segments align perfectly.
+ *
+ * Center is at (0, 0). `angle` is the bar's center direction in radians.
+ */
+export const rectBarPath = (
+  rInner: number,
+  rOuter: number,
+  angle: number,
+  width: number,
+): string => {
+  const hw = width / 2;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // perpendicular to radial direction: (-sin, cos)
+  const px = -sin;
+  const py = cos;
+
+  // four corners: inner-left, outer-left, outer-right, inner-right
+  const ilx = rInner * cos + hw * px;
+  const ily = rInner * sin + hw * py;
+  const olx = rOuter * cos + hw * px;
+  const oly = rOuter * sin + hw * py;
+  const orx = rOuter * cos - hw * px;
+  const ory = rOuter * sin - hw * py;
+  const irx = rInner * cos - hw * px;
+  const iry = rInner * sin - hw * py;
+
+  return `M ${ilx} ${ily} L ${olx} ${oly} L ${orx} ${ory} L ${irx} ${iry} Z`;
+};
+
 export const arcPath = (
   rInner: number,
   rOuter: number,

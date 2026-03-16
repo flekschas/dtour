@@ -74,6 +74,7 @@ class Widget(anywidget.AnyWidget):
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1.0).tag(sync=True)
     view_mode = t.Unicode("guided").tag(sync=True)
+    theme = t.Unicode("dark").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
         default_value="full",
@@ -81,6 +82,9 @@ class Widget(anywidget.AnyWidget):
 
     # ── Selection state (JS → Python) ───────────────────────────────────
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
+
+    # ── Metric track configuration ─────────────────────────────────────
+    metric_tracks = t.List(t.Dict(), default_value=[]).tag(sync=True)
 
     # ── Layout ───────────────────────────────────────────────────────────
     height = t.Int(720).tag(sync=True)
@@ -105,6 +109,13 @@ class Widget(anywidget.AnyWidget):
         value = proposal["value"]
         if value not in ("guided", "manual", "grand"):
             raise t.TraitError(f"view_mode must be 'guided', 'manual', or 'grand'; got {value!r}")
+        return value
+
+    @t.validate("theme")
+    def _validate_theme(self, proposal: t.Bunch) -> str:
+        value = proposal["value"]
+        if value not in ("light", "dark", "system"):
+            raise t.TraitError(f"theme must be 'light', 'dark', or 'system'; got {value!r}")
         return value
 
     @t.validate("metric_bar_width")

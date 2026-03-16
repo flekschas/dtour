@@ -3,7 +3,7 @@ import { Dtour } from '@dtour/viewer';
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
-import type { DtourSpec } from '@dtour/viewer';
+import type { DtourSpec, RadialTrackConfig } from '@dtour/viewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +24,7 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   camera_pan_y: 'cameraPanY',
   camera_zoom: 'cameraZoom',
   view_mode: 'viewMode',
+  theme: 'themeMode',
 };
 
 const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
@@ -101,12 +102,15 @@ function Widget() {
   useEffect(() => {
     // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
     function onMsg(msg: { type: string; n_dims?: number }, buffers: any[]) {
+      console.log('[dtour] onMsg', msg.type, 'buffers:', buffers.length);
       if (msg.type === 'data' && buffers[0]) {
         setData(toArrayBuffer(buffers[0]));
       } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
         setViews(parseViews(buffers[0], msg.n_dims));
       } else if (msg.type === 'metrics' && buffers[0]) {
-        setMetrics(toArrayBuffer(buffers[0]));
+        const ab = toArrayBuffer(buffers[0]);
+        console.log('[dtour] metrics received, byteLength:', ab.byteLength);
+        setMetrics(ab);
       }
     }
     model.on('msg:custom', onMsg);
@@ -152,6 +156,7 @@ function Widget() {
   // Selection → traitlet sync (JS → Python)
   const handleSelectionChange = useCallback(
     (labels: string[]) => {
+      console.log('[dtour] selection → Python:', labels);
       model.set('selected_labels', labels);
       model.save_changes();
     },
@@ -162,13 +167,23 @@ function Widget() {
   const [metricBarWidth, setMetricBarWidth] = useState<'full' | number>(
     () => model.get('metric_bar_width') ?? 'full',
   );
+  const [metricTracks, setMetricTracks] = useState<RadialTrackConfig[]>(
+    () => model.get('metric_tracks') ?? [],
+  );
 
   useEffect(() => {
-    function onChange() {
+    function onBarWidth() {
       setMetricBarWidth(model.get('metric_bar_width') ?? 'full');
     }
-    model.on('change:metric_bar_width', onChange);
-    return () => model.off('change:metric_bar_width', onChange);
+    function onTracks() {
+      setMetricTracks(model.get('metric_tracks') ?? []);
+    }
+    model.on('change:metric_bar_width', onBarWidth);
+    model.on('change:metric_tracks', onTracks);
+    return () => {
+      model.off('change:metric_bar_width', onBarWidth);
+      model.off('change:metric_tracks', onTracks);
+    };
   }, [model]);
 
   return (
@@ -177,6 +192,7 @@ function Widget() {
         data={data}
         views={views}
         metrics={metrics}
+        metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}
         spec={spec}
         onSpecChange={handleSpecChange}
@@ -198,7 +214,15 @@ const innerRender = createRender(Widget);
 export default {
   // biome-ignore lint/suspicious/noExplicitAny: anywidget render protocol
   render(props: any) {
-    const shadow = (props.el as HTMLElement).attachShadow({ mode: 'open' });
+    const host = props.el as HTMLElement;
+    let shadow = host.shadowRoot;
+
+    if (!shadow) {
+      shadow = host.attachShadow({ mode: 'open' });
+    }
+
+    // Clear previous content (styles, containers) on re-render
+    shadow.innerHTML = '';
 
     // Inject scoped CSS into the shadow root (not <head>)
     const style = document.createElement('style');

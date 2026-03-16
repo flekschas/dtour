@@ -35,16 +35,18 @@ def _(df, dtour, pl, tour):
         preview_count=8,
         point_color="faustLabels",
         metric_bar_width=24,
+        metric_tracks=[{"metric": "confusion", "height": 64, "domain": [0, 1]}],
         height=960,
+        theme="light",
     )
     w
     return (w,)
 
 
 @app.cell
-def _(Path, df, dtour, np, tour, w):
-    _metric_names = ["neighborhood_hit", "confusion", "hdbscan_score"]
-    metrics_path = Path("metrics_cache.npz")
+def _(_cache_dir, df, dtour, np, tour, w):
+    _metric_names = ["confusion"]
+    metrics_path = _cache_dir / "metrics.npz"
     if metrics_path.exists():
         _cached = np.load(metrics_path)
         metrics = dtour.MetricResult(
@@ -65,8 +67,68 @@ def _(Path, df, dtour, np, tour, w):
 
 
 @app.cell
-def _(metrics):
-    metrics
+def _(_cache_dir, df, dtour, metrics, np, tour, w):
+    import cev_metrics
+    import pandas as pd
+
+    _original_confusion = metrics.values["confusion"]
+    _labels = df["faustLabels"].to_numpy()
+    _exclude = {"0_0_0_0_0"}
+    _mask = np.array([lbl not in _exclude for lbl in _labels])
+    _X = tour.embedding[_mask]
+    _labels_clean = _labels[_mask]
+
+    # Precompute confusion matrices for all views (expensive, done once)
+    _cm_cache_path = _cache_dir / "confusion_matrices.npz"
+    if _cm_cache_path.exists():
+        _cm_data = np.load(_cm_cache_path)
+        _confusion_matrices = [_cm_data[f"cm_{i}"] for i in range(len(tour.views))]
+    else:
+        _cat = pd.Categorical(_labels_clean)
+        _confusion_matrices = []
+        for basis in tour.views:
+            proj = _X @ basis
+            cm_df = pd.DataFrame({"x": proj[:, 0], "y": proj[:, 1], "label": _cat})
+            _confusion_matrices.append(np.asarray(cev_metrics.confusion(cm_df), dtype=np.float64))
+        np.savez_compressed(
+            _cm_cache_path, **{f"cm_{i}": cm for i, cm in enumerate(_confusion_matrices)}
+        )
+
+    _cat_labels = sorted(set(_labels_clean))
+    _confusion_cache: dict[frozenset, list[float]] = {}
+
+    def _on_selection(change):
+        selected = change["new"]
+        if not selected:
+            w.set_metrics(
+                dtour.MetricResult(
+                    values={**metrics.values, "confusion": _original_confusion},
+                    metric_names=metrics.metric_names,
+                )
+            )
+            return
+
+        key = frozenset(selected)
+        if key not in _confusion_cache:
+            sel_idx = [_cat_labels.index(s) for s in selected if s in _cat_labels]
+            if not sel_idx:
+                return
+            vals = []
+            for cm in _confusion_matrices:
+                rows = cm[sel_idx, :]
+                total = rows.sum()
+                diag = sum(cm[i, i] for i in sel_idx)
+                vals.append(0.0 if total == 0 else float(1.0 - diag / total))
+            _confusion_cache[key] = vals
+
+        w.set_metrics(
+            dtour.MetricResult(
+                values={**metrics.values, "confusion": _confusion_cache[key]},
+                metric_names=metrics.metric_names,
+            )
+        )
+
+    w.observe(_on_selection, names=["selected_labels"])
     return
 
 
@@ -78,14 +140,22 @@ def _():
     import polars as pl
     from sklearn.preprocessing import StandardScaler
 
-    return Path, StandardScaler, np, pl
+    _cache_dir = Path(__file__).parent / "__cache__"
+    _cache_dir.mkdir(exist_ok=True)
+
+    return Path, StandardScaler, _cache_dir, np, pl
 
 
 @app.cell
-def _(pl):
-    df = pl.read_parquet(
-        "https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq"
-    )
+def _(_cache_dir, pl):
+    _data_url = "https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq"
+    _local_pq = _cache_dir / "mair-2022-tumor-006-ozette.pq"
+
+    if _local_pq.exists():
+        df = pl.read_parquet(_local_pq)
+    else:
+        df = pl.read_parquet(_data_url)
+        df.write_parquet(_local_pq)
 
     win_cols = [c for c in df.columns if c.endswith("Windsorized")]
     df.select(win_cols).head()
@@ -100,10 +170,10 @@ def _(StandardScaler, df, np, win_cols):
 
 
 @app.cell
-def _(Path, X_scaled):
+def _(X_scaled, _cache_dir):
     import dtour
 
-    tour_path = Path("tour_cache.npz")
+    tour_path = _cache_dir / "tour.npz"
     if tour_path.exists():
         tour = dtour.TourResult.load(tour_path)
     else:
