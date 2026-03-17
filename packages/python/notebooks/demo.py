@@ -44,9 +44,9 @@ def _(df, dtour, pl, tour):
 
 
 @app.cell
-def _(_cache_dir, df, dtour, np, tour, w):
+def _(cache_dir, df, dtour, np, tour, w):
     _metric_names = ["confusion"]
-    metrics_path = _cache_dir / "metrics.npz"
+    metrics_path = cache_dir / "metrics.npz"
     if metrics_path.exists():
         _cached = np.load(metrics_path)
         metrics = dtour.MetricResult(
@@ -67,7 +67,7 @@ def _(_cache_dir, df, dtour, np, tour, w):
 
 
 @app.cell
-def _(_cache_dir, df, dtour, metrics, np, tour, w):
+def _(cache_dir, df, dtour, metrics, np, tour, w):
     import cev_metrics
     import pandas as pd
 
@@ -79,7 +79,7 @@ def _(_cache_dir, df, dtour, metrics, np, tour, w):
     _labels_clean = _labels[_mask]
 
     # Precompute confusion matrices for all views (expensive, done once)
-    _cm_cache_path = _cache_dir / "confusion_matrices.npz"
+    _cm_cache_path = cache_dir / "confusion_matrices.npz"
     if _cm_cache_path.exists():
         _cm_data = np.load(_cm_cache_path)
         _confusion_matrices = [_cm_data[f"cm_{i}"] for i in range(len(tour.views))]
@@ -140,16 +140,16 @@ def _():
     import polars as pl
     from sklearn.preprocessing import StandardScaler
 
-    _cache_dir = Path(__file__).parent / "__cache__"
-    _cache_dir.mkdir(exist_ok=True)
+    cache_dir = Path(__file__).parent / "__cache__"
+    cache_dir.mkdir(exist_ok=True)
 
-    return Path, StandardScaler, _cache_dir, np, pl
+    return Path, StandardScaler, cache_dir, np, pl
 
 
 @app.cell
-def _(_cache_dir, pl):
+def _(cache_dir, pl):
     _data_url = "https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq"
-    _local_pq = _cache_dir / "mair-2022-tumor-006-ozette.pq"
+    _local_pq = cache_dir / "mair-2022-tumor-006-ozette.pq"
 
     if _local_pq.exists():
         df = pl.read_parquet(_local_pq)
@@ -170,10 +170,10 @@ def _(StandardScaler, df, np, win_cols):
 
 
 @app.cell
-def _(X_scaled, _cache_dir):
+def _(X_scaled, cache_dir):
     import dtour
 
-    tour_path = _cache_dir / "tour.npz"
+    tour_path = cache_dir / "tour.npz"
     if tour_path.exists():
         tour = dtour.TourResult.load(tour_path)
     else:
