@@ -158,8 +158,3 @@ export const resolvedThemeAtom = atom<'light' | 'dark'>((get) => {
   return mode === 'system' ? get(systemThemeAtom) : mode;
 });
 
-// ---------------------------------------------------------------------------
-// Settings persistence — localStorage keyed by data name
-// ---------------------------------------------------------------------------
-
-export const dataNameAtom = atom<string | null>(null);

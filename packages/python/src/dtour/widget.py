@@ -55,8 +55,9 @@ class Widget(anywidget.AnyWidget):
     tour_position = t.Float(0.0).tag(sync=True)
     tour_playing = t.Bool(False).tag(sync=True)
     tour_speed = t.Float(1.0).tag(sync=True)
-    tour_direction = t.Unicode("forward").tag(sync=True)
+    tour_direction = t.Enum(["forward", "backward"], default_value="forward").tag(sync=True)
     preview_count = t.Int(4).tag(sync=True)
+    preview_size = t.Enum(["small", "medium", "large"], default_value="large").tag(sync=True)
     preview_padding = t.Float(12.0).tag(sync=True)
     point_size = t.Union(
         [t.Float(), t.Unicode()],
@@ -73,8 +74,8 @@ class Widget(anywidget.AnyWidget):
     camera_pan_x = t.Float(0.0).tag(sync=True)
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1.0).tag(sync=True)
-    view_mode = t.Unicode("guided").tag(sync=True)
-    theme = t.Unicode("dark").tag(sync=True)
+    view_mode = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
+    theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
         default_value="full",
@@ -95,6 +96,13 @@ class Widget(anywidget.AnyWidget):
         value = proposal["value"]
         if value not in (4, 8, 12, 16):
             raise t.TraitError(f"preview_count must be 4, 8, 12, or 16; got {value}")
+        return value
+
+    @t.validate("preview_size")
+    def _validate_preview_size(self, proposal: t.Bunch) -> str:
+        value = proposal["value"]
+        if value not in ("small", "medium", "large"):
+            raise t.TraitError(f"preview_size must be 'small', 'medium', or 'large'; got {value!r}")
         return value
 
     @t.validate("tour_direction")

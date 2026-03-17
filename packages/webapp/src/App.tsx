@@ -20,12 +20,11 @@ function readPersistedTheme(): ThemeMode {
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
-  const [fileName, setFileName] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const prefersReducedMotion = useReducedMotion();
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(prefersReducedMotion ? 'done' : 'drawing');
-  const pendingDataRef = useRef<{ buffer: ArrayBuffer; name: string } | null>(null);
+  const pendingDataRef = useRef<ArrayBuffer | null>(null);
   const drawCompleteRef = useRef(false);
 
   // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
@@ -53,12 +52,10 @@ const App = () => {
   const loadFile = useCallback(
     async (file: File) => {
       const buffer = await file.arrayBuffer();
-      const name = file.name;
       if (logoPhase === 'done') {
         setData(buffer);
-        setFileName(name);
       } else {
-        pendingDataRef.current = { buffer, name };
+        pendingDataRef.current = buffer;
         if (drawCompleteRef.current) {
           setLogoPhase('moving');
         }
@@ -68,12 +65,11 @@ const App = () => {
   );
 
   const handleLoadData = useCallback(
-    (buffer: ArrayBuffer, name: string) => {
+    (buffer: ArrayBuffer, _name: string) => {
       if (logoPhase === 'done') {
         setData(buffer);
-        setFileName(name);
       } else {
-        pendingDataRef.current = { buffer, name };
+        pendingDataRef.current = buffer;
         if (drawCompleteRef.current) {
           setLogoPhase('moving');
         }
@@ -113,8 +109,7 @@ const App = () => {
     // Delay data loading so toolbar can fade in first
     setTimeout(() => {
       if (pendingDataRef.current) {
-        setData(pendingDataRef.current.buffer);
-        setFileName(pendingDataRef.current.name);
+        setData(pendingDataRef.current);
         pendingDataRef.current = null;
       }
       setLogoPhase('done');
@@ -136,7 +131,6 @@ const App = () => {
       />
       <Dtour
         data={data}
-        dataName={fileName}
         spec={initialSpec}
         onLoadData={handleLoadData}
         onSpecChange={handleSpecChange}

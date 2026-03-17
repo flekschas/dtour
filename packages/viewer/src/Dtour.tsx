@@ -6,13 +6,11 @@ import { PortalContainerContext } from './portal-container.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
-import { useSettingsPersistence } from './hooks/useSettingsPersistence.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
 import {
   backgroundColorAtom,
-  dataNameAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
@@ -43,8 +41,6 @@ export type DtourProps = {
   hideToolbar?: boolean;
   /** Called when the user requests loading new data via the toolbar file picker. */
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
-  /** Name identifying the current dataset (e.g. filename). Used as localStorage key for settings persistence. */
-  dataName?: string;
   /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
   onSelectionChange?: (labels: string[]) => void;
   /** Element to portal Radix popups into (for Shadow DOM isolation). When omitted, portals render into document.body as usual. */
@@ -62,7 +58,6 @@ export const Dtour = ({
   onStatus,
   hideToolbar = false,
   onLoadData,
-  dataName,
   onSelectionChange,
   portalContainer,
 }: DtourProps) => {
@@ -89,7 +84,6 @@ export const Dtour = ({
           onStatus={onStatus}
           hideToolbar={hideToolbar}
           onLoadData={onLoadData}
-          dataName={dataName}
           onSelectionChange={onSelectionChange}
         />
       </Provider>
@@ -109,7 +103,6 @@ const DtourInner = ({
   onStatus,
   hideToolbar,
   onLoadData,
-  dataName,
   onSelectionChange,
 }: {
   data: ArrayBuffer | undefined;
@@ -122,12 +115,10 @@ const DtourInner = ({
   onStatus: ((status: ScatterStatus) => void) | undefined;
   hideToolbar: boolean;
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
-  dataName: string | undefined;
   onSelectionChange: ((labels: string[]) => void) | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
-  useSettingsPersistence();
   useSystemTheme();
 
   // Sync resolved theme → background color + CSS class
@@ -136,12 +127,6 @@ const DtourInner = ({
   useEffect(() => {
     setBackgroundColor(resolvedTheme === 'light' ? [1, 1, 1] : [0, 0, 0]);
   }, [resolvedTheme, setBackgroundColor]);
-
-  // Sync dataName prop → atom for settings persistence
-  const setDataName = useSetAtom(dataNameAtom);
-  useEffect(() => {
-    setDataName(dataName ?? null);
-  }, [dataName, setDataName]);
 
   // Forward legend selection changes to the parent as label name strings
   const legendSelection = useAtomValue(legendSelectionAtom);

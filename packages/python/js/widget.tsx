@@ -27,7 +27,20 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   theme: 'themeMode',
 };
 
-const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
+// preview_size uses string enum ("small"/"medium"/"large") in Python
+// but previewScale uses numeric values (0.5/0.75/1) in the spec.
+const SIZE_TO_SCALE: Record<string, 0.5 | 0.75 | 1> = {
+  small: 0.5,
+  medium: 0.75,
+  large: 1,
+};
+const SCALE_TO_SIZE: Record<number, string> = {
+  0.5: 'small',
+  0.75: 'medium',
+  1: 'large',
+};
+
+const TRAIT_NAMES = [...Object.keys(TRAIT_TO_SPEC), 'preview_size'];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,6 +77,7 @@ function readSpecFromModel(model: any): DtourSpec {
   for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
     spec[specKey] = model.get(trait);
   }
+  spec.previewScale = SIZE_TO_SCALE[model.get('preview_size') as string] ?? 1;
   return spec as DtourSpec;
 }
 
@@ -145,6 +159,7 @@ function Widget() {
       for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
         model.set(trait, newSpec[specKey]);
       }
+      model.set('preview_size', SCALE_TO_SIZE[newSpec.previewScale] ?? 'large');
       model.save_changes();
       queueMicrotask(() => {
         suppressRef.current = false;
