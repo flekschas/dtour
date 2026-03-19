@@ -3,7 +3,6 @@ import { useStore } from 'jotai';
 import { useEffect, useRef } from 'react';
 import type { DtourSpec } from '../spec.ts';
 import {
-  backgroundColorAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -55,7 +54,6 @@ const SPEC_ATOM_MAP = {
   pointSize: entry(pointSizeAtom),
   pointOpacity: entry(pointOpacityAtom),
   pointColor: entry(pointColorAtom),
-  backgroundColor: entry(backgroundColorAtom),
   cameraPanX: entry(cameraPanXAtom),
   cameraPanY: entry(cameraPanYAtom),
   cameraZoom: entry(cameraZoomAtom),
