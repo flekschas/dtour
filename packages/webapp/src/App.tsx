@@ -1,7 +1,7 @@
 import { Dtour } from '@dtour/viewer';
 import type { DtourSpec } from '@dtour/viewer';
 import { motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 
@@ -9,6 +9,7 @@ type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
 type ThemeMode = 'light' | 'dark' | 'system';
 
 const THEME_STORAGE_KEY = 'dtour-theme-mode';
+const SPEC_STORAGE_PREFIX = 'dtour-spec:';
 
 function readPersistedTheme(): ThemeMode {
   try {
@@ -18,13 +19,33 @@ function readPersistedTheme(): ThemeMode {
   return 'dark';
 }
 
+function loadPersistedSpec(fileName: string): DtourSpec {
+  try {
+    const raw = localStorage.getItem(SPEC_STORAGE_PREFIX + fileName);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    return parsed as DtourSpec;
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedSpec(fileName: string, spec: Required<DtourSpec>): void {
+  try {
+    localStorage.setItem(SPEC_STORAGE_PREFIX + fileName, JSON.stringify(spec));
+  } catch {}
+}
+
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
+  const [fileName, setFileName] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const prefersReducedMotion = useReducedMotion();
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(prefersReducedMotion ? 'done' : 'drawing');
   const pendingDataRef = useRef<ArrayBuffer | null>(null);
+  const pendingNameRef = useRef<string | null>(null);
   const drawCompleteRef = useRef(false);
 
   // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
@@ -32,8 +53,14 @@ const App = () => {
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() =>
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   );
-  // Stable initial spec — pass persisted theme to Dtour on mount
-  const [initialSpec] = useState<DtourSpec>(() => ({ themeMode: readPersistedTheme() }));
+
+  // Derive spec from fileName — recomputed synchronously when fileName changes.
+  // Combined with key={fileName} on <Dtour>, this guarantees initStoreFromSpec
+  // runs with the persisted spec before the first render (no flash of defaults).
+  const spec = useMemo<DtourSpec>(() => {
+    const persisted = fileName ? loadPersistedSpec(fileName) : {};
+    return { ...persisted, themeMode: readPersistedTheme() };
+  }, [fileName]);
 
   useEffect(() => {
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -44,18 +71,28 @@ const App = () => {
 
   const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
 
-  const handleSpecChange = useCallback((spec: Required<DtourSpec>) => {
-    setThemeMode(spec.themeMode);
-    try { localStorage.setItem(THEME_STORAGE_KEY, spec.themeMode); } catch {}
-  }, []);
+  const handleSpecChange = useCallback(
+    (newSpec: Required<DtourSpec>) => {
+      setThemeMode(newSpec.themeMode);
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, newSpec.themeMode);
+      } catch {}
+      if (fileName) {
+        savePersistedSpec(fileName, newSpec);
+      }
+    },
+    [fileName],
+  );
 
   const loadFile = useCallback(
     async (file: File) => {
       const buffer = await file.arrayBuffer();
       if (logoPhase === 'done') {
+        setFileName(file.name);
         setData(buffer);
       } else {
         pendingDataRef.current = buffer;
+        pendingNameRef.current = file.name;
         if (drawCompleteRef.current) {
           setLogoPhase('moving');
         }
@@ -65,11 +102,13 @@ const App = () => {
   );
 
   const handleLoadData = useCallback(
-    (buffer: ArrayBuffer, _name: string) => {
+    (buffer: ArrayBuffer, name: string) => {
       if (logoPhase === 'done') {
+        setFileName(name);
         setData(buffer);
       } else {
         pendingDataRef.current = buffer;
+        pendingNameRef.current = name;
         if (drawCompleteRef.current) {
           setLogoPhase('moving');
         }
@@ -109,8 +148,10 @@ const App = () => {
     // Delay data loading so toolbar can fade in first
     setTimeout(() => {
       if (pendingDataRef.current) {
+        setFileName(pendingNameRef.current ?? undefined);
         setData(pendingDataRef.current);
         pendingDataRef.current = null;
+        pendingNameRef.current = null;
       }
       setLogoPhase('done');
     }, 300);
@@ -130,8 +171,9 @@ const App = () => {
         onChange={handleFileSelect}
       />
       <Dtour
+        key={fileName}
         data={data}
-        spec={initialSpec}
+        spec={spec}
         onLoadData={handleLoadData}
         onSpecChange={handleSpecChange}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
