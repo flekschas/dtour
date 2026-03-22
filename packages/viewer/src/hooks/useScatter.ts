@@ -1,12 +1,13 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
-import { hexToRgb, isHexColor } from '../lib/color-utils.ts';
+import { hexToRgb, hexToRgb255, isHexColor } from '../lib/color-utils.ts';
 import {
   backgroundColorAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  colorMapAtom,
   guidedSuspendedAtom,
   legendClearGenAtom,
   legendSelectionAtom,
@@ -37,6 +38,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const backgroundColor = useAtomValue(backgroundColorAtom);
   const palette = useAtomValue(paletteAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const rawColorMap = useAtomValue(colorMapAtom);
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const legendSelection = useAtomValue(legendSelectionAtom);
@@ -76,9 +78,18 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     } else {
       // Column name — encode per-point colors via data worker
       scatter.setStyle({ pointSize, opacity });
-      scatter.encodeColor(color, palette, resolvedTheme);
+      // Resolve theme-aware colorMap to Record<string, [r,g,b]> for the scatter worker
+      let resolvedColorMap: Record<string, [number, number, number]> | undefined;
+      if (rawColorMap) {
+        resolvedColorMap = {};
+        for (const [label, value] of Object.entries(rawColorMap)) {
+          const hex = typeof value === 'string' ? value : value[resolvedTheme];
+          resolvedColorMap[label] = hexToRgb255(hex);
+        }
+      }
+      scatter.encodeColor(color, palette, resolvedTheme, resolvedColorMap);
     }
-  }, [scatter, pointSize, opacity, color, palette, resolvedTheme]);
+  }, [scatter, pointSize, opacity, color, palette, resolvedTheme, rawColorMap]);
 
   // Forward legend selection → scatter.selectByColumn
   useEffect(() => {

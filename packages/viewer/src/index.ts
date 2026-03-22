@@ -37,6 +37,7 @@ export {
   pointSizeAtom,
   pointOpacityAtom,
   pointColorAtom,
+  colorMapAtom,
   // Camera
   cameraPanXAtom,
   cameraPanYAtom,

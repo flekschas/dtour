@@ -52,7 +52,18 @@ export const loadArrow = (buffer: ArrayBuffer): ArrowResult => {
         }
         indices[i] = idx;
       }
-      categorical.push({ name, indices, labels: [...labelSet.keys()] });
+      // Sort labels alphabetically for deterministic ordering
+      const unsortedLabels = [...labelSet.keys()];
+      const sortedLabels = [...unsortedLabels].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      const newIdx = new Map<string, number>();
+      for (let j = 0; j < sortedLabels.length; j++) {
+        newIdx.set(sortedLabels[j]!, j);
+      }
+      const oldToNew = unsortedLabels.map((l) => newIdx.get(l)!);
+      for (let i = 0; i < indices.length; i++) {
+        indices[i] = oldToNew[indices[i]!]!;
+      }
+      categorical.push({ name, indices, labels: sortedLabels });
     }
   }
 

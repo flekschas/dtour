@@ -96,19 +96,25 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
   if (msg.type === 'encodeColor') {
     if (!gpuPort) return;
 
-    const { column, palette, theme } = msg;
+    const { column, palette, theme, colorMap } = msg;
     const isLight = theme === 'light';
 
     // Check categorical columns first
     const cat = categoricalData.get(column);
     if (cat) {
-      const glasbey = isLight ? GLASBEY_LIGHT : GLASBEY_DARK;
-      const pal = cat.labels.length <= OKABE_ITO.length
-        ? OKABE_ITO
-        : [
-            ...OKABE_ITO,
-            ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
-          ] as [number, number, number][];
+      let pal: [number, number, number][];
+      if (colorMap) {
+        // Build palette from colorMap, keyed by label name
+        pal = cat.labels.map((label) => colorMap[label] ?? [128, 128, 128]);
+      } else {
+        const glasbey = isLight ? GLASBEY_LIGHT : GLASBEY_DARK;
+        pal = cat.labels.length <= OKABE_ITO.length
+          ? OKABE_ITO
+          : [
+              ...OKABE_ITO,
+              ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
+            ] as [number, number, number][];
+      }
       const colors = encodeCategoricalColors(cat.indices, pal);
       gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
       return;

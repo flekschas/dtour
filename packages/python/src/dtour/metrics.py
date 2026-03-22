@@ -109,6 +109,13 @@ def compute_metrics(
         X = X[mask]
         labels = labels[mask]
 
+    # Normalize each dimension to [-0.5, 0.5] to match the GPU shader which
+    # applies per-dim (raw - min) / range - 0.5 before projecting.
+    mins = X.min(axis=0)
+    ranges = X.max(axis=0) - mins
+    ranges[ranges == 0] = 1e-6
+    X_norm = (X - mins) / ranges - 0.5
+
     n = X.shape[0]
     requested = metrics or _DEFAULT_METRICS
 
@@ -130,8 +137,8 @@ def compute_metrics(
     rng = np.random.default_rng(seed=0)
 
     for basis in views:
-        # Project: (n, p) @ (p, 2) → (n, 2)
-        proj = X @ basis
+        # Project normalized data: (n, p) @ (p, 2) → (n, 2)
+        proj = X_norm @ basis
 
         # Pre-compute subsampled index arrays (one per unique subsample size)
         idx_cache: dict[int, np.ndarray] = {}
@@ -209,21 +216,30 @@ def _neighborhood_hit(
 
 
 def _confusion(proj: np.ndarray, labels: np.ndarray) -> float:
-    """Fraction of KNN neighbors with a different label (0 = perfect, 1 = random).
+    """Mean per-label confusion (0 = perfect separation, 1 = fully mixed).
 
-    Uses cev-metrics Rust KNN to build a label confusion matrix, then returns
-    the off-diagonal fraction: ``1 - trace(cm) / sum(cm)``.
+    Uses cev-metrics Rust KNN to build a label confusion matrix, normalizes
+    each row by its row sum, then averages ``1 - diag`` across labels.
+    Labels with 2 or fewer points are excluded (assigned 0 confusion).
     """
     import cev_metrics
     import pandas as pd
 
+    cat = pd.Categorical(labels)
     df = pd.DataFrame({
         "x": proj[:, 0],
         "y": proj[:, 1],
-        "label": pd.Categorical(labels),
+        "label": cat,
     })
     cm = np.asarray(cev_metrics.confusion(df), dtype=np.float64)
-    total = cm.sum()
-    if total == 0:
-        return 0.0
-    return float(1.0 - np.trace(cm) / total)
+    row_sums = cm.sum(axis=1)
+    # Avoid division by zero for empty rows
+    row_sums[row_sums == 0] = 1.0
+    normed = cm / row_sums[:, None]
+    per_label = 1.0 - np.diag(normed)
+    # Zero out labels with 2 or fewer points
+    counts = pd.Series(cat).value_counts()
+    for i, category in enumerate(cat.categories):
+        if counts.get(category, 0) <= 2:
+            per_label[i] = 0.0
+    return float(np.mean(per_label))

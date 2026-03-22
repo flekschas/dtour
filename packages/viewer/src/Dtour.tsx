@@ -11,6 +11,7 @@ import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
 import {
   backgroundColorAtom,
+  colorMapAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
@@ -43,6 +44,8 @@ export type DtourProps = {
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
   /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
   onSelectionChange?: (labels: string[]) => void;
+  /** Per-label color map. Values are hex strings or theme-aware {light, dark} objects. */
+  colorMap?: Record<string, string | { light: string; dark: string }>;
   /** Element to portal Radix popups into (for Shadow DOM isolation). When omitted, portals render into document.body as usual. */
   portalContainer?: HTMLElement;
 };
@@ -59,6 +62,7 @@ export const Dtour = ({
   hideToolbar = false,
   onLoadData,
   onSelectionChange,
+  colorMap,
   portalContainer,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
@@ -85,6 +89,7 @@ export const Dtour = ({
           hideToolbar={hideToolbar}
           onLoadData={onLoadData}
           onSelectionChange={onSelectionChange}
+          colorMap={colorMap}
         />
       </Provider>
     </PortalContainerContext.Provider>
@@ -104,6 +109,7 @@ const DtourInner = ({
   hideToolbar,
   onLoadData,
   onSelectionChange,
+  colorMap,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -116,10 +122,17 @@ const DtourInner = ({
   hideToolbar: boolean;
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
   onSelectionChange: ((labels: string[]) => void) | undefined;
+  colorMap: Record<string, string | { light: string; dark: string }> | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
   useSystemTheme();
+
+  // Sync colorMap prop → atom
+  const setColorMap = useSetAtom(colorMapAtom);
+  useEffect(() => {
+    setColorMap(colorMap ?? null);
+  }, [colorMap, setColorMap]);
 
   // Sync resolved theme → background color + CSS class
   const resolvedTheme = useAtomValue(resolvedThemeAtom);

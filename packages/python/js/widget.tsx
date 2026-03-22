@@ -185,6 +185,12 @@ function Widget() {
   const [metricTracks, setMetricTracks] = useState<RadialTrackConfig[]>(
     () => model.get('metric_tracks') ?? [],
   );
+  const [colorMap, setColorMap] = useState<Record<string, string | { light: string; dark: string }> | undefined>(
+    () => {
+      const raw = model.get('color_map');
+      return raw && Object.keys(raw).length > 0 ? raw : undefined;
+    },
+  );
 
   useEffect(() => {
     function onBarWidth() {
@@ -193,11 +199,17 @@ function Widget() {
     function onTracks() {
       setMetricTracks(model.get('metric_tracks') ?? []);
     }
+    function onColorMap() {
+      const raw = model.get('color_map');
+      setColorMap(raw && Object.keys(raw).length > 0 ? raw : undefined);
+    }
     model.on('change:metric_bar_width', onBarWidth);
     model.on('change:metric_tracks', onTracks);
+    model.on('change:color_map', onColorMap);
     return () => {
       model.off('change:metric_bar_width', onBarWidth);
       model.off('change:metric_tracks', onTracks);
+      model.off('change:color_map', onColorMap);
     };
   }, [model]);
 
@@ -209,6 +221,7 @@ function Widget() {
         metrics={metrics}
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}
+        colorMap={colorMap}
         spec={spec}
         onSpecChange={handleSpecChange}
         onSelectionChange={handleSelectionChange}

@@ -1,7 +1,9 @@
 import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback } from 'react';
+import { hexToRgb255 } from '../lib/color-utils.ts';
 import {
+  colorMapAtom,
   legendClearGenAtom,
   legendSelectionAtom,
   metadataAtom,
@@ -56,6 +58,7 @@ export const ColorLegend = () => {
   const pointColor = useAtomValue(pointColorAtom);
   const palette = useAtomValue(paletteAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const rawColorMap = useAtomValue(colorMapAtom);
   const [legendSelection, setLegendSelection] = useAtom(legendSelectionAtom);
   const setClearGen = useSetAtom(legendClearGenAtom);
 
@@ -74,13 +77,23 @@ export const ColorLegend = () => {
 
   if (isCategorical) {
     const labels = metadata.categoricalLabels[column] ?? [];
-    const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
-    const colors = labels.length <= OKABE_ITO.length
-    ? OKABE_ITO
-    : [
-        ...OKABE_ITO,
-        ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
-      ] as [number, number, number][];
+    let colors: [number, number, number][];
+    if (rawColorMap) {
+      colors = labels.map((label) => {
+        const v = rawColorMap[label];
+        if (!v) return [128, 128, 128] as [number, number, number];
+        const hex = typeof v === 'string' ? v : v[resolvedTheme];
+        return hexToRgb255(hex);
+      });
+    } else {
+      const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
+      colors = labels.length <= OKABE_ITO.length
+        ? OKABE_ITO
+        : [
+            ...OKABE_ITO,
+            ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
+          ] as [number, number, number][];
+    }
     return (
       <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
         <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-dtour-highlight truncate">

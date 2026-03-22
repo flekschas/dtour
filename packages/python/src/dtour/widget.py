@@ -84,6 +84,9 @@ class Widget(anywidget.AnyWidget):
     # ── Selection state (JS → Python) ───────────────────────────────────
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
 
+    # ── Color map ────────────────────────────────────────────────────────
+    color_map = t.Dict(default_value={}).tag(sync=True)
+
     # ── Metric track configuration ─────────────────────────────────────
     metric_tracks = t.List(t.Dict(), default_value=[]).tag(sync=True)
 

@@ -21,7 +21,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(df, dtour, phenotypes, pl, tour):
+def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
     # Combine embedding columns with the categorical label for coloring.
     # The scatter engine uses numeric columns for projection and categorical
     # columns for per-point color encoding.
@@ -35,6 +35,7 @@ def _(df, dtour, phenotypes, pl, tour):
         preview_count=8,
         preview_size="small",
         point_color="phenotypes",
+        color_map=phenotype_colors,
         metric_bar_width=24,
         metric_tracks=[{"metric": "confusion", "height": 64, "domain": [0, 1]}],
         camera_zoom=0.5,
@@ -42,11 +43,56 @@ def _(df, dtour, phenotypes, pl, tour):
         theme="light",
     )
     w
-    return (w,)
+    return w, widget_df
 
 
 @app.cell
-def _(cache_dir, df, dtour, np, tour, w):
+def _(X_scaled, cache_dir, np, phenotype_colors, phenotypes):
+    # Classic UMAP Plot
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from sklearn.decomposition import PCA
+    from umap import UMAP
+
+    umap2d_path = cache_dir / "umap_2d.npy"
+    if umap2d_path.exists():
+        umap_2d = np.load(umap2d_path)
+    else:
+        pca_init = PCA(n_components=2).fit_transform(X_scaled)
+        umap_2d = UMAP(n_components=2, init=pca_init, random_state=42).fit_transform(X_scaled)
+        np.save(umap2d_path, umap_2d)
+
+    labels = phenotypes.to_numpy()
+    unique_labels = sorted(set(labels), key=lambda lb: (lb != "Unassigned", str.lower(lb)))
+
+    # Convert the shared phenotype_colors (hex strings) to matplotlib RGBA
+    _mpl_cmap = {
+        label: mcolors.to_rgba(phenotype_colors[label])
+        for label in unique_labels
+    }
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    for label in unique_labels:
+        mask = labels == label
+        ax.scatter(
+            umap_2d[mask, 0],
+            umap_2d[mask, 1],
+            c=[_mpl_cmap[label]],
+            label=label,
+            s=1,
+            alpha=0.5,
+        )
+    ax.set_xlabel("UMAP 1")
+    ax.set_ylabel("UMAP 2")
+    ax.set_title("2D UMAP — Cell Phenotypes")
+    ax.legend(markerscale=5, fontsize=8, loc="best")
+    fig.tight_layout()
+    fig
+    return
+
+
+@app.cell
+def _(cache_dir, dtour, np, tour, w, widget_df):
     _metric_names = ["confusion"]
     metrics_path = cache_dir / "metrics.npz"
     if metrics_path.exists():
@@ -59,9 +105,9 @@ def _(cache_dir, df, dtour, np, tour, w):
         metrics = dtour.compute_metrics(
             tour.embedding,
             tour.views,
-            labels=df["faustLabels"].to_numpy(),
+            labels=widget_df["phenotypes"].to_numpy(),
             metrics=_metric_names,
-            exclude_labels=["0_0_0_0_0"],
+            exclude_labels=["Unassigned"],
         )
         np.savez_compressed(metrics_path, **{name: vals for name, vals in metrics.values.items()})
     w.set_metrics(metrics)
@@ -69,16 +115,22 @@ def _(cache_dir, df, dtour, np, tour, w):
 
 
 @app.cell
-def _(cache_dir, df, dtour, metrics, np, tour, w):
+def _(cache_dir, dtour, metrics, np, tour, w, widget_df):
     import cev_metrics
     import pandas as pd
 
     _original_confusion = metrics.values["confusion"]
-    _labels = df["faustLabels"].to_numpy()
-    _exclude = {"0_0_0_0_0"}
+    _labels = widget_df["phenotypes"].to_numpy()
+    _exclude = {"Unassigned"}
     _mask = np.array([lbl not in _exclude for lbl in _labels])
     _X = tour.embedding[_mask]
     _labels_clean = _labels[_mask]
+
+    # Normalize to [-0.5, 0.5] per dimension to match GPU shader projection
+    _mins = _X.min(axis=0)
+    _ranges = _X.max(axis=0) - _mins
+    _ranges[_ranges == 0] = 1e-6
+    _X_norm = (_X - _mins) / _ranges - 0.5
 
     # Precompute confusion matrices for all views (expensive, done once)
     _cm_cache_path = cache_dir / "confusion_matrices.npz"
@@ -89,13 +141,14 @@ def _(cache_dir, df, dtour, metrics, np, tour, w):
         _cat = pd.Categorical(_labels_clean)
         _confusion_matrices = []
         for basis in tour.views:
-            proj = _X @ basis
+            proj = _X_norm @ basis
             cm_df = pd.DataFrame({"x": proj[:, 0], "y": proj[:, 1], "label": _cat})
             _confusion_matrices.append(np.asarray(cev_metrics.confusion(cm_df), dtype=np.float64))
         np.savez_compressed(
             _cm_cache_path, **{f"cm_{i}": cm for i, cm in enumerate(_confusion_matrices)}
         )
 
+    # _cat_labels are phenotype names — directly match what the viewer sends
     _cat_labels = sorted(set(_labels_clean))
     _confusion_cache: dict[frozenset, list[float]] = {}
 
@@ -117,10 +170,11 @@ def _(cache_dir, df, dtour, metrics, np, tour, w):
                 return
             vals = []
             for cm in _confusion_matrices:
-                rows = cm[sel_idx, :]
-                total = rows.sum()
-                diag = sum(cm[i, i] for i in sel_idx)
-                vals.append(0.0 if total == 0 else float(1.0 - diag / total))
+                # Row-normalize then average per-label confusion for selected labels
+                row_sums = cm[sel_idx, :].sum(axis=1)
+                row_sums[row_sums == 0] = 1.0
+                per_label = 1.0 - np.array([cm[i, i] for i in sel_idx]) / row_sums
+                vals.append(float(np.mean(per_label)))
             _confusion_cache[key] = vals
 
         w.set_metrics(
@@ -131,6 +185,8 @@ def _(cache_dir, df, dtour, metrics, np, tour, w):
         )
 
     w.observe(_on_selection, names=["selected_labels"])
+    cat_labels = _cat_labels
+    confusion_matrices = _confusion_matrices
     return
 
 
@@ -164,13 +220,22 @@ def _(cache_dir, pl):
 
 
 @app.cell
-def _(df, faust_to_celltype):
+def _(df, dtour, faust_to_celltype):
     phenotypes = (
         df["faustLabels"]
-        .replace(faust_to_celltype, default="Unassigned")
+        .replace_strict(faust_to_celltype, default="Unassigned")
         .alias("phenotypes")
     )
-    return (phenotypes,)
+
+    # Build a shared color map from dtour's light palette (Okabe-Ito + Glasbey Light)
+    # with "Unassigned" overridden to gray. Used by both the widget and matplotlib.
+    _labels = sorted(phenotypes.unique().to_list())
+    phenotype_colors = dtour.build_color_map(
+        _labels,
+        theme="light",
+        overrides={"Unassigned": "#999999"},
+    )
+    return phenotype_colors, phenotypes
 
 
 @app.cell

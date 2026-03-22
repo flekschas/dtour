@@ -57,7 +57,7 @@ export type ScatterInstance = {
   /** Set a single basis directly for manual/zen modes. Renders main view only. */
   setDirectBasis: (basis: Float32Array) => void;
   /** Encode a column as per-point colors. Column can be categorical or numeric. */
-  encodeColor: (column: string, palette?: string, theme?: 'light' | 'dark') => void;
+  encodeColor: (column: string, palette?: string, theme?: 'light' | 'dark', colorMap?: Record<string, [number, number, number]>) => void;
   /** Set the background clear color (RGB 0–1). */
   setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
@@ -215,8 +215,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'setDirectBasis', basis }, [basis.buffer]);
   };
 
-  const encodeColor = (column: string, palette?: string, theme?: 'light' | 'dark'): void => {
-    const msg: MainToData = { type: 'encodeColor', column, ...(palette ? { palette } : {}), ...(theme ? { theme } : {}) };
+  const encodeColor = (column: string, palette?: string, theme?: 'light' | 'dark', colorMap?: Record<string, [number, number, number]>): void => {
+    const msg: MainToData = { type: 'encodeColor', column, ...(palette ? { palette } : {}), ...(theme ? { theme } : {}), ...(colorMap ? { colorMap } : {}) };
     sendToData(dataWorker, msg);
   };
 

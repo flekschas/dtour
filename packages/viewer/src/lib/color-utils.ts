@@ -10,3 +10,13 @@ export const hexToRgb = (hex: string): [number, number, number] => {
   const n = Number.parseInt(h, 16);
   return [(n >> 16) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
 };
+
+/** Parse a hex color string to [r, g, b] in 0-255 range. */
+export const hexToRgb255 = (hex: string): [number, number, number] => {
+  let h = hex.slice(1);
+  if (h.length === 3) {
+    h = h[0]! + h[0]! + h[1]! + h[1]! + h[2]! + h[2]!;
+  }
+  const n = Number.parseInt(h, 16);
+  return [n >> 16, (n >> 8) & 0xff, n & 0xff];
+};

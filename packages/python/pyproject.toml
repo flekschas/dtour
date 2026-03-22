@@ -13,6 +13,7 @@ dependencies = [
   "anywidget>=0.9.21",
   "arro3-core>=0.6.0",
   "arro3-io>=0.6.0",
+  "matplotlib>=3.10.8",
   "numpy>=2.4.2",
   "scikit-learn>=1.8.0",
   "umap-learn>=0.5",
@@ -20,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "matplotlib>=3.9",
   "polars>=1.38.1",
   "pytest>=9.0.2",
   "ruff>=0.15.2",

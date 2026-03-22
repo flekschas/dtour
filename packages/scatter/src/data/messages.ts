@@ -4,7 +4,7 @@ import type { Metadata } from './types.ts';
 export type MainToData =
   | { type: 'init'; gpuPort: MessagePort }
   | { type: 'load'; buffer: ArrayBuffer }
-  | { type: 'encodeColor'; column: string; palette?: string; theme?: 'light' | 'dark' }
+  | { type: 'encodeColor'; column: string; palette?: string; theme?: 'light' | 'dark'; colorMap?: Record<string, [number, number, number]> }
   | { type: 'selectByColumn'; column: string; labelIndices?: number[]; valueRanges?: Float32Array };
 
 // Data Worker → Main thread
