@@ -3,7 +3,7 @@ import { Dtour } from '@dtour/viewer';
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
-import type { DtourSpec, RadialTrackConfig } from '@dtour/viewer';
+import type { DtourHandle, DtourSpec, RadialTrackConfig } from '@dtour/viewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // ---------------------------------------------------------------------------
 
 const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
+  tour_by: 'tourBy',
   tour_position: 'tourPosition',
   tour_playing: 'tourPlaying',
   tour_speed: 'tourSpeed',
@@ -24,6 +25,7 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   camera_pan_y: 'cameraPanY',
   camera_zoom: 'cameraZoom',
   view_mode: 'viewMode',
+  show_legend: 'showLegend',
   theme: 'themeMode',
 };
 
@@ -92,6 +94,11 @@ function Widget() {
   const [metrics, setMetrics] = useState<ArrayBuffer | undefined>();
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
   const suppressRef = useRef(false);
+  const dtourApiRef = useRef<DtourHandle | null>(null);
+
+  const handleReady = useCallback((api: DtourHandle) => {
+    dtourApiRef.current = api;
+  }, []);
 
   // Detect Shadow DOM and create a dedicated portal container inside it so
   // Radix popovers/dropdowns/tooltips render within the shadow boundary and
@@ -125,6 +132,12 @@ function Widget() {
         const ab = toArrayBuffer(buffers[0]);
         console.log('[dtour] metrics received, byteLength:', ab.byteLength);
         setMetrics(ab);
+      } else if (msg.type === 'select' && buffers[0]) {
+        const ab = toArrayBuffer(buffers[0]);
+        const indices = new Int32Array(ab);
+        dtourApiRef.current?.select(Array.from(indices));
+      } else if (msg.type === 'clear_selection') {
+        dtourApiRef.current?.clearSelection();
       }
     }
     model.on('msg:custom', onMsg);
@@ -225,6 +238,7 @@ function Widget() {
         spec={spec}
         onSpecChange={handleSpecChange}
         onSelectionChange={handleSelectionChange}
+        onReady={handleReady}
         portalContainer={portalContainer}
       />
     </div>

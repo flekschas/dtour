@@ -3,7 +3,7 @@ import './styles.css';
 
 // Primary API — self-contained component with spec-driven state
 export { Dtour } from './Dtour.tsx';
-export type { DtourProps } from './Dtour.tsx';
+export type { DtourProps, DtourHandle } from './Dtour.tsx';
 export type { DtourSpec } from './spec.ts';
 export { dtourSpecSchema, DTOUR_DEFAULTS } from './spec.ts';
 

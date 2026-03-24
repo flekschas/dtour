@@ -32,7 +32,7 @@ struct Camera {
 @group(0) @binding(2) var<uniform> camera: Camera;
 // Per-point packed RGBA8 colors (u32: 0xAABBGGRR)
 @group(0) @binding(3) var<storage, read> pointColors: array<u32>;
-// Per-point selection mask (1 = selected/visible, 0 = dimmed)
+// Bit-packed selection mask (1 bit per point, 32 per u32)
 @group(0) @binding(4) var<storage, read> selectionMask: array<u32>;
 
 struct VertOut {
@@ -111,7 +111,7 @@ fn vs_main(
   // Read selection
   var sel: u32 = 1u;
   if uni.useSelectionMask > 0.5 {
-    sel = selectionMask[ii];
+    sel = (selectionMask[ii / 32u] >> (ii % 32u)) & 1u;
   }
 
   var out: VertOut;

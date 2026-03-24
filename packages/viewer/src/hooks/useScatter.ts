@@ -131,14 +131,15 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     scatter.clearSelection();
   }, [scatter, legendClearGen]);
 
-  // Reset legend selection when color column changes
+  // Reset legend selection and clear GPU selection mask when color column changes
   const prevColorRef = useRef(color);
   useEffect(() => {
     if (prevColorRef.current !== color) {
       prevColorRef.current = color;
       setLegendSelection(null);
+      scatter?.clearSelection();
     }
-  }, [color, setLegendSelection]);
+  }, [scatter, color, setLegendSelection]);
 
   // Subscribe to scatter status events and update metadata atom.
   // Use a ref so the setMetadata closure never goes stale.

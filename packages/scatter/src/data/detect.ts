@@ -1,4 +1,4 @@
-export type FileFormat = 'arrow' | 'parquet' | 'unknown';
+export type FileFormat = 'arrow' | 'parquet';
 
 // "ARROW1" = 0x41 52 52 4F 57 31
 const ARROW_MAGIC = [0x41, 0x52, 0x52, 0x4f, 0x57, 0x31];

@@ -64,10 +64,16 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
     height: number;
   } | null>(null);
 
-  // Measure toolbar logo target and compute initial (large) position
+  // Measure toolbar logo target and compute initial (large) position.
+  // If the target element is missing, fire onDrawComplete so the app
+  // doesn't get stuck waiting for an animation that can never finish.
+  const targetMissingRef = useRef(false);
   useLayoutEffect(() => {
     const targetEl = document.querySelector('[data-logo-target]');
-    if (!targetEl) return;
+    if (!targetEl) {
+      targetMissingRef.current = true;
+      return;
+    }
     const rect = targetEl.getBoundingClientRect();
     setTargetRect(rect);
 
@@ -77,6 +83,12 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
     const y = 64;
     setInitialRect({ x, y, width, height });
   }, []);
+
+  useEffect(() => {
+    if (targetMissingRef.current) {
+      onDrawComplete();
+    }
+  }, [onDrawComplete]);
 
   // Reduced motion: fire callbacks immediately
   useEffect(() => {

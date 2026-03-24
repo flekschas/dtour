@@ -129,13 +129,15 @@ export const showLegendAtom = atom(true);
 
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,
- * AND points are colored by a data column (string that isn't a hex color).
+ * AND points are colored by a known data column (numeric or categorical).
  */
 export const legendVisibleAtom = atom((get) => {
   if (!get(showLegendAtom)) return false;
-  if (!get(metadataAtom)) return false;
+  const meta = get(metadataAtom);
+  if (!meta) return false;
   const color = get(pointColorAtom);
-  return typeof color === 'string' && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color);
+  if (typeof color !== 'string') return false;
+  return meta.columnNames.includes(color) || meta.categoricalColumnNames.includes(color);
 });
 
 // ---------------------------------------------------------------------------

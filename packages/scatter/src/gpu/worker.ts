@@ -3,6 +3,16 @@
 import type { DataToGpu } from '../data/messages.ts';
 import { type CanvasView, configureCanvas, renderPoints } from '../renderer.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
+import {
+  type ColorPipelines,
+  createColorBindGroup,
+  createColorPipelines,
+  dispatchColorCompute,
+  writeCategoricalColorParams,
+  writeCategoricalSelectParams,
+  writeContinuousColorParams,
+  writeContinuousSelectParams,
+} from './color-pipeline.ts';
 import { initDevice } from './device.ts';
 import type { GpuToMain, MainToGpu } from './messages.ts';
 import {
@@ -40,13 +50,16 @@ type GpuState = {
   // Render pipeline
   pointPipeline: ReturnType<typeof createPointPipeline>;
   renderBindGroup: GPUBindGroup | null;
-  // Compute pipeline
+  // Compute pipelines
   projectionPipeline: ReturnType<typeof createProjectionPipeline>;
   projectionResources: ProjectionResources | null;
   projectionBindGroup: GPUBindGroup | null;
+  colorPipelines: ColorPipelines;
   // Data
   numPoints: number;
   numDims: number;
+  // Categorical index buffers on GPU, keyed by column name
+  categoricalBuffers: Map<string, GPUBuffer>;
   // Tour
   tour: TourState | null;
   // Style
@@ -76,6 +89,42 @@ let pcaPipeline: PcaPipeline | null = null;
 
 const postMain = (msg: GpuToMain, transfers?: Transferable[]): void => {
   self.postMessage(msg, transfers ?? []);
+};
+
+// ─── Buffer helpers ───────────────────────────────────────────────────────
+
+/** Ensure the color buffer exists at the right size, creating if needed. */
+const ensureColorBuffer = (): GPUBuffer => {
+  if (!state) throw new Error('state not initialized');
+  const size = state.numPoints * 4;
+  if (!state.colorBuffer || state.colorBuffer.size !== size) {
+    state.colorBuffer?.destroy();
+    state.colorBuffer = state.device.createBuffer({
+      label: 'point-colors',
+      size,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+  }
+  return state.colorBuffer;
+};
+
+/** Byte size for a bit-packed selection buffer (1 bit per point, packed into u32s). */
+const selectionBufferSize = (numPoints: number): number =>
+  Math.ceil(numPoints / 32) * 4;
+
+/** Ensure the selection buffer exists at the right size, creating if needed. */
+const ensureSelectionBuffer = (): GPUBuffer => {
+  if (!state) throw new Error('state not initialized');
+  const size = selectionBufferSize(state.numPoints);
+  if (!state.selectionBuffer || state.selectionBuffer.size !== size) {
+    state.selectionBuffer?.destroy();
+    state.selectionBuffer = state.device.createBuffer({
+      label: 'selection-mask',
+      size,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+  }
+  return state.selectionBuffer;
 };
 
 // ─── Projection + Render helpers ──────────────────────────────────────────
@@ -269,66 +318,197 @@ const rebuildBindGroups = (): void => {
   );
 };
 
+/** After a compute shader writes to the color or selection buffer,
+ *  update style flags, rebuild render bind groups, and re-render. */
+const applyColorUpdate = (): void => {
+  if (!state) return;
+  state.styleFlags.usePerPointColor = true;
+  writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
+  rebuildBindGroups();
+  if ((state.tour || state.directBasis) && state.projectionResources) {
+    renderAllViews();
+  }
+};
+
+const applySelectionUpdate = (): void => {
+  if (!state) return;
+  state.styleFlags.useSelectionMask = true;
+  writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
+  rebuildBindGroups();
+  if ((state.tour || state.directBasis) && state.projectionResources) {
+    renderAllViews();
+  }
+};
+
 // ─── Data from Data Worker ─────────────────────────────────────────────────
+
+// Track the current dataset version to discard stale color/selection messages.
+let currentDataVersion = 0;
 
 const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (!state) return;
+  const { device } = state;
 
-  if (event.data.type === 'colors') {
-    // Per-point color data from data worker
-    const { colors } = event.data;
-    const { device } = state;
+  // ── Continuous color encoding (GPU compute) ──
+  if (event.data.type === 'encodeColorContinuous') {
+    if (event.data.dataVersion !== currentDataVersion) return;
+    if (!state.projectionResources) return;
 
-    // Destroy old color buffer if it's not the default
-    if (state.colorBuffer) {
-      state.colorBuffer.destroy();
-    }
+    const { columnIndex, min, range, colormap } = event.data;
+    const { numPoints, colorPipelines } = state;
 
-    state.colorBuffer = device.createBuffer({
-      label: 'point-colors',
-      size: colors.byteLength,
+    const colorBuf = ensureColorBuffer();
+
+    // Upload colormap LUT to a temp buffer
+    const cmapBuf = device.createBuffer({
+      label: 'colormap-lut',
+      size: colormap.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(state.colorBuffer, 0, colors as Uint32Array<ArrayBuffer>);
+    device.queue.writeBuffer(cmapBuf, 0, colormap as Uint32Array<ArrayBuffer>);
 
-    state.styleFlags.usePerPointColor = true;
-    writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
-    rebuildBindGroups();
+    writeContinuousColorParams(
+      device, colorPipelines.paramsBuffer,
+      numPoints, columnIndex * numPoints, min, range, colormap.length,
+    );
 
-    if ((state.tour || state.directBasis) && state.projectionResources) {
-      renderAllViews();
-    }
+    const bg = createColorBindGroup(
+      device, colorPipelines.bindGroupLayout,
+      state.projectionResources.dataBuffer, cmapBuf, colorBuf, colorPipelines.paramsBuffer,
+    );
+
+    const cmd = dispatchColorCompute(device, colorPipelines.colorContinuous, bg, numPoints);
+    device.queue.submit([cmd]);
+    cmapBuf.destroy();
+
+    applyColorUpdate();
     return;
   }
 
-  if (event.data.type === 'selectionMask') {
-    const { mask } = event.data;
-    const { device } = state;
+  // ── Categorical color encoding (GPU compute) ──
+  if (event.data.type === 'encodeColorCategorical') {
+    if (event.data.dataVersion !== currentDataVersion) return;
 
-    if (state.selectionBuffer) {
-      state.selectionBuffer.destroy();
-    }
+    const { catColumnName, palette } = event.data;
+    const indexBuf = state.categoricalBuffers.get(catColumnName);
+    if (!indexBuf) return;
 
-    state.selectionBuffer = device.createBuffer({
-      label: 'selection-mask',
-      size: mask.byteLength,
+    const { numPoints, colorPipelines } = state;
+    const colorBuf = ensureColorBuffer();
+
+    const palBuf = device.createBuffer({
+      label: 'palette',
+      size: palette.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
+    device.queue.writeBuffer(palBuf, 0, palette as Uint32Array<ArrayBuffer>);
 
-    state.styleFlags.useSelectionMask = true;
-    writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
-    rebuildBindGroups();
+    writeCategoricalColorParams(
+      device, colorPipelines.paramsBuffer, numPoints, palette.length,
+    );
 
-    if ((state.tour || state.directBasis) && state.projectionResources) {
-      renderAllViews();
-    }
+    const bg = createColorBindGroup(
+      device, colorPipelines.bindGroupLayout,
+      indexBuf, palBuf, colorBuf, colorPipelines.paramsBuffer,
+    );
+
+    const cmd = dispatchColorCompute(device, colorPipelines.colorCategorical, bg, numPoints);
+    device.queue.submit([cmd]);
+    palBuf.destroy();
+
+    applyColorUpdate();
     return;
   }
 
+  // ── Continuous selection (GPU compute) ──
+  if (event.data.type === 'selectContinuous') {
+    if (event.data.dataVersion !== currentDataVersion) return;
+    if (!state.projectionResources) return;
+
+    const { columnIndex, ranges } = event.data;
+    const { numPoints, colorPipelines } = state;
+
+    const selBuf = ensureSelectionBuffer();
+
+    const rangesBuf = device.createBuffer({
+      label: 'select-ranges',
+      size: Math.max(ranges.byteLength, 4), // min 4 bytes for empty
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(rangesBuf, 0, ranges as Float32Array<ArrayBuffer>);
+
+    writeContinuousSelectParams(
+      device, colorPipelines.paramsBuffer,
+      numPoints, columnIndex * numPoints, ranges.length / 2,
+    );
+
+    const bg = createColorBindGroup(
+      device, colorPipelines.bindGroupLayout,
+      state.projectionResources.dataBuffer, rangesBuf, selBuf, colorPipelines.paramsBuffer,
+    );
+
+    // Clear mask (atomicOr can only set bits) then dispatch compute
+    const encoder = device.createCommandEncoder({ label: 'select-continuous' });
+    encoder.clearBuffer(selBuf, 0, selBuf.size);
+    const pass = encoder.beginComputePass({ label: 'select-continuous' });
+    pass.setPipeline(colorPipelines.selectContinuous);
+    pass.setBindGroup(0, bg);
+    pass.dispatchWorkgroups(Math.ceil(numPoints / 256));
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    rangesBuf.destroy();
+
+    applySelectionUpdate();
+    return;
+  }
+
+  // ── Categorical selection (GPU compute) ──
+  if (event.data.type === 'selectCategorical') {
+    if (event.data.dataVersion !== currentDataVersion) return;
+
+    const { catColumnName, selectedLabels } = event.data;
+    const indexBuf = state.categoricalBuffers.get(catColumnName);
+    if (!indexBuf) return;
+
+    const { numPoints, colorPipelines } = state;
+    const selBuf = ensureSelectionBuffer();
+
+    const selLabelsBuf = device.createBuffer({
+      label: 'selected-labels',
+      size: Math.max(selectedLabels.byteLength, 4),
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(selLabelsBuf, 0, selectedLabels as Uint32Array<ArrayBuffer>);
+
+    writeCategoricalSelectParams(
+      device, colorPipelines.paramsBuffer, numPoints, selectedLabels.length,
+    );
+
+    const bg = createColorBindGroup(
+      device, colorPipelines.bindGroupLayout,
+      indexBuf, selLabelsBuf, selBuf, colorPipelines.paramsBuffer,
+    );
+
+    // Clear mask (atomicOr can only set bits) then dispatch compute
+    const encoder = device.createCommandEncoder({ label: 'select-categorical' });
+    encoder.clearBuffer(selBuf, 0, selBuf.size);
+    const pass = encoder.beginComputePass({ label: 'select-categorical' });
+    pass.setPipeline(colorPipelines.selectCategorical);
+    pass.setBindGroup(0, bg);
+    pass.dispatchWorkgroups(Math.ceil(numPoints / 256));
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    selLabelsBuf.destroy();
+
+    applySelectionUpdate();
+    return;
+  }
+
+  // ── Dataset load ──
   if (event.data.type !== 'data') return;
 
-  const { dims, rows, buffers, mins, ranges } = event.data;
+  const { dataVersion, dims, rows, buffers, mins, ranges, categoricalColumns } = event.data;
+  currentDataVersion = dataVersion;
 
   if (dims < 2 || rows === 0 || buffers.length < 2) {
     postMain({ type: 'error', message: 'Need at least 2 dimensions to render' });
@@ -351,10 +531,16 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     state.selectionBuffer.destroy();
     state.selectionBuffer = null;
   }
+  // Clean up previous categorical buffers
+  for (const buf of state.categoricalBuffers.values()) {
+    buf.destroy();
+  }
+  state.categoricalBuffers.clear();
+
   state.styleFlags = { usePerPointColor: false, useSelectionMask: false };
   writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
 
-  const { device, projectionPipeline } = state;
+  const { projectionPipeline } = state;
 
   // Create new projection resources
   const res = createProjectionResources(device, projectionPipeline, rows, dims);
@@ -375,6 +561,17 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     normData[d * 2 + 1] = ranges[d]!;
   }
   device.queue.writeBuffer(res.normParamsBuffer, 0, normData);
+
+  // Upload categorical index buffers
+  for (const cat of categoricalColumns) {
+    const buf = device.createBuffer({
+      label: `cat-indices-${cat.name}`,
+      size: cat.indices.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(buf, 0, cat.indices as Uint32Array<ArrayBuffer>);
+    state.categoricalBuffers.set(cat.name, buf);
+  }
 
   // Write projection params
   writeProjectionParams(device, projectionPipeline.paramsBuffer, rows, dims, 2.0);
@@ -529,21 +726,20 @@ const handleMessage = (msg: MainToGpu): void => {
 
   if (msg.type === 'setSelectionMask') {
     const { mask } = msg;
-    const { device } = state;
 
     if (state.selectionBuffer) {
       state.selectionBuffer.destroy();
     }
 
-    state.selectionBuffer = device.createBuffer({
+    state.selectionBuffer = state.device.createBuffer({
       label: 'selection-mask',
       size: mask.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
+    state.device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
 
     state.styleFlags.useSelectionMask = true;
-    writeUniforms(device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
+    writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 
     if ((state.tour || state.directBasis) && state.projectionResources) {
@@ -605,10 +801,28 @@ const handleMessage = (msg: MainToGpu): void => {
   if (msg.type === 'lassoSelect') {
     if (!state.projectionResources || state.numPoints === 0) return;
 
-    const { device, numPoints, projectionResources } = state;
+    const { device, numPoints, projectionResources, camera } = state;
     const { polygon } = msg;
     const numVertices = polygon.length / 2;
     if (numVertices < 3) return;
+
+    // Transform the polygon from NDC space (what the user drew) into
+    // projection space (what projectedBuffer contains) using the inverse
+    // of the vertex shader's camera transform:
+    //   ndc_x = (proj_x + panX) * zoom * iz / aspect
+    //   ndc_y = (proj_y + panY) * zoom * iz + insetOffsetY
+    // Inverted:
+    //   proj_x = ndc_x * aspect / (zoom * iz) - panX
+    //   proj_y = (ndc_y - insetOffsetY) / (zoom * iz) - panY
+    const canvas = state.views[0]!.canvas;
+    const aspect = canvas.width / canvas.height || 1;
+    const iz = camera.insetZoom;
+    const zoomIz = camera.zoom * iz;
+    const projPolygon = new Float32Array(polygon.length);
+    for (let v = 0; v < numVertices; v++) {
+      projPolygon[v * 2] = (polygon[v * 2]! * aspect) / zoomIz - camera.panX;
+      projPolygon[v * 2 + 1] = (polygon[v * 2 + 1]! - camera.insetOffsetY) / zoomIz - camera.panY;
+    }
 
     // Read projected positions back from GPU
     const projSize = numPoints * 2 * 4; // 2 floats per point
@@ -625,12 +839,15 @@ const handleMessage = (msg: MainToGpu): void => {
     readBuffer.mapAsync(GPUMapMode.READ).then(() => {
       const projected = new Float32Array(readBuffer.getMappedRange());
 
-      // CPU point-in-polygon (ray casting) for each point
-      const mask = new Uint32Array(numPoints);
+      // CPU point-in-polygon (ray casting) — bit-packed mask
+      const mask = new Uint32Array(Math.ceil(numPoints / 32));
       for (let i = 0; i < numPoints; i++) {
         const px = projected[i * 2]!;
         const py = projected[i * 2 + 1]!;
-        mask[i] = pointInPolygon(px, py, polygon, numVertices) ? 1 : 0;
+        if (pointInPolygon(px, py, projPolygon, numVertices)) {
+          const w = i >> 5;
+          mask[w] = (mask[w] ?? 0) | (1 << (i & 31));
+        }
       }
 
       readBuffer.unmap();
@@ -695,6 +912,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
 
       const pointPipeline = createPointPipeline(device, canvasFormat);
       const projectionPipeline = createProjectionPipeline(device);
+      const colorPipelines = createColorPipelines(device);
 
       state = {
         device,
@@ -704,8 +922,10 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         projectionPipeline,
         projectionResources: null,
         projectionBindGroup: null,
+        colorPipelines,
         numPoints: 0,
         numDims: 0,
+        categoricalBuffers: new Map(),
         tour: null,
         style: { pointSize: 0.012, opacity: 0.7, color: [0.25, 0.5, 0.9] },
         styleFlags: { usePerPointColor: false, useSelectionMask: false },

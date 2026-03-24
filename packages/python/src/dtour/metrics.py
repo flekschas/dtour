@@ -119,6 +119,19 @@ def compute_metrics(
     n = X.shape[0]
     requested = metrics or _DEFAULT_METRICS
 
+    # Validate k against sample count (trustworthiness requires n > 2*k)
+    if k < 1:
+        raise ValueError(f"k must be >= 1, got {k}")
+    _NEIGHBOR_METRICS = {"trustworthiness", "neighborhood_hit"}
+    if any(m in _NEIGHBOR_METRICS for m in requested):
+        min_n = 2 * k + 1
+        if n < min_n:
+            raise ValueError(
+                f"k={k} requires at least {min_n} samples for neighbor-based "
+                f"metrics, but only {n} samples are available. "
+                f"Reduce k or provide more data."
+            )
+
     for m in requested:
         if m not in _ALL_METRICS:
             raise ValueError(f"Unknown metric {m!r}. Supported: {sorted(_ALL_METRICS)}")

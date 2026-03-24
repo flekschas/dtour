@@ -70,7 +70,7 @@ export type ScatterInstance = {
   clearColor: () => void;
   /** Select points by column value. Mask is built in the data worker. */
   selectByColumn: (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }) => void;
-  /** Set a selection mask (1 = selected, 0 = dimmed). */
+  /** Set a bit-packed selection mask (1 bit per point, 32 per u32). Length: ceil(numPoints / 32). */
   setSelectionMask: (mask: Uint32Array) => void;
   /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
   lassoSelect: (polygon: Float32Array) => void;
@@ -237,9 +237,11 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   };
 
   const selectByColumn = (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }): void => {
+    // Clone valueRanges before transferring so the caller's buffer isn't detached
+    const ranges = opts.valueRanges ? new Float32Array(opts.valueRanges) : undefined;
     const transfers: Transferable[] = [];
-    if (opts.valueRanges) transfers.push(opts.valueRanges.buffer);
-    sendToData(dataWorker, { type: 'selectByColumn', column, ...opts }, transfers);
+    if (ranges) transfers.push(ranges.buffer);
+    sendToData(dataWorker, { type: 'selectByColumn', column, labelIndices: opts.labelIndices, valueRanges: ranges }, transfers);
   };
 
   const setSelectionMask = (mask: Uint32Array): void => {

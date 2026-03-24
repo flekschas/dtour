@@ -79,6 +79,12 @@ def _to_ipc_bytes(data: object) -> bytes:
     if isinstance(data, np.ndarray):
         return from_numpy(data)
 
+    # Route pandas DataFrames through from_pandas() so pyarrow isn't needed
+    type_name = type(data).__qualname__
+    module = type(data).__module__ or ""
+    if type_name == "DataFrame" and module.startswith("pandas"):
+        return from_pandas(data)
+
     if hasattr(data, "__arrow_c_stream__"):
         table = ac.Table.from_arrow(data)
         buf = BytesIO()

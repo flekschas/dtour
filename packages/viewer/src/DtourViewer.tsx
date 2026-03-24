@@ -52,6 +52,8 @@ export type DtourViewerProps = {
    *  and scales content to center it in the visible area below the toolbar.
    *  Animates smoothly to 0 in zen mode. Default 0. */
   toolbarHeight?: number | undefined;
+  /** Called when the scatter instance is created (or null on destroy). */
+  onScatterReady?: ((scatter: ScatterInstance | null) => void) | undefined;
 };
 
 const PREVIEW_PHYSICAL_SIZE = 300; // Physical pixels per preview canvas
@@ -67,13 +69,15 @@ export const DtourViewer = ({
   metricBarWidth,
   onStatus,
   toolbarHeight = 0,
+  onScatterReady,
 }: DtourViewerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onScatterReadyRef = useRef(onScatterReady);
+  onScatterReadyRef.current = onScatterReady;
   const scatterRef = useRef<ScatterInstance | null>(null);
   const previewCanvasesRef = useRef<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
   const metadata = useAtomValue(metadataAtom);
-  const setMetadata = useSetAtom(metadataAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
   const viewMode = useAtomValue(viewModeAtom);
@@ -137,12 +141,7 @@ export const DtourViewer = ({
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(() => {
     if (!metrics) return [];
-    const tracks = parseMetrics(metrics, metricTracks, metricBarWidth);
-    const confusion = tracks.find((t) => t.label === 'confusion');
-    if (confusion) {
-      console.log('[dtour] parsedTracks confusion:', confusion.rawValues.slice(0, 4), 'normalized:', confusion.normalizedValues.slice(0, 4));
-    }
-    return tracks;
+    return parseMetrics(metrics, metricTracks, metricBarWidth);
   }, [metrics, metricTracks, metricBarWidth]);
 
   // Override confusion track color: highlight by default, label palette color on single selection
@@ -305,12 +304,10 @@ export const DtourViewer = ({
       zoom: store.get(cameraZoomAtom),
     });
     scatterRef.current = scatter;
+    onScatterReadyRef.current?.(scatter);
 
     scatter.subscribe((s: ScatterStatus) => {
       onStatusRef.current?.(s);
-      if (s.type === 'metadata') {
-        setMetadata(s.metadata);
-      }
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
       }
@@ -347,11 +344,12 @@ export const DtourViewer = ({
       ro.disconnect();
       scatter.destroy();
       scatterRef.current = null;
+      onScatterReadyRef.current?.(null);
       mainCanvas.remove();
       for (const c of previews) c.remove();
       previewCanvasesRef.current = [];
     };
-  }, [previewCount, setMetadata, setCanvasSize, store]);
+  }, [previewCount, setCanvasSize, store]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {

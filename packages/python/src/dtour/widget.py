@@ -52,6 +52,7 @@ class Widget(anywidget.AnyWidget):
     # at runtime — no separate _css file needed.
 
     # ── DtourSpec fields (flat traitlets, snake_case) ────────────────────
+    tour_by = t.Enum(["dimensions", "pca"], default_value="dimensions").tag(sync=True)
     tour_position = t.Float(0.0).tag(sync=True)
     tour_playing = t.Bool(False).tag(sync=True)
     tour_speed = t.Float(1.0).tag(sync=True)
@@ -75,6 +76,7 @@ class Widget(anywidget.AnyWidget):
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1.0).tag(sync=True)
     view_mode = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
+    show_legend = t.Bool(True).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
@@ -113,6 +115,13 @@ class Widget(anywidget.AnyWidget):
         value = proposal["value"]
         if value not in ("forward", "backward"):
             raise t.TraitError(f"tour_direction must be 'forward' or 'backward'; got {value!r}")
+        return value
+
+    @t.validate("tour_by")
+    def _validate_tour_by(self, proposal: t.Bunch) -> str:
+        value = proposal["value"]
+        if value not in ("dimensions", "pca"):
+            raise t.TraitError(f"tour_by must be 'dimensions' or 'pca'; got {value!r}")
         return value
 
     @t.validate("view_mode")
@@ -172,6 +181,27 @@ class Widget(anywidget.AnyWidget):
         """Send quality metrics to the JS frontend for radial chart display."""
         self._metrics_buf = metric_result.to_arrow_ipc()
         self.send({"type": "metrics"}, buffers=[self._metrics_buf])
+
+    def select(self, indices: object) -> None:
+        """Select points by index.
+
+        Parameters
+        ----------
+        indices : array-like of int
+            Point indices to select. Accepts numpy arrays, lists, or any
+            iterable of non-negative integers. The JS frontend handles
+            bit-packing internally.
+        """
+        import numpy as np
+
+        idx = np.asarray(indices, dtype=np.int32)
+        if idx.ndim != 1:
+            raise ValueError("indices must be 1-dimensional")
+        self.send({"type": "select"}, buffers=[idx.tobytes()])
+
+    def clear_selection(self) -> None:
+        """Clear the current point selection."""
+        self.send({"type": "clear_selection"})
 
     # ── Custom message handler ──────────────────────────────────────────
     def _handle_custom_msg(self, data: dict, _buffers: list) -> None:

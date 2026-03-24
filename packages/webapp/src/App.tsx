@@ -8,6 +8,8 @@ import { Button } from './components/ui/button.tsx';
 type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
 type ThemeMode = 'light' | 'dark' | 'system';
 
+const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow'];
+
 const THEME_STORAGE_KEY = 'dtour-theme-mode';
 const SPEC_STORAGE_PREFIX = 'dtour-spec:';
 
@@ -47,6 +49,7 @@ const App = () => {
   const pendingDataRef = useRef<ArrayBuffer | null>(null);
   const pendingNameRef = useRef<string | null>(null);
   const drawCompleteRef = useRef(false);
+  const loadIdRef = useRef(0);
 
   // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
   const [themeMode, setThemeMode] = useState<ThemeMode>(readPersistedTheme);
@@ -86,7 +89,9 @@ const App = () => {
 
   const loadFile = useCallback(
     async (file: File) => {
+      const id = ++loadIdRef.current;
       const buffer = await file.arrayBuffer();
+      if (id !== loadIdRef.current) return;
       if (logoPhase === 'done') {
         setFileName(file.name);
         setData(buffer);
@@ -121,7 +126,10 @@ const App = () => {
     async (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
-      if (file) loadFile(file);
+      if (!file) return;
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      if (!ACCEPTED_EXTENSIONS.includes(ext)) return;
+      loadFile(file);
     },
     [loadFile],
   );

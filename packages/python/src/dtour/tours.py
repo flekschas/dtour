@@ -135,6 +135,14 @@ def little_tour(
     """
     arr = _to_float32(X)
 
+    if arr.ndim != 2 or arr.shape[1] < 2:
+        raise ValueError(
+            f"little_tour requires a 2-D array with at least 2 columns, "
+            f"got shape {arr.shape}"
+        )
+    if n_components is not None and n_components < 2:
+        raise ValueError(f"n_components must be >= 2, got {n_components}")
+
     n_features = arr.shape[1]
     k = min(n_components or 10, n_features)
 

@@ -1,4 +1,5 @@
-import type { ScatterStatus } from '@dtour/scatter';
+import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
+import { bitPackIndices } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
@@ -20,6 +21,13 @@ import {
   viewModeAtom,
 } from './state/atoms.ts';
 import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
+
+export type DtourHandle = {
+  /** Select points by index array or bit-packed mask. */
+  select: (indicesOrMask: number[] | Int32Array | Uint32Array, opts?: { isBitPacked?: boolean }) => void;
+  /** Clear the current selection. */
+  clearSelection: () => void;
+};
 
 export type DtourProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
@@ -48,6 +56,8 @@ export type DtourProps = {
   colorMap?: Record<string, string | { light: string; dark: string }>;
   /** Element to portal Radix popups into (for Shadow DOM isolation). When omitted, portals render into document.body as usual. */
   portalContainer?: HTMLElement;
+  /** Called when the viewer is ready with an API handle for programmatic control. */
+  onReady?: (api: DtourHandle) => void;
 };
 
 export const Dtour = ({
@@ -64,6 +74,7 @@ export const Dtour = ({
   onSelectionChange,
   colorMap,
   portalContainer,
+  onReady,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -90,6 +101,7 @@ export const Dtour = ({
           onLoadData={onLoadData}
           onSelectionChange={onSelectionChange}
           colorMap={colorMap}
+          onReady={onReady}
         />
       </Provider>
     </PortalContainerContext.Provider>
@@ -110,6 +122,7 @@ const DtourInner = ({
   onLoadData,
   onSelectionChange,
   colorMap,
+  onReady,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -123,6 +136,7 @@ const DtourInner = ({
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
   onSelectionChange: ((labels: string[]) => void) | undefined;
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
+  onReady: ((api: DtourHandle) => void) | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
@@ -164,6 +178,31 @@ const DtourInner = ({
 
     onSelectionChange(selectedLabels.length > 0 ? selectedLabels : []);
   }, [legendSelection, pointColor, metadata, onSelectionChange]);
+
+  // Track scatter instance for programmatic select API
+  const [scatterInstance, setScatterInstance] = useState<ScatterInstance | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  useEffect(() => {
+    if (!scatterInstance || !metadata) return;
+
+    const handle: DtourHandle = {
+      select: (indicesOrMask, opts) => {
+        if (opts?.isBitPacked && indicesOrMask instanceof Uint32Array) {
+          scatterInstance.setSelectionMask(new Uint32Array(indicesOrMask));
+        } else {
+          const packed = bitPackIndices(indicesOrMask, metadata.rowCount);
+          scatterInstance.setSelectionMask(packed);
+        }
+      },
+      clearSelection: () => {
+        scatterInstance.clearSelection();
+      },
+    };
+
+    onReadyRef.current?.(handle);
+  }, [scatterInstance, metadata]);
 
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';
@@ -225,6 +264,7 @@ const DtourInner = ({
             metricBarWidth={metricBarWidth}
             onStatus={onStatus}
             toolbarHeight={hideToolbar ? 0 : 40}
+            onScatterReady={setScatterInstance}
           />
         </div>
       </div>

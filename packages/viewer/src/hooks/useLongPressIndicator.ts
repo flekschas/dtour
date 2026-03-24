@@ -9,213 +9,6 @@ const LONG_PRESS_REVERT_EFFECT_TIME = 250;
 const INDICATOR_COLOR = '#4f8ff7';
 const INDICATOR_ACTIVE_COLOR = '#4f8ff7';
 
-// --- Stylesheet management ---
-let cachedSheet: CSSStyleSheet | null = null;
-
-const getSheet = (): CSSStyleSheet => {
-  if (!cachedSheet) {
-    const el = document.createElement('style');
-    document.head.appendChild(el);
-    cachedSheet = el.sheet!;
-  }
-  return cachedSheet;
-};
-
-const addRule = (rule: string): number => {
-  const sheet = getSheet();
-  const idx = sheet.cssRules.length;
-  sheet.insertRule(rule, idx);
-  return idx;
-};
-
-const removeRule = (index: number) => {
-  getSheet().deleteRule(index);
-};
-
-// --- Animation name generators ---
-const mainInAnim = (t: number, d: number) => `${t}ms ease-out mainIn ${d}ms 1 normal forwards`;
-const effectInAnim = (t: number, d: number) => `${t}ms ease-out effectIn ${d}ms 1 normal forwards`;
-const circleLeftInAnim = (t: number, d: number) =>
-  `${t}ms linear leftSpinIn ${d}ms 1 normal forwards`;
-const circleRightInAnim = (t: number, d: number) =>
-  `${t}ms linear rightSpinIn ${d}ms 1 normal forwards`;
-const circleInAnim = (t: number, d: number) => `${t}ms linear circleIn ${d}ms 1 normal forwards`;
-
-const mainOutAnim = (t: number) => `${t}ms linear mainOut 0s 1 normal forwards`;
-const effectOutAnim = (t: number) => `${t}ms linear effectOut 0s 1 normal forwards`;
-const circleLeftOutAnim = (t: number) => `${t}ms linear leftSpinOut 0s 1 normal forwards`;
-const circleRightOutAnim = (t: number) => `${t}ms linear rightSpinOut 0s 1 normal forwards`;
-const circleOutAnim = (t: number) => `${t}ms linear circleOut 0s 1 normal forwards`;
-
-// --- Keyframe rule generators (in) ---
-const mainInRule = (percent: number, currentColor: string, targetColor: string) => `
-  @keyframes mainIn {
-    0% { color: ${currentColor}; opacity: 0; }
-    0%, ${percent}% { color: ${currentColor}; opacity: 1; }
-    100% { color: ${targetColor}; opacity: 0.8; }
-  }`;
-
-const effectInRule = (percent: number, afterPercent: number, opacity: number, scale: number) => `
-  @keyframes effectIn {
-    0%, ${percent}% { opacity: ${opacity}; transform: scale(${scale}); }
-    ${afterPercent}% { opacity: 0.66; transform: scale(1.5); }
-    99% { opacity: 0; transform: scale(2); }
-    100% { opacity: 0; transform: scale(0); }
-  }`;
-
-const circleInRule = (halfPercent: number, clipPath: string, opacity: number) => `
-  @keyframes circleIn {
-    0% { clip-path: ${clipPath}; opacity: ${opacity}; }
-    ${halfPercent}% { clip-path: ${clipPath}; opacity: 1; }
-    ${halfPercent + 0.01}%, 100% { clip-path: inset(0); opacity: 1; }
-  }`;
-
-const circleLeftInRule = (percent: number, angle: number) => `
-  @keyframes leftSpinIn {
-    0% { transform: rotate(${angle}deg); }
-    ${percent}%, 100% { transform: rotate(360deg); }
-  }`;
-
-const circleRightInRule = (halfPercent: number, angle: number) => `
-  @keyframes rightSpinIn {
-    0% { transform: rotate(${angle}deg); }
-    ${halfPercent}%, 100% { transform: rotate(180deg); }
-  }`;
-
-// --- Keyframe rule generators (out) ---
-const mainOutRule = (currentColor: string, targetColor: string) => `
-  @keyframes mainOut {
-    0% { color: ${currentColor}; }
-    100% { color: ${targetColor}; }
-  }`;
-
-const effectOutRule = (opacity: number, scale: number) => `
-  @keyframes effectOut {
-    0% { opacity: ${opacity}; transform: scale(${scale}); }
-    99% { opacity: 0; transform: scale(${scale + 0.5}); }
-    100% { opacity: 0; transform: scale(0); }
-  }`;
-
-const circleRightOutRule = (halfPercent: number, angle: number) => `
-  @keyframes rightSpinOut {
-    0%, ${halfPercent}% { transform: rotate(${angle}deg); }
-    100% { transform: rotate(0deg); }
-  }`;
-
-const circleLeftOutRule = (angle: number) => `
-  @keyframes leftSpinOut {
-    0% { transform: rotate(${angle}deg); }
-    100% { transform: rotate(0deg); }
-  }`;
-
-const circleOutRule = (halfPercent: number, clipPath: string, opacity: number) => `
-  @keyframes circleOut {
-    0%, ${halfPercent}% { clip-path: ${clipPath}; opacity: ${opacity}; }
-    ${halfPercent + 0.01}% { clip-path: inset(0 0 0 50%); opacity: ${opacity}; }
-    100% { clip-path: inset(0 0 0 50%); opacity: 0; }
-  }`;
-
-// --- Animation creation helpers ---
-type AnimKeys = 'main' | 'effect' | 'circleLeft' | 'circleRight' | 'circle';
-type Animations = {
-  rules: Record<AnimKeys, string>;
-  names: Record<AnimKeys, string>;
-};
-
-const createInAnimations = ({
-  time = LONG_PRESS_TIME,
-  extraTime = LONG_PRESS_AFTER_EFFECT_TIME,
-  delay = LONG_PRESS_EFFECT_DELAY,
-  currentColor,
-  targetColor,
-  effectOpacity,
-  effectScale,
-  circleLeftRotation,
-  circleRightRotation,
-  circleClipPath,
-  circleOpacity,
-}: {
-  time?: number;
-  extraTime?: number;
-  delay?: number;
-  currentColor: string;
-  targetColor: string;
-  effectOpacity: number;
-  effectScale: number;
-  circleLeftRotation: number;
-  circleRightRotation: number;
-  circleClipPath: string;
-  circleOpacity: number;
-}): Animations => {
-  const progress = circleLeftRotation / 360;
-  const actualTime = (1 - progress) * time + extraTime;
-  const longPressPercent = Math.round((((1 - progress) * time) / actualTime) * 100);
-  const halfPercent = Math.round(longPressPercent / 2);
-  const afterEffectPercent = longPressPercent + (100 - longPressPercent) / 4;
-
-  return {
-    rules: {
-      main: mainInRule(longPressPercent, currentColor, targetColor),
-      effect: effectInRule(longPressPercent, afterEffectPercent, effectOpacity, effectScale),
-      circleRight: circleRightInRule(halfPercent, circleRightRotation),
-      circleLeft: circleLeftInRule(longPressPercent, circleLeftRotation),
-      circle: circleInRule(halfPercent, circleClipPath, circleOpacity),
-    },
-    names: {
-      main: mainInAnim(actualTime, delay),
-      effect: effectInAnim(actualTime, delay),
-      circleLeft: circleLeftInAnim(actualTime, delay),
-      circleRight: circleRightInAnim(actualTime, delay),
-      circle: circleInAnim(actualTime, delay),
-    },
-  };
-};
-
-const createOutAnimations = ({
-  time = LONG_PRESS_REVERT_EFFECT_TIME,
-  currentColor,
-  targetColor,
-  effectOpacity,
-  effectScale,
-  circleLeftRotation,
-  circleRightRotation,
-  circleClipPath,
-  circleOpacity,
-}: {
-  time?: number;
-  currentColor: string;
-  targetColor: string;
-  effectOpacity: number;
-  effectScale: number;
-  circleLeftRotation: number;
-  circleRightRotation: number;
-  circleClipPath: string;
-  circleOpacity: number;
-}): Animations => {
-  const progress = circleLeftRotation / 360;
-  const actualTime = progress * time;
-  const rotatedPercent = Math.min(100, progress * 100);
-  const halfPercent = rotatedPercent > 50 ? Math.round((1 - 50 / rotatedPercent) * 100) : 0;
-
-  return {
-    rules: {
-      main: mainOutRule(currentColor, targetColor),
-      effect: effectOutRule(effectOpacity, effectScale),
-      circleRight: circleRightOutRule(halfPercent, circleRightRotation),
-      circleLeft: circleLeftOutRule(circleLeftRotation),
-      circle: circleOutRule(halfPercent, circleClipPath, circleOpacity),
-    },
-    names: {
-      main: mainOutAnim(actualTime),
-      effect: effectOutAnim(actualTime),
-      // Note: intentionally swapped (matches regl-scatterplot)
-      circleRight: circleLeftOutAnim(actualTime),
-      circleLeft: circleRightOutAnim(actualTime),
-      circle: circleOutAnim(actualTime),
-    },
-  };
-};
-
 // --- getComputedStyle helpers ---
 const getCurrentTransform = (node: HTMLElement, hasRotated = false) => {
   const cs = getComputedStyle(node);
@@ -294,45 +87,10 @@ const createElements = () => {
   return { root, circle, circleLeft, circleRight, effect };
 };
 
-// --- Rule index tracker ---
-type RuleIndices = {
-  mainIn: number | null;
-  effectIn: number | null;
-  circleLeftIn: number | null;
-  circleRightIn: number | null;
-  circleIn: number | null;
-  mainOut: number | null;
-  effectOut: number | null;
-  circleLeftOut: number | null;
-  circleRightOut: number | null;
-  circleOut: number | null;
-};
-
-const emptyIndices = (): RuleIndices => ({
-  mainIn: null,
-  effectIn: null,
-  circleLeftIn: null,
-  circleRightIn: null,
-  circleIn: null,
-  mainOut: null,
-  effectOut: null,
-  circleLeftOut: null,
-  circleRightOut: null,
-  circleOut: null,
-});
-
-const safeRemove = (indices: RuleIndices, key: keyof RuleIndices) => {
-  const val = indices[key];
-  if (val !== null) {
-    removeRule(val);
-    indices[key] = null;
-  }
-};
-
 // --- The hook ---
 export const useLongPressIndicator = () => {
   const elementsRef = useRef<ReturnType<typeof createElements> | null>(null);
-  const ruleIndicesRef = useRef<RuleIndices>(emptyIndices());
+  const animationsRef = useRef<Animation[]>([]);
   const isStarting = useRef(false);
 
   // Create / destroy DOM elements
@@ -346,6 +104,8 @@ export const useLongPressIndicator = () => {
     document.body.appendChild(created.root);
 
     return () => {
+      for (const a of animationsRef.current) a.cancel();
+      animationsRef.current = [];
       created.root.remove();
       elementsRef.current = null;
     };
@@ -357,63 +117,105 @@ export const useLongPressIndicator = () => {
 
     isStarting.current = true;
 
-    const mainStyle = getComputedStyle(el.root);
+    // Capture current animated state before canceling
+    const mainColor = getComputedStyle(el.root).color || 'currentcolor';
+    const circleCs = getComputedStyle(el.circle);
+    const circleClipPath = circleCs.clipPath || 'inset(0 0 0 50%)';
+    const circleOpacity = Number(circleCs.opacity) || 0;
+    const effectState = getCurrentTransform(el.effect);
+    const leftState = getCurrentTransform(el.circleLeft);
+    const rightState = getCurrentTransform(el.circleRight);
+
+    // Cancel running animations, then set inline styles so state persists
+    for (const a of animationsRef.current) a.cancel();
+
     el.root.style.color = INDICATOR_COLOR;
     el.root.style.top = `${y}px`;
     el.root.style.left = `${x}px`;
-    el.root.style.animation = 'none';
+    el.circle.style.clipPath = circleClipPath;
+    el.circle.style.opacity = String(circleOpacity);
+    el.effect.style.opacity = String(effectState.opacity);
+    el.effect.style.transform = `scale(${effectState.scale})`;
+    el.circleLeft.style.transform = `rotate(${leftState.rotate}deg)`;
+    el.circleRight.style.transform = `rotate(${rightState.rotate}deg)`;
 
-    const circleStyle = getComputedStyle(el.circle);
-    el.circle.style.clipPath = circleStyle.clipPath;
-    el.circle.style.opacity = circleStyle.opacity;
-    el.circle.style.animation = 'none';
+    // Compute timing based on how far the previous animation progressed
+    const progress = leftState.rotate / 360;
+    const duration = (1 - progress) * LONG_PRESS_TIME + LONG_PRESS_AFTER_EFFECT_TIME;
+    const lp = ((1 - progress) * LONG_PRESS_TIME) / duration;
+    const half = lp / 2;
+    const afterEffect = lp + (1 - lp) / 4;
+    const opts = { duration, delay: LONG_PRESS_EFFECT_DELAY, fill: 'forwards' as const };
+    // CSS animation-timing-function applies per-segment; in Web Animations API
+    // that maps to per-keyframe easing (not the effect-level easing option).
+    const eo = 'ease-out';
 
-    const effectStyle = getCurrentTransform(el.effect);
-    el.effect.style.opacity = String(effectStyle.opacity);
-    el.effect.style.transform = `scale(${effectStyle.scale})`;
-    el.effect.style.animation = 'none';
+    const anims: Animation[] = [];
 
-    const leftStyle = getCurrentTransform(el.circleLeft);
-    el.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
-    el.circleLeft.style.animation = 'none';
+    // Root: color + opacity
+    anims.push(
+      el.root.animate(
+        [
+          { color: mainColor, opacity: 1, offset: 0, easing: eo },
+          { color: mainColor, opacity: 1, offset: lp, easing: eo },
+          { color: INDICATOR_ACTIVE_COLOR, opacity: 0.8, offset: 1 },
+        ],
+        opts,
+      ),
+    );
 
-    const rightStyle = getCurrentTransform(el.circleRight);
-    el.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
-    el.circleRight.style.animation = 'none';
+    // Effect circle: scale + fade
+    anims.push(
+      el.effect.animate(
+        [
+          { opacity: effectState.opacity, transform: `scale(${effectState.scale})`, offset: 0, easing: eo },
+          { opacity: effectState.opacity, transform: `scale(${effectState.scale})`, offset: lp, easing: eo },
+          { opacity: 0.66, transform: 'scale(1.5)', offset: afterEffect, easing: eo },
+          { opacity: 0, transform: 'scale(2)', offset: 0.99, easing: eo },
+          { opacity: 0, transform: 'scale(0)', offset: 1 },
+        ],
+        opts,
+      ),
+    );
 
-    requestAnimationFrame(() => {
-      if (!isStarting.current || !elementsRef.current) return;
+    // Circle left half: rotation
+    anims.push(
+      el.circleLeft.animate(
+        [
+          { transform: `rotate(${leftState.rotate}deg)`, offset: 0 },
+          { transform: 'rotate(360deg)', offset: lp },
+          { transform: 'rotate(360deg)', offset: 1 },
+        ],
+        opts,
+      ),
+    );
 
-      const indices = ruleIndicesRef.current;
-      safeRemove(indices, 'circleIn');
-      safeRemove(indices, 'circleRightIn');
-      safeRemove(indices, 'circleLeftIn');
-      safeRemove(indices, 'effectIn');
-      safeRemove(indices, 'mainIn');
+    // Circle right half: rotation
+    anims.push(
+      el.circleRight.animate(
+        [
+          { transform: `rotate(${rightState.rotate}deg)`, offset: 0 },
+          { transform: 'rotate(180deg)', offset: half },
+          { transform: 'rotate(180deg)', offset: 1 },
+        ],
+        opts,
+      ),
+    );
 
-      const { rules, names } = createInAnimations({
-        currentColor: mainStyle.color || 'currentcolor',
-        targetColor: INDICATOR_ACTIVE_COLOR,
-        effectOpacity: effectStyle.opacity || 0,
-        effectScale: effectStyle.scale || 0,
-        circleLeftRotation: leftStyle.rotate || 0,
-        circleRightRotation: rightStyle.rotate || 0,
-        circleClipPath: circleStyle.clipPath || 'inset(0 0 0 50%)',
-        circleOpacity: Number(circleStyle.opacity) || 0,
-      });
+    // Circle container: clip-path reveal
+    anims.push(
+      el.circle.animate(
+        [
+          { clipPath: circleClipPath, opacity: circleOpacity, offset: 0 },
+          { clipPath: circleClipPath, opacity: 1, offset: half },
+          { clipPath: 'inset(0)', opacity: 1, offset: half + 0.0001 },
+          { clipPath: 'inset(0)', opacity: 1, offset: 1 },
+        ],
+        opts,
+      ),
+    );
 
-      indices.mainIn = addRule(rules.main);
-      indices.effectIn = addRule(rules.effect);
-      indices.circleLeftIn = addRule(rules.circleLeft);
-      indices.circleRightIn = addRule(rules.circleRight);
-      indices.circleIn = addRule(rules.circle);
-
-      el.root.style.animation = names.main;
-      el.effect.style.animation = names.effect;
-      el.circleLeft.style.animation = names.circleLeft;
-      el.circleRight.style.animation = names.circleRight;
-      el.circle.style.animation = names.circle;
-    });
+    animationsRef.current = anims;
   }, []);
 
   const hide = useCallback(() => {
@@ -422,62 +224,110 @@ export const useLongPressIndicator = () => {
 
     isStarting.current = false;
 
-    const mainStyle = getComputedStyle(el.root);
-    el.root.style.color = mainStyle.color;
-    el.root.style.animation = 'none';
-
-    const circleStyle = getComputedStyle(el.circle);
-    el.circle.style.clipPath = circleStyle.clipPath;
-    el.circle.style.opacity = circleStyle.opacity;
-    el.circle.style.animation = 'none';
-
-    const effectStyle = getCurrentTransform(el.effect);
-    el.effect.style.opacity = String(effectStyle.opacity);
-    el.effect.style.transform = `scale(${effectStyle.scale})`;
-    el.effect.style.animation = 'none';
+    // Capture current animated state before canceling
+    const mainColor = getComputedStyle(el.root).color || 'currentcolor';
+    const circleCs = getComputedStyle(el.circle);
+    const circleClipPath = circleCs.clipPath || 'inset(0px)';
+    const circleOpacity = Number(circleCs.opacity) || 1;
+    const effectState = getCurrentTransform(el.effect);
 
     // Detect if past the 50% mark of the circle animation
-    const pastHalf = circleStyle.clipPath.slice(-2, -1) === 'x';
+    const pastHalf = circleCs.clipPath.slice(-2, -1) === 'x';
 
-    const leftStyle = getCurrentTransform(el.circleLeft, pastHalf);
-    el.circleLeft.style.transform = `rotate(${leftStyle.rotate}deg)`;
-    el.circleLeft.style.animation = 'none';
+    const leftState = getCurrentTransform(el.circleLeft, pastHalf);
+    const rightState = getCurrentTransform(el.circleRight);
 
-    const rightStyle = getCurrentTransform(el.circleRight);
-    el.circleRight.style.transform = `rotate(${rightStyle.rotate}deg)`;
-    el.circleRight.style.animation = 'none';
+    // Cancel running animations, then set inline styles so state persists
+    for (const a of animationsRef.current) a.cancel();
 
-    requestAnimationFrame(() => {
-      const indices = ruleIndicesRef.current;
-      safeRemove(indices, 'circleOut');
-      safeRemove(indices, 'circleRightOut');
-      safeRemove(indices, 'circleLeftOut');
-      safeRemove(indices, 'effectOut');
-      safeRemove(indices, 'mainOut');
+    el.root.style.color = mainColor;
+    el.circle.style.clipPath = circleClipPath;
+    el.circle.style.opacity = String(circleOpacity);
+    el.effect.style.opacity = String(effectState.opacity);
+    el.effect.style.transform = `scale(${effectState.scale})`;
+    el.circleLeft.style.transform = `rotate(${leftState.rotate}deg)`;
+    el.circleRight.style.transform = `rotate(${rightState.rotate}deg)`;
 
-      const { rules, names } = createOutAnimations({
-        currentColor: mainStyle.color || 'currentcolor',
-        targetColor: INDICATOR_COLOR,
-        effectOpacity: effectStyle.opacity || 0,
-        effectScale: effectStyle.scale || 0,
-        circleLeftRotation: leftStyle.rotate || 0,
-        circleRightRotation: rightStyle.rotate || 0,
-        circleClipPath: circleStyle.clipPath || 'inset(0px)',
-        circleOpacity: Number(circleStyle.opacity) || 1,
-      });
+    // Compute timing
+    const progress = leftState.rotate / 360;
+    const duration = progress * LONG_PRESS_REVERT_EFFECT_TIME;
 
-      indices.mainOut = addRule(rules.main);
-      indices.effectOut = addRule(rules.effect);
-      indices.circleLeftOut = addRule(rules.circleLeft);
-      indices.circleRightOut = addRule(rules.circleRight);
-      indices.circleOut = addRule(rules.circle);
+    if (duration < 1) {
+      animationsRef.current = [];
+      return;
+    }
 
-      el.root.style.animation = names.main;
-      el.effect.style.animation = names.effect;
-      el.circleLeft.style.animation = names.circleLeft;
-      el.circleRight.style.animation = names.circleRight;
-      el.circle.style.animation = names.circle;
-    });
+    const rotated = Math.min(1, progress);
+    const half = rotated > 0.5 ? 1 - 0.5 / rotated : 0;
+    const opts = { duration, fill: 'forwards' as const };
+
+    const anims: Animation[] = [];
+
+    // Root: color revert
+    anims.push(
+      el.root.animate([{ color: mainColor }, { color: INDICATOR_COLOR }], opts),
+    );
+
+    // Effect: fade out
+    anims.push(
+      el.effect.animate(
+        [
+          { opacity: effectState.opacity, transform: `scale(${effectState.scale})`, offset: 0 },
+          { opacity: 0, transform: `scale(${effectState.scale + 0.5})`, offset: 0.99 },
+          { opacity: 0, transform: 'scale(0)', offset: 1 },
+        ],
+        opts,
+      ),
+    );
+
+    // Circle left: uses circleRight's rotation (intentionally swapped, matches regl-scatterplot)
+    anims.push(
+      el.circleLeft.animate(
+        half > 0
+          ? [
+              { transform: `rotate(${rightState.rotate}deg)`, offset: 0 },
+              { transform: `rotate(${rightState.rotate}deg)`, offset: half },
+              { transform: 'rotate(0deg)', offset: 1 },
+            ]
+          : [
+              { transform: `rotate(${rightState.rotate}deg)`, offset: 0 },
+              { transform: 'rotate(0deg)', offset: 1 },
+            ],
+        opts,
+      ),
+    );
+
+    // Circle right: uses circleLeft's rotation (intentionally swapped)
+    anims.push(
+      el.circleRight.animate(
+        [
+          { transform: `rotate(${leftState.rotate}deg)`, offset: 0 },
+          { transform: 'rotate(0deg)', offset: 1 },
+        ],
+        opts,
+      ),
+    );
+
+    // Circle container: clip-path hide
+    anims.push(
+      el.circle.animate(
+        half > 0
+          ? [
+              { clipPath: circleClipPath, opacity: circleOpacity, offset: 0 },
+              { clipPath: circleClipPath, opacity: circleOpacity, offset: half },
+              { clipPath: 'inset(0 0 0 50%)', opacity: circleOpacity, offset: half + 0.0001 },
+              { clipPath: 'inset(0 0 0 50%)', opacity: 0, offset: 1 },
+            ]
+          : [
+              { clipPath: circleClipPath, opacity: circleOpacity, offset: 0 },
+              { clipPath: 'inset(0 0 0 50%)', opacity: circleOpacity, offset: 0.0001 },
+              { clipPath: 'inset(0 0 0 50%)', opacity: 0, offset: 1 },
+            ],
+        opts,
+      ),
+    );
+
+    animationsRef.current = anims;
   }, []);
 
   return { show, hide };

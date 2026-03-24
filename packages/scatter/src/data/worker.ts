@@ -1,18 +1,31 @@
 /// <reference lib="webworker" />
 
-import { encodeCategoricalColors, encodeContinuousColors } from './color.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
 import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';
-import type { CategoricalColumn } from './types.ts';
+
+/** Pack an RGB palette into Uint32Array of 0xAABBGGRR. */
+const packPalette = (palette: [number, number, number][]): Uint32Array => {
+  const packed = new Uint32Array(palette.length);
+  for (let i = 0; i < palette.length; i++) {
+    const [r, g, b] = palette[i]!;
+    packed[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+  }
+  return packed;
+};
 
 let gpuPort: MessagePort | null = null;
 
-// Retained column data for color encoding (copies kept after transfer)
-let numericData = new Map<string, Float32Array>();
+// Monotonically increasing dataset version — incremented on each load.
+// Included in every DataToGpu message so the GPU worker can discard stale updates.
+let dataVersion = 0;
+
+// Lightweight metadata retained for resolving column names → GPU parameters.
+// Raw per-row data is NOT kept — it lives only on the GPU.
+let numericColumnNames: string[] = [];
 let numericMins = new Map<string, number>();
 let numericRanges = new Map<string, number>();
-let categoricalData = new Map<string, CategoricalColumn>();
+let categoricalLabels = new Map<string, string[]>();
 let rowCount = 0;
 
 self.onmessage = async (event: MessageEvent<MainToData>) => {
@@ -33,25 +46,28 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     try {
       const parsed = await parseBuffer(msg.buffer);
 
-      // Retain copies of column data for later color encoding / selection
+      // Bump version so in-flight color/selection messages from the previous
+      // dataset will be discarded by the GPU worker.
+      dataVersion++;
+
+      // Retain only lightweight metadata — raw values are transferred to GPU
       rowCount = parsed.rowCount;
-      numericData = new Map();
+      numericColumnNames = parsed.columns.map((c) => c.name);
       numericMins = new Map();
       numericRanges = new Map();
       for (const col of parsed.columns) {
-        numericData.set(col.name, col.values.slice());
         numericMins.set(col.name, col.min);
         numericRanges.set(col.name, col.range);
       }
-      categoricalData = new Map();
+      categoricalLabels = new Map();
       for (const cat of parsed.categoricalColumns) {
-        categoricalData.set(cat.name, cat);
+        categoricalLabels.set(cat.name, cat.labels);
       }
 
-      // Build categorical labels map
-      const categoricalLabels: Record<string, string[]> = {};
+      // Build categorical labels record for main thread metadata
+      const catLabelsRecord: Record<string, string[]> = {};
       for (const cat of parsed.categoricalColumns) {
-        categoricalLabels[cat.name] = cat.labels;
+        catLabelsRecord[cat.name] = cat.labels;
       }
 
       // Send column metadata back to main thread (small JSON, structured clone)
@@ -60,7 +76,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
         metadata: {
           columnNames: parsed.columns.map((c) => c.name),
           categoricalColumnNames: parsed.categoricalColumns.map((c) => c.name),
-          categoricalLabels,
+          categoricalLabels: catLabelsRecord,
           rowCount: parsed.rowCount,
           dimCount: parsed.columns.length,
           mins: parsed.columns.map((c) => c.min),
@@ -70,18 +86,26 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       };
       self.postMessage(metadata);
 
-      // Send raw column buffers directly to GPU worker (zero-copy transfer).
-      // Normalization happens on the GPU via per-dim mins/ranges.
-      const buffers = parsed.columns.map((c) => c.values);
-      const transferables = [...new Set(buffers.map((b) => b.buffer))];
+      // Transfer numeric + categorical buffers to GPU worker (zero-copy).
+      const numericBuffers = parsed.columns.map((c) => c.values);
+      const catColumns = parsed.categoricalColumns.map((c) => ({
+        name: c.name,
+        indices: c.indices,
+      }));
+      const transferables = [
+        ...new Set(numericBuffers.map((b) => b.buffer)),
+        ...catColumns.map((c) => c.indices.buffer),
+      ];
 
       const dataMsg: DataToGpu = {
         type: 'data',
+        dataVersion,
         dims: parsed.columns.length,
         rows: parsed.rowCount,
-        buffers,
+        buffers: numericBuffers,
         mins: parsed.columns.map((c) => c.min),
         ranges: parsed.columns.map((c) => c.range),
+        categoricalColumns: catColumns,
       };
       gpuPort.postMessage(dataMsg, transferables);
     } catch (err) {
@@ -100,35 +124,48 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     const isLight = theme === 'light';
 
     // Check categorical columns first
-    const cat = categoricalData.get(column);
-    if (cat) {
+    const labels = categoricalLabels.get(column);
+    if (labels) {
       let pal: [number, number, number][];
       if (colorMap) {
-        // Build palette from colorMap, keyed by label name
-        pal = cat.labels.map((label) => colorMap[label] ?? [128, 128, 128]);
+        pal = labels.map((label) => colorMap[label] ?? [128, 128, 128]);
       } else {
         const glasbey = isLight ? GLASBEY_LIGHT : GLASBEY_DARK;
-        pal = cat.labels.length <= OKABE_ITO.length
+        pal = labels.length <= OKABE_ITO.length
           ? OKABE_ITO
           : [
               ...OKABE_ITO,
-              ...Array(Math.ceil((cat.labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
+              ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
             ] as [number, number, number][];
       }
-      const colors = encodeCategoricalColors(cat.indices, pal);
-      gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
+      const packed = packPalette(pal);
+      const gpuMsg: DataToGpu = {
+        type: 'encodeColorCategorical',
+        dataVersion,
+        catColumnName: column,
+        palette: packed,
+      };
+      gpuPort.postMessage(gpuMsg, [packed.buffer]);
       return;
     }
 
     // Check numeric columns for continuous color
-    const numCol = numericData.get(column);
-    if (numCol) {
+    const colIdx = numericColumnNames.indexOf(column);
+    if (colIdx >= 0) {
       const min = numericMins.get(column) ?? 0;
       const range = numericRanges.get(column) ?? 1;
       const baseCmap = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
       const cmap = isLight ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
-      const colors = encodeContinuousColors(numCol, min, range, cmap);
-      gpuPort.postMessage({ type: 'colors', colors } as DataToGpu, [colors.buffer]);
+      const packed = packPalette(cmap);
+      const gpuMsg: DataToGpu = {
+        type: 'encodeColorContinuous',
+        dataVersion,
+        columnIndex: colIdx,
+        min,
+        range,
+        colormap: packed,
+      };
+      gpuPort.postMessage(gpuMsg, [packed.buffer]);
     }
   }
 
@@ -136,32 +173,37 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
     if (!gpuPort || rowCount === 0) return;
 
     const { column, labelIndices, valueRanges } = msg;
-    const mask = new Uint32Array(rowCount);
 
-    // Categorical: select points whose label index is in the set
-    const cat = categoricalData.get(column);
-    if (cat && labelIndices) {
-      const selected = new Set(labelIndices);
-      for (let i = 0; i < cat.indices.length; i++) {
-        if (selected.has(cat.indices[i]!)) mask[i] = 1;
+    // Categorical selection
+    const labels = categoricalLabels.get(column);
+    if (labels && labelIndices && labelIndices.length > 0) {
+      const selectedLabels = new Uint32Array(labels.length);
+      for (const idx of labelIndices) {
+        if (idx < selectedLabels.length) selectedLabels[idx] = 1;
       }
+      const gpuMsg: DataToGpu = {
+        type: 'selectCategorical',
+        dataVersion,
+        catColumnName: column,
+        selectedLabels,
+      };
+      gpuPort.postMessage(gpuMsg, [selectedLabels.buffer]);
+      return;
     }
 
-    // Continuous: select points whose value falls in any [lo, hi] range
-    const numCol = numericData.get(column);
-    if (numCol && valueRanges && valueRanges.length >= 2) {
-      const numRanges = valueRanges.length / 2;
-      for (let i = 0; i < numCol.length; i++) {
-        const v = numCol[i]!;
-        for (let r = 0; r < numRanges; r++) {
-          if (v >= valueRanges[r * 2]! && v <= valueRanges[r * 2 + 1]!) {
-            mask[i] = 1;
-            break;
-          }
-        }
-      }
+    // Continuous selection
+    const colIdx = numericColumnNames.indexOf(column);
+    if (colIdx >= 0 && valueRanges && valueRanges.length >= 2) {
+      const gpuMsg: DataToGpu = {
+        type: 'selectContinuous',
+        dataVersion,
+        columnIndex: colIdx,
+        ranges: valueRanges,
+      };
+      gpuPort.postMessage(gpuMsg, [valueRanges.buffer]);
+      return;
     }
 
-    gpuPort.postMessage({ type: 'selectionMask', mask } as DataToGpu, [mask.buffer]);
+    // Unknown column or missing params — no-op rather than dimming everything
   }
 };

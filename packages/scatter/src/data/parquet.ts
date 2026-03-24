@@ -28,18 +28,24 @@ export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> =
   // parquetReadObjects returns Promise<Record<string, unknown>[]> (row-oriented, object format)
   const rows = await parquetReadObjects({ file: asyncBuffer, compressors });
 
-  // Identify numeric vs string columns from first row,
-  // skipping pandas index columns (__index_level_N__)
+  // Identify numeric vs string columns by scanning up to the first 100 rows.
+  // First-row-only inference silently drops columns when the first value is null.
+  // Skip pandas index columns (__index_level_N__).
   const numericKeys: string[] = [];
   const stringKeys: string[] = [];
   if (rows.length > 0) {
-    for (const [key, value] of Object.entries(rows[0]!)) {
-      if (/^__index_level_\d+__$/.test(key)) continue;
-      if (typeof value === 'number') {
-        numericKeys.push(key);
-      } else if (typeof value === 'string') {
-        stringKeys.push(key);
+    const allKeys = Object.keys(rows[0]!).filter((k) => !/^__index_level_\d+__$/.test(k));
+    const scanLimit = Math.min(rows.length, 100);
+    for (const key of allKeys) {
+      let inferred: 'number' | 'string' | null = null;
+      for (let i = 0; i < scanLimit; i++) {
+        const value = rows[i]![key];
+        if (value == null) continue;
+        if (typeof value === 'number') { inferred = 'number'; break; }
+        if (typeof value === 'string') { inferred = 'string'; break; }
       }
+      if (inferred === 'number') numericKeys.push(key);
+      else if (inferred === 'string') stringKeys.push(key);
     }
   }
 

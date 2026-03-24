@@ -45,8 +45,8 @@ def test_little_tour_views_raw_roundtrip():
     raw = result.views_raw
     flat = np.frombuffer(raw, dtype=np.float32)
     assert flat.shape == (result.n_views * 5 * 2,)
-    # Reconstruct and verify first view matches
-    first = flat[: 5 * 2].reshape(5, 2)
+    # Reconstruct and verify first view matches (column-major wire format)
+    first = flat[: 5 * 2].reshape(5, 2, order="F")
     np.testing.assert_array_equal(first, result.views[0])
 
 

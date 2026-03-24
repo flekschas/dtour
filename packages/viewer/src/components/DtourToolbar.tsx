@@ -17,7 +17,7 @@ import {
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePlayback } from '../hooks/usePlayback.ts';
 import { usePortalContainer } from '../portal-container.tsx';
@@ -526,6 +526,13 @@ function PreviewStepSlider<T extends number>({
   formatLabel?: Record<number, string>;
 }) {
   const [localStep, setLocalStep] = useState(() => steps.indexOf(value));
+
+  // Resync local state when value changes externally (e.g. restored settings, spec updates)
+  useEffect(() => {
+    const idx = steps.indexOf(value);
+    if (idx !== -1) setLocalStep(idx);
+  }, [value, steps]);
+
   const display = formatLabel?.[steps[localStep]!] ?? String(steps[localStep] ?? value);
 
   return (
