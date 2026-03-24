@@ -19,7 +19,13 @@ export type ScatterStatus =
   | { type: 'ready' }
   | { type: 'rendered'; viewIndex: number }
   | { type: 'metadata'; metadata: Metadata }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | {
+      type: 'pcaResult';
+      eigenvectors: Float32Array[];
+      eigenvalues: Float32Array;
+      numDims: number;
+    };
 
 export type ScatterInstance = {
   /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */
@@ -70,6 +76,8 @@ export type ScatterInstance = {
   lassoSelect: (polygon: Float32Array) => void;
   /** Clear selection mask — all points visible. */
   clearSelection: () => void;
+  /** Request GPU-accelerated PCA computation. Results arrive via subscribe as 'pcaResult'. */
+  computePCA: () => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
@@ -246,6 +254,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'clearSelectionMask' });
   };
 
+  const computePCA = (): void => {
+    sendToGpu(gpuWorker, { type: 'computePCA' });
+  };
+
   const subscribe = (handler: (status: ScatterStatus) => void): (() => void) => {
     subscribers.add(handler);
     return () => subscribers.delete(handler);
@@ -273,6 +285,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setSelectionMask,
     lassoSelect,
     clearSelection,
+    computePCA,
     subscribe,
     destroy,
   };

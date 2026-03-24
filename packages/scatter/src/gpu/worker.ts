@@ -14,6 +14,7 @@ import {
   writeCamera,
   writeUniforms,
 } from './pipeline.ts';
+import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
 import {
   type ProjectionResources,
   createProjectionBindGroup,
@@ -70,8 +71,11 @@ let state: GpuState | null = null;
 // `if (!state) return` guard and are silently dropped.
 let pendingMessages: MainToGpu[] | null = [];
 
-const postMain = (msg: GpuToMain): void => {
-  self.postMessage(msg);
+// Lazy-created on first computePCA call
+let pcaPipeline: PcaPipeline | null = null;
+
+const postMain = (msg: GpuToMain, transfers?: Transferable[]): void => {
+  self.postMessage(msg, transfers ?? []);
 };
 
 // ─── Projection + Render helpers ──────────────────────────────────────────
@@ -560,6 +564,41 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
+    return;
+  }
+
+  if (msg.type === 'computePCA') {
+    if (!state.projectionResources || state.numDims < 2) {
+      postMain({ type: 'error', message: 'No data loaded for PCA' });
+      return;
+    }
+
+    const { device, projectionResources, numPoints, numDims } = state;
+
+    if (!pcaPipeline) {
+      pcaPipeline = createPcaPipeline(device);
+    }
+
+    runPCA(
+      device,
+      pcaPipeline,
+      projectionResources.dataBuffer,
+      projectionResources.normParamsBuffer,
+      numPoints,
+      numDims,
+    ).then(({ eigenvalues, eigenvectors }) => {
+      postMain({
+        type: 'pcaResult',
+        eigenvectors,
+        eigenvalues,
+        numDims: eigenvectors.length,
+      });
+    }).catch((err) => {
+      postMain({
+        type: 'error',
+        message: `PCA failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    });
     return;
   }
 

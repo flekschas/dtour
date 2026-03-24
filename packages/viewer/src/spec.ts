@@ -6,6 +6,7 @@ import { z } from 'zod';
  * The Zod schema is the single source of truth; the TS type is inferred.
  */
 export const dtourSpecSchema = z.object({
+  tourBy: z.enum(['dimensions', 'pca']).optional(),
   tourPosition: z.number().min(0).max(1).optional(),
   tourPlaying: z.boolean().optional(),
   tourSpeed: z.number().min(0.1).max(5).optional(),
@@ -27,6 +28,7 @@ export const dtourSpecSchema = z.object({
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
 
 export const DTOUR_DEFAULTS: Required<DtourSpec> = {
+  tourBy: 'dimensions',
   tourPosition: 0,
   tourPlaying: false,
   tourSpeed: 1,

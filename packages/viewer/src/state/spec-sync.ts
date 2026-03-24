@@ -14,6 +14,7 @@ import {
   previewScaleAtom,
   showLegendAtom,
   themeModeAtom,
+  tourByAtom,
   tourDirectionAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -40,6 +41,7 @@ function entry<T>(atom: WritableAtom<T, [T], void>): SpecEntry<T, T> {
 }
 
 const SPEC_ATOM_MAP = {
+  tourBy: entry(tourByAtom),
   tourPosition: entry(tourPositionAtom),
   tourPlaying: entry(tourPlayingAtom),
   tourSpeed: entry(tourSpeedAtom),

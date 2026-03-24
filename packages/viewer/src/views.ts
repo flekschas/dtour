@@ -31,3 +31,46 @@ export const createDefaultViews = (
   }
   return views;
 };
+
+/**
+ * Create tour views from PCA eigenvectors.
+ * Cycles through consecutive PC pairs: [PC1,PC2], [PC2,PC3], ..., wrapping.
+ *
+ * Each eigenvector becomes a column of the p×2 basis matrix. Eigenvectors
+ * are assumed to be in the normalized space matching the projection shader.
+ *
+ * @param eigenvectors - sorted by descending eigenvalue, each of length pcaDims
+ * @param totalDims    - total number of dimensions in the dataset (p)
+ * @param pcaDims      - number of PCA dimensions (may be < totalDims if capped)
+ * @param count        - number of views to generate (defaults to number of PCs)
+ */
+export const createPCAViews = (
+  eigenvectors: Float32Array[],
+  totalDims: number,
+  pcaDims: number,
+  count?: number,
+): Float32Array[] => {
+  const numPCs = eigenvectors.length;
+  const n = count ?? numPCs;
+  const views: Float32Array[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const basis = new Float32Array(totalDims * 2);
+    const pcX = i % numPCs;
+    const pcY = (i + 1) % numPCs;
+
+    const evX = eigenvectors[pcX]!;
+    for (let d = 0; d < pcaDims; d++) {
+      basis[d] = evX[d]!;
+    }
+
+    const evY = eigenvectors[pcY]!;
+    for (let d = 0; d < pcaDims; d++) {
+      basis[totalDims + d] = evY[d]!;
+    }
+
+    views.push(basis);
+  }
+
+  return views;
+};

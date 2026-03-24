@@ -27,12 +27,13 @@ import {
   resolvedThemeAtom,
   previewCountAtom,
   previewScaleAtom,
+  tourByAtom,
   tourPlayingAtom,
   tourPositionAtom,
   viewModeAtom,
 } from './state/atoms.ts';
 import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from './state/auto-style.ts';
-import { createDefaultViews } from './views.ts';
+import { createDefaultViews, createPCAViews } from './views.ts';
 
 export type DtourViewerProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
@@ -91,6 +92,11 @@ export const DtourViewer = ({
   onStatusRef.current = onStatus;
 
   const setCurrentBasis = useSetAtom(currentBasisAtom);
+  const tourBy = useAtomValue(tourByAtom);
+  const [pcaResult, setPcaResult] = useState<{
+    eigenvectors: Float32Array[];
+    numDims: number;
+  } | null>(null);
 
   const isGuidedMode = viewMode === 'guided';
 
@@ -100,12 +106,16 @@ export const DtourViewer = ({
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
     if (activeIndices.length < 2) return { resolvedViews: null, arcLengths: null };
     const dims = metadata.dimCount;
-    const rb =
-      views && views.length > 0
-        ? views.map((b) => new Float32Array(b))
-        : createDefaultViews(dims, previewCount, activeIndices);
+    let rb: Float32Array[];
+    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
+      rb = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
+    } else if (views && views.length > 0) {
+      rb = views.map((b) => new Float32Array(b));
+    } else {
+      rb = createDefaultViews(dims, previewCount, activeIndices);
+    }
     return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
-  }, [views, metadata, previewCount, activeIndices]);
+  }, [views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
   // modes (manual, grand) can initialize from the current projection.
@@ -301,6 +311,9 @@ export const DtourViewer = ({
       if (s.type === 'metadata') {
         setMetadata(s.metadata);
       }
+      if (s.type === 'pcaResult') {
+        setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
+      }
     });
 
     // Eagerly forward the current auto-style so the GPU worker has correct
@@ -340,11 +353,12 @@ export const DtourViewer = ({
     };
   }, [previewCount, setMetadata, setCanvasSize, store]);
 
-  // Reset active columns when a new dataset loads (different dim count)
+  // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {
     if (!metadata) return;
     if (prevDimCountRef.current !== null && prevDimCountRef.current !== metadata.dimCount) {
       setActiveColumns(null);
+      setPcaResult(null);
     }
     prevDimCountRef.current = metadata.dimCount;
   }, [metadata, setActiveColumns]);
@@ -356,11 +370,20 @@ export const DtourViewer = ({
     scatterRef.current.loadData(data.slice(0));
   }, [data]);
 
-  // Set views when available (from props or auto-generated from metadata)
+  // Trigger PCA computation when tourBy is 'pca' and data is loaded
+  useEffect(() => {
+    if (tourBy !== 'pca' || !metadata || metadata.dimCount < 2 || !scatterRef.current) return;
+    scatterRef.current.computePCA();
+  }, [tourBy, metadata]);
+
+  // Set views when available (from props, PCA, or auto-generated from metadata)
   useEffect(() => {
     const scatter = scatterRef.current;
     if (!scatter) return;
-    if (views && views.length > 0) {
+    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2 && metadata) {
+      const pcaBases = createPCAViews(pcaResult.eigenvectors, metadata.dimCount, pcaResult.numDims, previewCount);
+      scatter.setBases(pcaBases);
+    } else if (views && views.length > 0) {
       scatter.setBases(views.map((b) => new Float32Array(b)));
     } else if (metadata && metadata.dimCount >= 2 && activeIndices.length >= 2) {
       const defaultViews = createDefaultViews(metadata.dimCount, previewCount, activeIndices);
@@ -369,7 +392,7 @@ export const DtourViewer = ({
     // Safety: explicitly request a full re-render after views are set,
     // ensuring all preview canvases get painted even if messages race.
     scatter.render();
-  }, [views, metadata, previewCount, activeIndices]);
+  }, [views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 

@@ -34,6 +34,7 @@ import {
   selectedKeyframeAtom,
   showLegendAtom,
   themeModeAtom,
+  tourByAtom,
   tourPlayingAtom,
   tourSpeedAtom,
   viewModeAtom,
@@ -81,6 +82,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
+  const [tourBy, setTourBy] = useAtom(tourByAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,6 +201,28 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             </Button>
           ))}
         </div>
+        {viewMode === 'guided' && (
+          <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none ${tourBy === 'dimensions' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+              onClick={() => setTourBy('dimensions')}
+              title="Tour by dimensions"
+            >
+              <span className="text-xs">Dims</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none ${tourBy === 'pca' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+              onClick={() => setTourBy('pca')}
+              title="Tour by principal components"
+            >
+              <span className="text-xs">PCA</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}

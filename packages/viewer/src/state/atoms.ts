@@ -5,6 +5,9 @@ import { atom } from 'jotai';
 // Tour state — controls position and playback along the tour path
 // ---------------------------------------------------------------------------
 
+/** Controls how tour keyframes are derived: raw dimension pairs or PCA eigenvectors. */
+export const tourByAtom = atom<'dimensions' | 'pca'>('dimensions');
+
 export const tourPositionAtom = atom(0);
 export const tourPlayingAtom = atom(false);
 export const tourSpeedAtom = atom(1);

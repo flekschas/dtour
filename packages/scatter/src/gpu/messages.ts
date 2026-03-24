@@ -43,10 +43,21 @@ export type MainToGpu =
       // GPU worker runs point-in-polygon against projected positions.
       type: 'lassoSelect';
       polygon: Float32Array;
+    }
+  | {
+      // Trigger GPU-accelerated PCA computation on the loaded data.
+      // Result arrives as a GpuToMain 'pcaResult' message.
+      type: 'computePCA';
     };
 
 // GPU Worker → Main thread
 export type GpuToMain =
   | { type: 'ready' }
   | { type: 'rendered'; viewIndex: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | {
+      type: 'pcaResult';
+      eigenvectors: Float32Array[];
+      eigenvalues: Float32Array;
+      numDims: number;
+    };
