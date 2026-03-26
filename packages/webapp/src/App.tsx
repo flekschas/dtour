@@ -223,6 +223,17 @@ const App = () => {
             </svg>
             <span className="text-sm select-none">Drop a Parquet or Arrow file to start</span>
           </Button>
+          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 select-none">
+            Explore high-dimensional data through guided, manual, and grand tours of 2D projections.
+            <a
+              href="https://github.com/flekschas/dtour"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pointer-events-auto ml-1 underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+            >
+              GitHub
+            </a>
+          </p>
         </motion.div>
       )}
       {logoPhase !== 'done' && (
