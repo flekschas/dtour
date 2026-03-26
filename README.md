@@ -4,6 +4,9 @@
 <p align="center">
   <em>take a detour from your usual 2D embedding visualization → <a href="https://dtour.dev" target="_blank">dtour.dev</a></em>
 </p>
+<p align="center">
+  <em>Still work in progress but feel free to play with it.</em>
+</p>
 
 ---
 
@@ -61,14 +64,17 @@ dtour.Widget(
     data=...,             # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
     tour=...,             # TourResult from little_tour() / little_umap_tour()
     # display
-    height=600,           # canvas height in pixels
+    height=720,           # canvas height in pixels
     preview_count=4,      # keyframe previews: 4 | 8 | 12 | 16
+    preview_size="large", # "small" | "medium" | "large"
     preview_padding=12.0, # gap between previews
     # point style
-    point_size=0.012,     # point radius
-    point_opacity=0.7,    # point alpha
+    point_size="auto",    # point radius or "auto"
+    point_opacity="auto", # point alpha or "auto"
     point_color=[0.25, 0.5, 0.9],  # RGB list or column name for categorical coloring
+    color_map={},         # label → color mapping (see build_color_map())
     # tour playback
+    tour_by="dimensions", # "dimensions" | "pca"
     tour_position=0.0,    # 0–1 position along the tour
     tour_playing=False,   # auto-play on load
     tour_speed=1.0,       # playback speed multiplier
@@ -77,7 +83,20 @@ dtour.Widget(
     camera_pan_x=0.0,
     camera_pan_y=0.0,
     camera_zoom=1.0,
+    # mode & appearance
+    view_mode="guided",   # "guided" | "manual" | "grand"
+    show_legend=True,     # show/hide color legend
+    theme="dark",         # "light" | "dark" | "system"
 )
+```
+
+#### Widget methods
+
+```py
+w = dtour.Widget(data=X, tour=tour)
+w.set_metrics(metrics)            # display radial quality charts
+w.select([0, 1, 2])              # select points by index
+w.clear_selection()               # clear selection
 ```
 
 #### Tour computation
@@ -99,7 +118,7 @@ tour = dtour.little_umap_tour(
 )
 ```
 
-Both return a `TourResult` with `.views` (list of p×2 float32 arrays), `.n_views`, `.n_dims`, and `.explained_variance_ratio`.
+Both return a `TourResult` with `.views` (list of p×2 float32 arrays), `.n_views`, `.n_dims`, `.explained_variance_ratio`, and `.save(path)` / `TourResult.load(path)` for persistence.
 
 #### Quality metrics
 
@@ -112,13 +131,28 @@ metrics = dtour.compute_metrics(
     labels=None,          # cluster/class labels for supervised metrics
     metrics=None,         # list of metric names; defaults to ["silhouette", "trustworthiness"]
     k=7,                  # neighbors for neighborhood-based metrics
+    subsample=None,       # int, per-metric dict, or None for built-in defaults
+    exclude_labels=None,  # label values to exclude from label-based metrics
 )
 
-w = dtour.DtourWidget(data=X, tour=tour)
+w = dtour.Widget(data=X, tour=tour)
 w.set_metrics(metrics)
 ```
 
-Supported metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`, `neighborhood_hit` (last two require `labels`).
+Supported metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`, `neighborhood_hit`, `confusion` (require `labels`), `hdbscan_score` (unsupervised).
+
+#### Color maps
+
+Build a label → color mapping that matches the engine's auto-assignment:
+
+```py
+cmap = dtour.build_color_map(
+    labels=sorted_unique_labels,  # same order the engine sees
+    theme=None,                   # "light" | "dark" | None (theme-aware dicts)
+    overrides=None,               # per-label color overrides
+)
+dtour.Widget(data=df, point_color="cluster", color_map=cmap)
+```
 
 ## JavaScript
 
@@ -146,9 +180,14 @@ import { Dtour } from "dtour";
   views={views}               // Float32Array[] of p×2 column-major view matrices
   metrics={metricsBuffer}     // Arrow IPC ArrayBuffer with per-view quality metrics
   metricTracks={tracks}       // RadialTrackConfig[] for radial bar chart customization
+  metricBarWidth="full"       // "full" | number — global bar width for radial charts
+  colorMap={colorMap}         // Record<string, string | {light, dark}> per-label colors
   spec={spec}                 // partial DtourSpec to control component state
   onSpecChange={handleSpec}   // fires on state change (debounced ~250ms)
   onStatus={handleStatus}     // called on every renderer status event
+  onSelectionChange={fn}      // fires when legend selection changes (label names)
+  onLoadData={fn}             // called when user loads a file via the toolbar
+  onReady={fn}                // called with a DtourHandle for programmatic control
   hideToolbar={false}         // hide the top toolbar
 />
 ```
@@ -159,19 +198,23 @@ All fields are optional. Omitted fields use defaults.
 
 ```ts
 type DtourSpec = {
+  tourBy?: "dimensions" | "pca";      // default "dimensions"
   tourPosition?: number;              // 0–1, default 0
   tourPlaying?: boolean;              // default false
   tourSpeed?: number;                 // 0.1–5, default 1
   tourDirection?: "forward" | "backward";
   previewCount?: 4 | 8 | 12 | 16;    // default 4
+  previewScale?: 1 | 0.75 | 0.5;     // default 1
   previewPadding?: number;            // default 12
   pointSize?: number | "auto";        // default "auto"
   pointOpacity?: number | "auto";     // 0–1, default "auto"
   pointColor?: [number, number, number] | string;  // RGB or column name
   cameraPanX?: number;                // default 0
   cameraPanY?: number;                // default 0
-  cameraZoom?: number;                // default 1
+  cameraZoom?: number;                // default 1/1.5
   viewMode?: "guided" | "manual" | "grand";
+  showLegend?: boolean;               // default true
+  themeMode?: "light" | "dark" | "system"; // default "dark"
 };
 ```
 
