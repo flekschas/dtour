@@ -174,7 +174,52 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
           </div>
         </div>
         <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
-          {MODE_CONFIG.map(({ mode, label, icon: Icon }) => (
+          {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
+          <div className={`flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none ${viewMode === 'guided' ? 'text-dtour-highlight' : ''}`}
+              onClick={() => {
+                if (viewMode === 'grand') {
+                  setGrandExitTarget('guided');
+                } else if (viewMode !== 'guided') {
+                  setGuidedSuspended(true);
+                  setViewMode('guided');
+                }
+              }}
+              title="Guided"
+            >
+              <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />
+              <span className="ml-1 text-xs">Guided{viewMode === 'guided' ? ':' : ''}</span>
+            </Button>
+            {viewMode === 'guided' && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`rounded-none px-0 ${tourBy === 'dimensions' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                  onClick={() => setTourBy('dimensions')}
+                  title="Tour by dimensions"
+                >
+                  <span className="text-xs">Dims</span>
+                </Button>
+                <span className="text-[10px] text-dtour-text-muted select-none px-1.5">/</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`rounded-none px-0 ${tourBy === 'pca' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                  onClick={() => setTourBy('pca')}
+                  title="Tour by principal components"
+                >
+                  <span className="text-xs">PCA</span>
+                </Button>
+                <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none"/>
+              </>
+            )}
+          </div>
+          {/* Manual + Grand buttons */}
+          {MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(({ mode, label, icon: Icon }) => (
             <Button
               key={mode}
               variant="ghost"
@@ -188,7 +233,6 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                   }
                   setGrandExitTarget(mode);
                 } else {
-                  if (mode === 'guided' && viewMode !== 'guided') setGuidedSuspended(true);
                   if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
                   if (mode === 'grand') setGrandExitTarget(null);
                   setViewMode(mode);
@@ -201,28 +245,6 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             </Button>
           ))}
         </div>
-        {viewMode === 'guided' && (
-          <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`rounded-none ${tourBy === 'dimensions' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-              onClick={() => setTourBy('dimensions')}
-              title="Tour by dimensions"
-            >
-              <span className="text-xs">Dims</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`rounded-none ${tourBy === 'pca' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-              onClick={() => setTourBy('pca')}
-              title="Tour by principal components"
-            >
-              <span className="text-xs">PCA</span>
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
