@@ -318,8 +318,8 @@ const App = () => {
                 </svg>
                 <span className="text-sm select-none">Drop a Parquet or Arrow file to start</span>
               </Button>
-              <span className="text-xs text-dtour-text-muted/60 select-none mt-3">or try</span>
-              <div className="flex items-center gap-1 mt-1 pointer-events-auto">
+              <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
+              <div className="flex items-center gap-1 mt-3 pointer-events-auto">
                 {EXAMPLES.map((example, i) => (
                   <motion.button
                     key={example.fileName}
@@ -340,13 +340,13 @@ const App = () => {
               </div>
             </>
           )}
-          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 select-none">
+          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60">
             Explore high-dimensional data through guided, manual, and grand tours of 2D projections.
             <a
               href="https://github.com/flekschas/dtour"
               target="_blank"
               rel="noopener noreferrer"
-              className="pointer-events-auto ml-1 underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+              className="pointer-events-auto ml-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
             >
               GitHub
             </a>
