@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm --parallel --filter dtour --filter webapp dev",
+    "dev": "pnpm --parallel --filter @dtour/viewer --filter webapp dev",
     "lint": "biome check .",
     "format": "biome format --write .",
     "prepare": "lefthook install"

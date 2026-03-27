@@ -1,6 +1,6 @@
+import { Dtour } from '@dtour/viewer';
+import type { DtourSpec } from '@dtour/viewer';
 import { SpinnerIcon } from '@phosphor-icons/react';
-import { Dtour } from 'dtour';
-import type { DtourSpec } from 'dtour';
 import { motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
