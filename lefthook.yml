@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,ts,jsx,tsx,json,jsonc}"
+      run: pnpm biome check --no-errors-on-unmatched {staged_files}
+    ruff:
+      glob: "*.py"
+      run: uvx ruff check {staged_files}

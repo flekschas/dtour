@@ -7,10 +7,12 @@
     "build": "pnpm -r build",
     "dev": "pnpm --parallel --filter dtour --filter webapp dev",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "lefthook": "^2.1.4",
     "shadcn": "^3.8.5",
     "typescript": "^5.7.3"
   }
