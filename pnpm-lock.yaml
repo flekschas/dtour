@@ -208,12 +208,18 @@ importers:
       '@dtour/viewer':
         specifier: workspace:*
         version: link:../viewer
+      '@phosphor-icons/react':
+        specifier: ^2.1.10
+        version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@radix-ui/react-slot':
         specifier: 'catalog:'
         version: 1.2.4(@types/react@19.2.14)(react@19.2.4)
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.2.1(vite@8.0.0(esbuild@0.27.3)(jiti@2.6.1))
+      '@uwdata/flechette':
+        specifier: 'catalog:'
+        version: 2.3.0
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1

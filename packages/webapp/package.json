@@ -11,7 +11,9 @@
   "dependencies": {
     "@dtour/scatter": "workspace:*",
     "@dtour/viewer": "workspace:*",
+    "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-slot": "catalog:",
+    "@uwdata/flechette": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",

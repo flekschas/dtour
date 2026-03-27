@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { DataToGpu } from '../data/messages.ts';
-import { type CanvasView, configureCanvas, renderPoints } from '../renderer.ts';
+import { type CanvasView, configureCanvas, renderPoints, tonemapToCanvas } from '../renderer.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
 import {
   type ColorPipelines,
@@ -18,10 +18,15 @@ import type { GpuToMain, MainToGpu } from './messages.ts';
 import {
   type CameraState,
   type PointStyle,
+  type RawPointStyle,
   type StyleFlags,
+  type TonemapPipeline,
   createPointBindGroup,
   createPointPipeline,
+  createTonemapBindGroup,
+  createTonemapPipeline,
   writeCamera,
+  writeTonemapParams,
   writeUniforms,
 } from './pipeline.ts';
 import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
@@ -63,7 +68,7 @@ type GpuState = {
   // Tour
   tour: TourState | null;
   // Style
-  style: PointStyle;
+  style: RawPointStyle;
   styleFlags: StyleFlags;
   camera: CameraState;
   // Per-point color + selection
@@ -74,6 +79,13 @@ type GpuState = {
   directBasis: Float32Array | null;
   // Background clear color (RGB 0–1)
   backgroundColor: [number, number, number];
+  // Device pixel ratio — used by auto-style for minimum visible point size
+  dpr: number;
+  // HDR rendering — points render to rgba32float, then tone-map to canvas
+  tonemapPipeline: TonemapPipeline;
+  hdrTextures: (GPUTexture | null)[];
+  hdrTextureViews: (GPUTextureView | null)[];
+  tonemapBindGroups: (GPUBindGroup | null)[];
 };
 
 let state: GpuState | null = null;
@@ -89,6 +101,87 @@ let pcaPipeline: PcaPipeline | null = null;
 
 const postMain = (msg: GpuToMain, transfers?: Transferable[]): void => {
   self.postMessage(msg, transfers ?? []);
+};
+
+// ─── Auto-style (Reusser color budget) ───────────────────────────────────
+
+const COLOR_BUDGET = 0.5;
+
+/** Compute ideal point size (NDC) and opacity for a given canvas and point count.
+ *  All dimensions are physical pixels; pass dpr=1 when canvas sizes are already physical. */
+const computeAutoStyle = (
+  rowCount: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  dpr: number,
+): { pointSize: number; opacity: number } => {
+  if (rowCount === 0 || canvasWidth === 0 || canvasHeight === 0) {
+    return { pointSize: 0.012, opacity: 0.7 };
+  }
+
+  const physW = canvasWidth * dpr;
+  const physH = canvasHeight * dpr;
+  const totalBudget = physW * physH * COLOR_BUDGET;
+  const perPoint = totalBudget / rowCount;
+  const idealRadius = Math.sqrt(perPoint / Math.PI);
+  const minRadius = dpr; // 1 CSS pixel
+
+  let radius: number;
+  let opacity: number;
+
+  if (idealRadius >= minRadius) {
+    radius = idealRadius;
+    opacity = 1.0;
+  } else {
+    radius = minRadius;
+    opacity = Math.max(0.01, perPoint / (Math.PI * minRadius * minRadius));
+  }
+
+  const pointSize = (2 * radius) / physH;
+  return { pointSize, opacity };
+};
+
+/** Resolve 'auto' point size/opacity for a specific view's canvas. */
+const resolveStyleForView = (viewIndex: number): PointStyle => {
+  const { style, numPoints, views, dpr } = state!;
+
+  // Fast path: no 'auto' values
+  if (style.pointSize !== 'auto' && style.opacity !== 'auto') {
+    return style as PointStyle;
+  }
+
+  // Canvas dimensions are physical pixels; computeAutoStyle expects CSS pixels + dpr
+  const canvas = views[viewIndex]!.canvas;
+  const auto = computeAutoStyle(numPoints, canvas.width / dpr, canvas.height / dpr, dpr);
+
+  return {
+    pointSize: style.pointSize === 'auto' ? auto.pointSize : style.pointSize,
+    opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
+    color: style.color,
+  };
+};
+
+// ─── HDR texture management ──────────────────────────────────────────────
+
+/** Ensure the rgba32float HDR texture for a view exists and matches canvas size. */
+const ensureHdrTexture = (viewIndex: number): void => {
+  const { device, views, tonemapPipeline: tp, hdrTextures } = state!;
+  const canvas = views[viewIndex]!.canvas;
+  const existing = hdrTextures[viewIndex];
+
+  if (existing && existing.width === canvas.width && existing.height === canvas.height) return;
+
+  existing?.destroy();
+  const tex = device.createTexture({
+    label: `hdr-${viewIndex}`,
+    size: [canvas.width, canvas.height],
+    format: 'rgba32float',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const texView = tex.createView();
+  state!.hdrTextures[viewIndex] = tex;
+  state!.hdrTextureViews[viewIndex] = texView;
+  state!.tonemapBindGroups[viewIndex] = createTonemapBindGroup(device, tp.bindGroupLayout, texView, tp.paramsBuffer);
 };
 
 // ─── Buffer helpers ───────────────────────────────────────────────────────
@@ -144,6 +237,31 @@ const projectAndRender = (
   // Upload basis
   device.queue.writeBuffer(projectionResources.basisBuffer, 0, basis as Float32Array<ArrayBuffer>);
 
+  // Resolve per-view style (handles 'auto' → concrete values for this canvas size)
+  const resolved = resolveStyleForView(viewIndex);
+
+  // Select blend pipeline and tonemap mode based on coloring and background luminance.
+  // Per-point colors → normal (over), uniform color → additive (dark bg) or subtractive (light bg).
+  const bg = state.backgroundColor;
+  const bgLuminance = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
+  const useSubtractive = !state.styleFlags.usePerPointColor && bgLuminance > 0.5;
+
+  let activePipeline: GPURenderPipeline;
+  let tonemapMode: number;
+  if (state.styleFlags.usePerPointColor) {
+    activePipeline = state.pointPipeline.normalPipeline;
+    tonemapMode = 1; // clamp
+  } else if (useSubtractive) {
+    activePipeline = state.pointPipeline.subtractivePipeline;
+    tonemapMode = 1; // clamp
+  } else {
+    activePipeline = state.pointPipeline.additivePipeline;
+    tonemapMode = 0; // exponential
+  }
+
+  writeUniforms(device, state.pointPipeline.uniformBuffer, resolved, state.styleFlags, useSubtractive);
+  writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
+
   // Write the caller-supplied camera (with aspect + viewport height from the target canvas)
   const canvas = state.views[viewIndex]!.canvas;
   const aspect = canvas.width / canvas.height || 1;
@@ -153,23 +271,27 @@ const projectAndRender = (
     viewportHeight: canvas.height,
   });
 
-  // Select blend pipeline: normal (over) for per-point colors, additive for density
-  const activePipeline = state.styleFlags.usePerPointColor
-    ? state.pointPipeline.normalPipeline
-    : state.pointPipeline.additivePipeline;
+  // Ensure HDR texture matches canvas size (lazy create/resize)
+  ensureHdrTexture(viewIndex);
 
-  // Dispatch compute then render — single submit for efficiency
+  // Two-pass: points → rgba32float FBO, then tone-map → canvas
   const computeCmd = dispatchProjection(device, projectionPipeline, projBindGroup, numPoints);
   const renderCmd = renderPoints(
     device,
-    state.views[viewIndex]!,
+    state.hdrTextureViews[viewIndex]!,
     activePipeline,
     renBindGroup,
     numPoints,
     state.backgroundColor,
   );
+  const tonemapCmd = tonemapToCanvas(
+    device,
+    state.views[viewIndex]!,
+    state.tonemapPipeline.pipeline,
+    state.tonemapBindGroups[viewIndex]!,
+  );
 
-  device.queue.submit([computeCmd, renderCmd]);
+  device.queue.submit([computeCmd, renderCmd, tonemapCmd]);
 };
 
 // ─── Deferred preview rendering ───────────────────────────────────────────
@@ -323,7 +445,6 @@ const rebuildBindGroups = (): void => {
 const applyColorUpdate = (): void => {
   if (!state) return;
   state.styleFlags.usePerPointColor = true;
-  writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
   rebuildBindGroups();
   if ((state.tour || state.directBasis) && state.projectionResources) {
     renderAllViews();
@@ -333,7 +454,6 @@ const applyColorUpdate = (): void => {
 const applySelectionUpdate = (): void => {
   if (!state) return;
   state.styleFlags.useSelectionMask = true;
-  writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
   rebuildBindGroups();
   if ((state.tour || state.directBasis) && state.projectionResources) {
     renderAllViews();
@@ -538,7 +658,6 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   state.categoricalBuffers.clear();
 
   state.styleFlags = { usePerPointColor: false, useSelectionMask: false };
-  writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
 
   const { projectionPipeline } = state;
 
@@ -646,7 +765,6 @@ const handleMessage = (msg: MainToGpu): void => {
 
   if (msg.type === 'setStyle') {
     state.style = { pointSize: msg.pointSize, opacity: msg.opacity, color: msg.color };
-    writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
@@ -707,7 +825,6 @@ const handleMessage = (msg: MainToGpu): void => {
       state.colorBuffer = null;
     }
     state.styleFlags.usePerPointColor = false;
-    writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 
     if ((state.tour || state.directBasis) && state.projectionResources) {
@@ -739,7 +856,6 @@ const handleMessage = (msg: MainToGpu): void => {
     state.device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
 
     state.styleFlags.useSelectionMask = true;
-    writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 
     if ((state.tour || state.directBasis) && state.projectionResources) {
@@ -754,7 +870,6 @@ const handleMessage = (msg: MainToGpu): void => {
       state.selectionBuffer = null;
     }
     state.styleFlags.useSelectionMask = false;
-    writeUniforms(state.device, state.pointPipeline.uniformBuffer, state.style, state.styleFlags);
     rebuildBindGroups();
 
     if ((state.tour || state.directBasis) && state.projectionResources) {
@@ -866,7 +981,6 @@ const handleMessage = (msg: MainToGpu): void => {
       device.queue.writeBuffer(state!.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
 
       state!.styleFlags.useSelectionMask = true;
-      writeUniforms(device, state!.pointPipeline.uniformBuffer, state!.style, state!.styleFlags);
       rebuildBindGroups();
 
       if ((state!.tour || state!.directBasis) && state!.projectionResources) {
@@ -913,6 +1027,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
       const pointPipeline = createPointPipeline(device, canvasFormat);
       const projectionPipeline = createProjectionPipeline(device);
       const colorPipelines = createColorPipelines(device);
+      const tonemapPipeline = createTonemapPipeline(device, canvasFormat);
 
       state = {
         device,
@@ -942,6 +1057,11 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         selectionBuffer: null,
         directBasis: null,
         backgroundColor: [0, 0, 0],
+        dpr: msg.dpr,
+        tonemapPipeline,
+        hdrTextures: [],
+        hdrTextureViews: [],
+        tonemapBindGroups: [],
       };
 
       msg.dataPort.onmessage = onDataMessage;

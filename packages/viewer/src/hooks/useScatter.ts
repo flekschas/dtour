@@ -14,10 +14,11 @@ import {
   metadataAtom,
   paletteAtom,
   pointColorAtom,
+  pointOpacityAtom,
+  pointSizeAtom,
   resolvedThemeAtom,
   tourPositionAtom,
 } from '../state/atoms.ts';
-import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from '../state/auto-style.ts';
 
 /**
  * Bridge between Jotai atoms and a ScatterInstance.
@@ -28,8 +29,8 @@ import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from '../state/auto-s
  */
 export const useScatter = (scatter: ScatterInstance | null) => {
   const position = useAtomValue(tourPositionAtom);
-  const pointSize = useAtomValue(resolvedPointSizeAtom);
-  const opacity = useAtomValue(resolvedPointOpacityAtom);
+  const pointSize = useAtomValue(pointSizeAtom);
+  const opacity = useAtomValue(pointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
   const guidedSuspended = useAtomValue(guidedSuspendedAtom);
   const panX = useAtomValue(cameraPanXAtom);

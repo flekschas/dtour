@@ -10,6 +10,7 @@ struct Uniforms {
   usePerPointColor: f32,
   useSelectionMask: f32,
   color: vec4f,
+  useSubtractive: f32,
 }
 
 struct Camera {
@@ -93,12 +94,8 @@ fn vs_main(
 
   // Scale opacity by zoom² to keep constant visual fill density (Reusser).
   // Zooming out compresses points → more overlap → must reduce opacity.
-  // Also compensate when the min-clamp enlarged points beyond intended size:
-  // enlarge² corrects for the increased pixel coverage, keeping preview
-  // thumbnails (small viewports) brightness-matched with the main view.
   let z = camera.zoom * camera.inset_zoom;
-  let enlarge = max(1.0, point_size / max(uni.point_size, 0.0001));
-  let eff_opacity = uni.opacity * z * z / (enlarge * enlarge);
+  let eff_opacity = uni.opacity * z * z;
 
   // Resolve per-point color
   var col: vec4f;
@@ -151,7 +148,10 @@ fn fs_main(
   let intensity = edge * effective_opacity * point_color.a * sel_factor;
   // When per-point colors are active, use premultiplied-over output so the
   // normal-blend pipeline preserves label hues.  When off, output zero alpha
-  // so the additive pipeline accumulates light on the dark background.
+  // so the additive/subtractive pipeline accumulates on the background.
   let out_alpha = select(0.0, intensity, uni.usePerPointColor > 0.5);
-  return vec4f(point_color.rgb * intensity, out_alpha);
+  // Subtractive mode (Reusser): output complement color so that
+  // reverse-subtract blend (dst - src) on a white bg yields the correct hue.
+  let rgb = select(point_color.rgb, vec3f(1.0) - point_color.rgb, uni.useSubtractive > 0.5);
+  return vec4f(rgb * intensity, out_alpha);
 }

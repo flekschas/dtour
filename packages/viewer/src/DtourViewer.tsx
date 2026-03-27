@@ -24,6 +24,8 @@ import {
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
+  pointOpacityAtom,
+  pointSizeAtom,
   resolvedThemeAtom,
   previewCountAtom,
   previewScaleAtom,
@@ -32,7 +34,6 @@ import {
   tourPositionAtom,
   viewModeAtom,
 } from './state/atoms.ts';
-import { resolvedPointOpacityAtom, resolvedPointSizeAtom } from './state/auto-style.ts';
 import { createDefaultViews, createPCAViews } from './views.ts';
 
 export type DtourViewerProps = {
@@ -313,12 +314,12 @@ export const DtourViewer = ({
       }
     });
 
-    // Eagerly forward the current auto-style so the GPU worker has correct
+    // Eagerly forward the current style so the GPU worker has correct
     // values before data arrives and triggers its first render. Without this,
     // the worker uses its hardcoded defaults (pointSize=0.012, opacity=0.7)
     // until useScatter's effect fires on the NEXT render cycle.
-    const ps = store.get(resolvedPointSizeAtom);
-    const op = store.get(resolvedPointOpacityAtom);
+    const ps = store.get(pointSizeAtom);
+    const op = store.get(pointOpacityAtom);
     scatter.setStyle({ pointSize: ps, opacity: op });
 
     const ro = new ResizeObserver(([entry]) => {

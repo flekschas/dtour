@@ -28,6 +28,7 @@ export const initDevice = async (): Promise<GpuContext> => {
 
   const device = await adapter.requestDevice({
     label: 'dtour-scatter',
+    requiredFeatures: ['float32-blendable'],
   });
 
   device.lost.then((info) => {

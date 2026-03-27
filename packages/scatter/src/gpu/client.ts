@@ -13,6 +13,8 @@ export type ScatterOptions = {
   canvases: HTMLCanvasElement[];
   /** Initial camera zoom level. Default 1. */
   zoom?: number;
+  /** Device pixel ratio. Default `window.devicePixelRatio ?? 1`. */
+  dpr?: number;
 };
 
 export type ScatterStatus =
@@ -41,10 +43,10 @@ export type ScatterInstance = {
   setBases: (bases: Float32Array[]) => void;
   /** Set tour position along the arc-length parameterized path [0, 1]. */
   setTourPosition: (position: number) => void;
-  /** Update point rendering style. */
+  /** Update point rendering style. Use 'auto' for density-adaptive sizing. */
   setStyle: (options: {
-    pointSize?: number;
-    opacity?: number;
+    pointSize?: number | 'auto';
+    opacity?: number | 'auto';
     color?: [number, number, number];
   }) => void;
   /** Set 2D camera (pan, zoom, and optional viewport inset for toolbar offset). */
@@ -110,7 +112,7 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  * ```
  */
 export const createScatter = (options: ScatterOptions): ScatterInstance => {
-  const { canvases, zoom: initialZoom = 1 } = options;
+  const { canvases, zoom: initialZoom = 1, dpr = (typeof self !== 'undefined' && 'devicePixelRatio' in self ? self.devicePixelRatio : 1) } = options;
 
   if (canvases.length === 0) {
     throw new Error('createScatter requires at least one canvas');
@@ -154,16 +156,20 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   const offscreens = canvases.map((c) => c.transferControlToOffscreen());
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
-  sendToGpu(gpuWorker, { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom }, [
+  sendToGpu(gpuWorker, { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom, dpr }, [
     ...offscreens,
     channel.port2,
   ]);
 
   // Track current style/camera for merging partial updates
-  let currentStyle = {
-    pointSize: 0.012,
-    opacity: 0.7,
-    color: [0.25, 0.5, 0.9] as [number, number, number],
+  let currentStyle: {
+    pointSize: number | 'auto';
+    opacity: number | 'auto';
+    color: [number, number, number];
+  } = {
+    pointSize: 'auto',
+    opacity: 'auto',
+    color: [0.25, 0.5, 0.9],
   };
   let currentCamera = { pan: [0, 0] as [number, number], zoom: initialZoom, insetOffsetY: 0, insetZoom: 1 };
 
@@ -182,8 +188,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   };
 
   const setStyle = (opts: {
-    pointSize?: number;
-    opacity?: number;
+    pointSize?: number | 'auto';
+    opacity?: number | 'auto';
     color?: [number, number, number];
   }): void => {
     currentStyle = { ...currentStyle, ...opts };
