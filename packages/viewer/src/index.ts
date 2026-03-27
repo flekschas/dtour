@@ -1,4 +1,4 @@
-// @dtour/viewer — React UI for dtour: circular selector, preview gallery, tour controls.
+// dtour — React UI for dtour: circular selector, preview gallery, tour controls.
 import './styles.css';
 
 // Primary API — self-contained component with spec-driven state

@@ -1,9 +1,9 @@
 import { createRender, useModel } from '@anywidget/react';
-import { Dtour } from '@dtour/viewer';
+import { Dtour } from 'dtour';
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
-import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
-import type { DtourHandle, DtourSpec, RadialTrackConfig } from '@dtour/viewer';
+import viewerCss from 'dtour/dist/viewer.css?inline';
+import type { DtourHandle, DtourSpec, RadialTrackConfig } from 'dtour';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------

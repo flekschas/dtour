@@ -1,5 +1,5 @@
 {
-  "name": "@dtour/viewer",
+  "name": "dtour",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/viewer.js",

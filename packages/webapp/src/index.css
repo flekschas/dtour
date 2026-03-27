@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@dtour/viewer/dist/viewer.css";
+@import "dtour/dist/viewer.css";
 
 @font-face {
   font-family: "Manrope";

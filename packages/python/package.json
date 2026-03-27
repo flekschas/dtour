@@ -9,7 +9,7 @@
   "devDependencies": {
     "@anywidget/react": "^0.2.0",
     "@dtour/scatter": "workspace:*",
-    "@dtour/viewer": "workspace:*",
+    "dtour": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

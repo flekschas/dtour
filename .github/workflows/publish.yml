@@ -1,0 +1,88 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      # Publishes all non-private packages in the workspace.
+      #
+      # Authentication uses OIDC trusted publishing — the npm CLI auto-detects
+      # the GitHub OIDC environment when id-token permission is granted.
+      # No tokens or secrets needed.
+      #
+      # Prerequisites (one-time setup):
+      # 1. Publish each package once from your local machine:
+      #      npm login
+      #      cd packages/scatter && npm publish --access public
+      #      cd packages/viewer && npm publish --access public
+      # 2. Configure trusted publishing for each package on
+      #    npmjs.com → Package Settings → Trusted Publisher:
+      #      - Organization or user: flekschas
+      #      - Repository: dtour
+      #      - Workflow filename: publish.yml
+      - name: Publish to npm
+        run: pnpm -r publish --access public --no-git-checks
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build JS (scatter + viewer + widget.js)
+        run: pnpm run build
+
+      - name: Build Python package
+        working-directory: packages/python
+        run: uv build
+
+      # Authentication uses OIDC trusted publishing — no tokens or secrets needed.
+      #
+      # Prerequisites (one-time setup on pypi.org):
+      # 1. Go to https://pypi.org/manage/account/publishing/
+      # 2. Add a new pending publisher (if first publish) or go to
+      #    the project settings → Publishing:
+      #      - Owner: flekschas
+      #      - Repository: dtour
+      #      - Workflow name: publish.yml
+      #      - Environment: (leave blank)
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/python/dist/
