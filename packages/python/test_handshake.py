@@ -1,7 +1,6 @@
 """Minimal anywidget to test custom message round-trip in Marimo."""
 
 import anywidget
-import traitlets as t
 
 
 class HandshakeWidget(anywidget.AnyWidget):

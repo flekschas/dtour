@@ -30,7 +30,10 @@ def from_numpy(X: np.ndarray, column_names: list[str] | None = None) -> bytes:
     if len(names) != n_dims:
         raise ValueError(f"column_names has {len(names)} items, expected {n_dims}")
 
-    arrays = {name: ac.Array.from_numpy(np.ascontiguousarray(X[:, i], dtype=np.float32)) for i, name in enumerate(names)}
+    arrays = {
+        name: ac.Array.from_numpy(np.ascontiguousarray(X[:, i], dtype=np.float32))
+        for i, name in enumerate(names)
+    }
     table = ac.Table.from_pydict(arrays)
 
     buf = BytesIO()

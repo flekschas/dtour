@@ -105,7 +105,7 @@ def compute_metrics(
     # Filter out excluded labels (affects both X and labels)
     if exclude_labels and labels is not None:
         exclude_set = set(exclude_labels)
-        mask = np.array([l not in exclude_set for l in labels])
+        mask = np.array([lab not in exclude_set for lab in labels])
         X = X[mask]
         labels = labels[mask]
 
