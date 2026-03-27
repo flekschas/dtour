@@ -3,11 +3,11 @@ import { bitPackIndices } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
-import { PortalContainerContext } from './portal-container.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
+import { PortalContainerContext } from './portal-container.tsx';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec } from './spec.ts';
 import {
@@ -24,7 +24,10 @@ import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
 export type DtourHandle = {
   /** Select points by index array or bit-packed mask. */
-  select: (indicesOrMask: number[] | Int32Array | Uint32Array, opts?: { isBitPacked?: boolean }) => void;
+  select: (
+    indicesOrMask: number[] | Int32Array | Uint32Array,
+    opts?: { isBitPacked?: boolean },
+  ) => void;
   /** Clear the current selection. */
   clearSelection: () => void;
 };
@@ -244,7 +247,10 @@ const DtourInner = ({
   const displayWidth = legendVisible ? sidebarWidth : 0;
 
   return (
-    <div ref={containerRef} className={`relative w-full h-full overflow-hidden flex ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full overflow-hidden flex ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
+    >
       {/* Canvas panel — grows to fill remaining space */}
       <div className="relative flex-1 min-w-0">
         {/* Toolbar — inside left panel so it shrinks with the legend */}

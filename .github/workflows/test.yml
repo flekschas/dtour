@@ -26,3 +26,9 @@ jobs:
 
       - name: Lint
         run: pnpm run lint
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Lint Python
+        working-directory: packages/python
+        run: uvx ruff check .

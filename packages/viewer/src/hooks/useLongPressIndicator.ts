@@ -168,8 +168,18 @@ export const useLongPressIndicator = () => {
     anims.push(
       el.effect.animate(
         [
-          { opacity: effectState.opacity, transform: `scale(${effectState.scale})`, offset: 0, easing: eo },
-          { opacity: effectState.opacity, transform: `scale(${effectState.scale})`, offset: lp, easing: eo },
+          {
+            opacity: effectState.opacity,
+            transform: `scale(${effectState.scale})`,
+            offset: 0,
+            easing: eo,
+          },
+          {
+            opacity: effectState.opacity,
+            transform: `scale(${effectState.scale})`,
+            offset: lp,
+            easing: eo,
+          },
           { opacity: 0.66, transform: 'scale(1.5)', offset: afterEffect, easing: eo },
           { opacity: 0, transform: 'scale(2)', offset: 0.99, easing: eo },
           { opacity: 0, transform: 'scale(0)', offset: 1 },
@@ -264,9 +274,7 @@ export const useLongPressIndicator = () => {
     const anims: Animation[] = [];
 
     // Root: color revert
-    anims.push(
-      el.root.animate([{ color: mainColor }, { color: INDICATOR_COLOR }], opts),
-    );
+    anims.push(el.root.animate([{ color: mainColor }, { color: INDICATOR_COLOR }], opts));
 
     // Effect: fade out
     anims.push(

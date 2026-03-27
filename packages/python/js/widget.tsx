@@ -1,10 +1,10 @@
 import { createRender, useModel } from '@anywidget/react';
 import { Dtour } from 'dtour';
+import type { DtourHandle, DtourSpec, RadialTrackConfig } from 'dtour';
+import viewerCss from 'dtour/dist/viewer.css?inline';
+import { useCallback, useEffect, useRef, useState } from 'react';
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
-import viewerCss from 'dtour/dist/viewer.css?inline';
-import type { DtourHandle, DtourSpec, RadialTrackConfig } from 'dtour';
-import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Traitlet (snake_case) ↔ DtourSpec (camelCase) mapping
@@ -58,10 +58,7 @@ function toArrayBuffer(buf: DataView | ArrayBuffer | Uint8Array): ArrayBuffer {
   return buf as ArrayBuffer;
 }
 
-function parseViews(
-  raw: DataView | ArrayBuffer | Uint8Array,
-  nDims: number,
-): Float32Array[] {
+function parseViews(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Float32Array[] {
   const buf = toArrayBuffer(raw);
   const flat = new Float32Array(buf);
   const stride = nDims * 2;
@@ -198,12 +195,12 @@ function Widget() {
   const [metricTracks, setMetricTracks] = useState<RadialTrackConfig[]>(
     () => model.get('metric_tracks') ?? [],
   );
-  const [colorMap, setColorMap] = useState<Record<string, string | { light: string; dark: string }> | undefined>(
-    () => {
-      const raw = model.get('color_map');
-      return raw && Object.keys(raw).length > 0 ? raw : undefined;
-    },
-  );
+  const [colorMap, setColorMap] = useState<
+    Record<string, string | { light: string; dark: string }> | undefined
+  >(() => {
+    const raw = model.get('color_map');
+    return raw && Object.keys(raw).length > 0 ? raw : undefined;
+  });
 
   useEffect(() => {
     function onBarWidth() {
@@ -227,7 +224,11 @@ function Widget() {
   }, [model]);
 
   return (
-    <div ref={wrapperRef} className="w-full" style={{ height: `${height}px`, position: 'relative' }}>
+    <div
+      ref={wrapperRef}
+      className="w-full"
+      style={{ height: `${height}px`, position: 'relative' }}
+    >
       <Dtour
         data={data}
         views={views}

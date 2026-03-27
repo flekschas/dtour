@@ -6,10 +6,7 @@
  * @param numPoints - total number of points in the dataset
  * @returns Uint32Array of length ceil(numPoints / 32)
  */
-export const bitPackIndices = (
-  indices: ArrayLike<number>,
-  numPoints: number,
-): Uint32Array => {
+export const bitPackIndices = (indices: ArrayLike<number>, numPoints: number): Uint32Array => {
   const mask = new Uint32Array(Math.ceil(numPoints / 32));
   for (let j = 0; j < indices.length; j++) {
     const idx = indices[j]!;

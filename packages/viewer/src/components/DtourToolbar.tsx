@@ -175,7 +175,9 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
         </div>
         <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
           {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
-          <div className={`flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}>
+          <div
+            className={`flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+          >
             <Button
               variant="ghost"
               size="sm"
@@ -214,36 +216,38 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 >
                   <span className="text-xs">PCA</span>
                 </Button>
-                <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none"/>
+                <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none" />
               </>
             )}
           </div>
           {/* Manual + Grand buttons */}
-          {MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(({ mode, label, icon: Icon }) => (
-            <Button
-              key={mode}
-              variant="ghost"
-              size="sm"
-              className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-              onClick={() => {
-                if (viewMode === 'grand') {
-                  if (mode === 'grand') {
-                    setGrandExitTarget(null);
-                    return;
+          {MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
+            ({ mode, label, icon: Icon }) => (
+              <Button
+                key={mode}
+                variant="ghost"
+                size="sm"
+                className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                onClick={() => {
+                  if (viewMode === 'grand') {
+                    if (mode === 'grand') {
+                      setGrandExitTarget(null);
+                      return;
+                    }
+                    setGrandExitTarget(mode);
+                  } else {
+                    if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
+                    if (mode === 'grand') setGrandExitTarget(null);
+                    setViewMode(mode);
                   }
-                  setGrandExitTarget(mode);
-                } else {
-                  if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
-                  if (mode === 'grand') setGrandExitTarget(null);
-                  setViewMode(mode);
-                }
-              }}
-              title={label}
-            >
-              <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
-              <span className="ml-1 text-xs">{label}</span>
-            </Button>
-          ))}
+                }}
+                title={label}
+              >
+                <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
+                <span className="ml-1 text-xs">{label}</span>
+              </Button>
+            ),
+          )}
         </div>
       </div>
 
@@ -275,7 +279,9 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                 }}
                 className="h-[120px]"
               />
-              <span className="text-xs font-medium text-dtour-highlight">{zoomToDistance(zoom)}x</span>
+              <span className="text-xs font-medium text-dtour-highlight">
+                {zoomToDistance(zoom)}x
+              </span>
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
@@ -456,7 +462,9 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setThemeMode((m) => m === 'dark' ? 'light' : m === 'light' ? 'system' : 'dark')}
+          onClick={() =>
+            setThemeMode((m) => (m === 'dark' ? 'light' : m === 'light' ? 'system' : 'dark'))
+          }
           title={`Theme: ${themeMode === 'dark' ? 'Dark' : themeMode === 'light' ? 'Light' : 'System'}`}
         >
           {themeMode === 'dark' ? (
@@ -519,7 +527,9 @@ const ColumnRow = ({
         onToggleColor();
       }}
       className={`shrink-0 cursor-pointer rounded p-1 transition-[color,transform] active:scale-[0.85] ${
-        isColorActive ? 'bg-dtour-highlight text-dtour-bg' : 'text-dtour-text-muted hover:text-dtour-highlight'
+        isColorActive
+          ? 'bg-dtour-highlight text-dtour-bg'
+          : 'text-dtour-text-muted hover:text-dtour-highlight'
       }`}
       title={isColorActive ? `Stop coloring by ${name}` : `Color by ${name}`}
     >

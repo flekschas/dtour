@@ -20,7 +20,12 @@ export type MainToGpu =
       type: 'setTourPosition';
       position: number;
     }
-  | { type: 'setStyle'; pointSize: number | 'auto'; opacity: number | 'auto'; color: [number, number, number] }
+  | {
+      type: 'setStyle';
+      pointSize: number | 'auto';
+      opacity: number | 'auto';
+      color: [number, number, number];
+    }
   | {
       type: 'setCamera';
       pan: [number, number];

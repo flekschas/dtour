@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { DataToGpu } from '../data/messages.ts';
+import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
 import { type CanvasView, configureCanvas, renderPoints, tonemapToCanvas } from '../renderer.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
 import {
@@ -29,7 +30,6 @@ import {
   writeTonemapParams,
   writeUniforms,
 } from './pipeline.ts';
-import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
 import {
   type ProjectionResources,
   createProjectionBindGroup,
@@ -181,7 +181,12 @@ const ensureHdrTexture = (viewIndex: number): void => {
   const texView = tex.createView();
   state!.hdrTextures[viewIndex] = tex;
   state!.hdrTextureViews[viewIndex] = texView;
-  state!.tonemapBindGroups[viewIndex] = createTonemapBindGroup(device, tp.bindGroupLayout, texView, tp.paramsBuffer);
+  state!.tonemapBindGroups[viewIndex] = createTonemapBindGroup(
+    device,
+    tp.bindGroupLayout,
+    texView,
+    tp.paramsBuffer,
+  );
 };
 
 // ─── Buffer helpers ───────────────────────────────────────────────────────
@@ -202,8 +207,7 @@ const ensureColorBuffer = (): GPUBuffer => {
 };
 
 /** Byte size for a bit-packed selection buffer (1 bit per point, packed into u32s). */
-const selectionBufferSize = (numPoints: number): number =>
-  Math.ceil(numPoints / 32) * 4;
+const selectionBufferSize = (numPoints: number): number => Math.ceil(numPoints / 32) * 4;
 
 /** Ensure the selection buffer exists at the right size, creating if needed. */
 const ensureSelectionBuffer = (): GPUBuffer => {
@@ -259,7 +263,13 @@ const projectAndRender = (
     tonemapMode = 0; // exponential
   }
 
-  writeUniforms(device, state.pointPipeline.uniformBuffer, resolved, state.styleFlags, useSubtractive);
+  writeUniforms(
+    device,
+    state.pointPipeline.uniformBuffer,
+    resolved,
+    state.styleFlags,
+    useSubtractive,
+  );
   writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
 
   // Write the caller-supplied camera (with aspect + viewport height from the target canvas)
@@ -488,13 +498,22 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     device.queue.writeBuffer(cmapBuf, 0, colormap as Uint32Array<ArrayBuffer>);
 
     writeContinuousColorParams(
-      device, colorPipelines.paramsBuffer,
-      numPoints, columnIndex * numPoints, min, range, colormap.length,
+      device,
+      colorPipelines.paramsBuffer,
+      numPoints,
+      columnIndex * numPoints,
+      min,
+      range,
+      colormap.length,
     );
 
     const bg = createColorBindGroup(
-      device, colorPipelines.bindGroupLayout,
-      state.projectionResources.dataBuffer, cmapBuf, colorBuf, colorPipelines.paramsBuffer,
+      device,
+      colorPipelines.bindGroupLayout,
+      state.projectionResources.dataBuffer,
+      cmapBuf,
+      colorBuf,
+      colorPipelines.paramsBuffer,
     );
 
     const cmd = dispatchColorCompute(device, colorPipelines.colorContinuous, bg, numPoints);
@@ -523,13 +542,15 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     });
     device.queue.writeBuffer(palBuf, 0, palette as Uint32Array<ArrayBuffer>);
 
-    writeCategoricalColorParams(
-      device, colorPipelines.paramsBuffer, numPoints, palette.length,
-    );
+    writeCategoricalColorParams(device, colorPipelines.paramsBuffer, numPoints, palette.length);
 
     const bg = createColorBindGroup(
-      device, colorPipelines.bindGroupLayout,
-      indexBuf, palBuf, colorBuf, colorPipelines.paramsBuffer,
+      device,
+      colorPipelines.bindGroupLayout,
+      indexBuf,
+      palBuf,
+      colorBuf,
+      colorPipelines.paramsBuffer,
     );
 
     const cmd = dispatchColorCompute(device, colorPipelines.colorCategorical, bg, numPoints);
@@ -558,13 +579,20 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     device.queue.writeBuffer(rangesBuf, 0, ranges as Float32Array<ArrayBuffer>);
 
     writeContinuousSelectParams(
-      device, colorPipelines.paramsBuffer,
-      numPoints, columnIndex * numPoints, ranges.length / 2,
+      device,
+      colorPipelines.paramsBuffer,
+      numPoints,
+      columnIndex * numPoints,
+      ranges.length / 2,
     );
 
     const bg = createColorBindGroup(
-      device, colorPipelines.bindGroupLayout,
-      state.projectionResources.dataBuffer, rangesBuf, selBuf, colorPipelines.paramsBuffer,
+      device,
+      colorPipelines.bindGroupLayout,
+      state.projectionResources.dataBuffer,
+      rangesBuf,
+      selBuf,
+      colorPipelines.paramsBuffer,
     );
 
     // Clear mask (atomicOr can only set bits) then dispatch compute
@@ -601,12 +629,19 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     device.queue.writeBuffer(selLabelsBuf, 0, selectedLabels as Uint32Array<ArrayBuffer>);
 
     writeCategoricalSelectParams(
-      device, colorPipelines.paramsBuffer, numPoints, selectedLabels.length,
+      device,
+      colorPipelines.paramsBuffer,
+      numPoints,
+      selectedLabels.length,
     );
 
     const bg = createColorBindGroup(
-      device, colorPipelines.bindGroupLayout,
-      indexBuf, selLabelsBuf, selBuf, colorPipelines.paramsBuffer,
+      device,
+      colorPipelines.bindGroupLayout,
+      indexBuf,
+      selLabelsBuf,
+      selBuf,
+      colorPipelines.paramsBuffer,
     );
 
     // Clear mask (atomicOr can only set bits) then dispatch compute
@@ -900,19 +935,21 @@ const handleMessage = (msg: MainToGpu): void => {
       projectionResources.normParamsBuffer,
       numPoints,
       numDims,
-    ).then(({ eigenvalues, eigenvectors }) => {
-      postMain({
-        type: 'pcaResult',
-        eigenvectors,
-        eigenvalues,
-        numDims: eigenvectors.length,
+    )
+      .then(({ eigenvalues, eigenvectors }) => {
+        postMain({
+          type: 'pcaResult',
+          eigenvectors,
+          eigenvalues,
+          numDims: eigenvectors.length,
+        });
+      })
+      .catch((err) => {
+        postMain({
+          type: 'error',
+          message: `PCA failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
       });
-    }).catch((err) => {
-      postMain({
-        type: 'error',
-        message: `PCA failed: ${err instanceof Error ? err.message : String(err)}`,
-      });
-    });
     return;
   }
 

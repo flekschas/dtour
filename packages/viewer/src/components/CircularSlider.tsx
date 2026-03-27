@@ -169,7 +169,13 @@ export const CircularSlider = ({
         />
       )}
       {/* Center dot */}
-      <circle cx={center} cy={center} r="3" fill="var(--color-dtour-text-muted)" className="pointer-events-none" />
+      <circle
+        cx={center}
+        cy={center}
+        r="3"
+        fill="var(--color-dtour-text-muted)"
+        className="pointer-events-none"
+      />
       {/* Transparent hit area for handle — larger for easier grabbing */}
       <circle
         cx={handleX}

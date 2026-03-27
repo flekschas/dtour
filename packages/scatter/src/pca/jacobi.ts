@@ -40,8 +40,7 @@ export const jacobiEigen = (
         const app = A[p * d + p]!;
         const aqq = A[q * d + q]!;
         const tau = (aqq - app) / (2 * apq);
-        const t =
-          Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
+        const t = Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
         const c = 1 / Math.sqrt(1 + t * t);
         const s = t * c;
 

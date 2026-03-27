@@ -32,7 +32,9 @@ export const pointColorAtom = atom<[number, number, number] | string>([0.25, 0.5
 export const paletteAtom = atom<'viridis' | 'magma'>('viridis');
 
 /** Per-label color overrides. Values are hex strings or theme-aware {light, dark} objects. */
-export const colorMapAtom = atom<Record<string, string | { light: string; dark: string }> | null>(null);
+export const colorMapAtom = atom<Record<string, string | { light: string; dark: string }> | null>(
+  null,
+);
 
 // ---------------------------------------------------------------------------
 // Background color — WebGPU clear color (RGB 0–1)
@@ -165,4 +167,3 @@ export const resolvedThemeAtom = atom<'light' | 'dark'>((get) => {
   const mode = get(themeModeAtom);
   return mode === 'system' ? get(systemThemeAtom) : mode;
 });
-

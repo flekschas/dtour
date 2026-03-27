@@ -3,9 +3,7 @@
 
 @font-face {
   font-family: "Manrope";
-  src:
-    url("/manrope.woff2") format("woff2"),
-    url("/manrope.woff") format("woff");
+  src: url("/manrope.woff2") format("woff2"), url("/manrope.woff") format("woff");
   font-weight: 200 800;
   font-display: swap;
 }
@@ -57,8 +55,12 @@ body,
 }
 
 @keyframes dtour-t1-dash {
-  0% { stroke-dashoffset: 4.43; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 4.43;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dtour-t2-dash {
@@ -66,7 +68,9 @@ body,
     stroke-dashoffset: 9.75;
     stroke-width: 1.256;
   }
-  50% { stroke-width: 1.256; }
+  50% {
+    stroke-width: 1.256;
+  }
   100% {
     stroke-dashoffset: 0;
     stroke-width: 1.5;
@@ -74,35 +78,79 @@ body,
 }
 
 @keyframes dtour-o-dash {
-  0% { stroke-dashoffset: 16.8; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 16.8;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dtour-u1-dash {
-  0% { stroke-dashoffset: 11.15; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 11.15;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dtour-u2-dash {
-  0% { stroke-dashoffset: 6.5; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 6.5;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dtour-r1-dash {
-  0% { stroke-dashoffset: 6.5; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 6.5;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dtour-r2-dash {
-  0% { stroke-dashoffset: 7.74; }
-  100% { stroke-dashoffset: 0; }
+  0% {
+    stroke-dashoffset: 7.74;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
-.anim-d  { stroke-dasharray: 26;    stroke-dashoffset: 26; }
-.anim-t1 { stroke-dasharray: 4.43;  stroke-dashoffset: 4.43; }
-.anim-t2 { stroke-dasharray: 9.75;  stroke-dashoffset: 9.75; }
-.anim-o  { stroke-dasharray: 16.8;  stroke-dashoffset: 16.8; }
-.anim-u1 { stroke-dasharray: 11.15; stroke-dashoffset: 11.15; }
-.anim-u2 { stroke-dasharray: 6.5;   stroke-dashoffset: 6.5; }
-.anim-r1 { stroke-dasharray: 6.5;   stroke-dashoffset: 6.5; }
-.anim-r2 { stroke-dasharray: 7.74;  stroke-dashoffset: 7.74; }
+.anim-d {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+}
+.anim-t1 {
+  stroke-dasharray: 4.43;
+  stroke-dashoffset: 4.43;
+}
+.anim-t2 {
+  stroke-dasharray: 9.75;
+  stroke-dashoffset: 9.75;
+}
+.anim-o {
+  stroke-dasharray: 16.8;
+  stroke-dashoffset: 16.8;
+}
+.anim-u1 {
+  stroke-dasharray: 11.15;
+  stroke-dashoffset: 11.15;
+}
+.anim-u2 {
+  stroke-dasharray: 6.5;
+  stroke-dashoffset: 6.5;
+}
+.anim-r1 {
+  stroke-dasharray: 6.5;
+  stroke-dashoffset: 6.5;
+}
+.anim-r2 {
+  stroke-dasharray: 7.74;
+  stroke-dashoffset: 7.74;
+}

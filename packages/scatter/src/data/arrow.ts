@@ -54,7 +54,9 @@ export const loadArrow = (buffer: ArrayBuffer): ArrowResult => {
       }
       // Sort labels alphabetically for deterministic ordering
       const unsortedLabels = [...labelSet.keys()];
-      const sortedLabels = [...unsortedLabels].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      const sortedLabels = [...unsortedLabels].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      );
       const newIdx = new Map<string, number>();
       for (let j = 0; j < sortedLabels.length; j++) {
         newIdx.set(sortedLabels[j]!, j);

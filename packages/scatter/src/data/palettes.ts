@@ -334,8 +334,8 @@ export const GLASBEY_LIGHT: [number, number, number][] = [
   [36, 124, 42],
   [130, 103, 35],
   [191, 188, 77],
-  [221, 211, 165]
-]
+  [221, 211, 165],
+];
 
 /** Viridis 25-stop ramp (RGB 0-255). */
 export const VIRIDIS_25: [number, number, number][] = [

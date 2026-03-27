@@ -10,8 +10,7 @@ const MIN_ANIMATION_MS = 80;
 const DURATION_STRETCH = 1.5;
 
 /** Ease-in-out cubic: slow start + slow end, fast middle. */
-const easeInOutCubic = (t: number): number =>
-  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+const easeInOutCubic = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 /**
  * Shared hook for animating `tourPositionAtom` to a target value.
@@ -63,7 +62,8 @@ export const useAnimatePosition = () => {
 
         const startPos = current;
         const startTime = performance.now();
-        const durationMs = Math.max(MIN_ANIMATION_MS, absDelta * MS_PER_FULL_ROTATION) * DURATION_STRETCH;
+        const durationMs =
+          Math.max(MIN_ANIMATION_MS, absDelta * MS_PER_FULL_ROTATION) * DURATION_STRETCH;
 
         const tick = (now: number) => {
           // Bail if a newer animation or cancel has bumped the generation

@@ -1,6 +1,6 @@
+import { SpinnerIcon } from '@phosphor-icons/react';
 import { Dtour } from 'dtour';
 import type { DtourSpec } from 'dtour';
-import { SpinnerIcon } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
@@ -12,38 +12,36 @@ type ThemeMode = 'light' | 'dark' | 'system';
 
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow'];
 
-const GCS_BASE = import.meta.env.DEV
-  ? '/gcs/dtour'
-  : 'https://storage.googleapis.com/dtour';
+const GCS_BASE = import.meta.env.DEV ? '/gcs/dtour' : 'https://storage.googleapis.com/dtour';
 
 type ExampleDataset =
-	| { label: string; fileName: string; type: 'remote'; url: string }
-	| { label: string; fileName: string; type: 'generate' };
+  | { label: string; fileName: string; type: 'remote'; url: string }
+  | { label: string; fileName: string; type: 'generate' };
 
 const EXAMPLES: ExampleDataset[] = [
-	{
-		type: 'remote',
-		label: 'Fashion MNIST',
-		fileName: 'fashion-mnist-embeddings-umap-dense-supervised-4d.pq',
-		url: `${GCS_BASE}/fashion-mnist-embeddings-umap-dense-supervised-4d.pq`,
-	},
-	{
-		type: 'remote',
-		label: 'News Headlines',
-		fileName: 'huffpost-news-embeddings-umap-dense-supervised-4d.pq',
-		url: `${GCS_BASE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
-	},
-	{
-		type: 'remote',
-		label: 'Single Cell',
-		fileName: 'mair-2022-tumor-006-ozette-umap-4d.pq',
-		url: `${GCS_BASE}/mair-2022-tumor-006-ozette-umap-4d.pq`,
-	},
-	{
-		type: 'generate',
-		label: 'Lorenz Attractor',
-		fileName: 'lorenz-stenflo-1m.arrow',
-	},
+  {
+    type: 'remote',
+    label: 'Fashion MNIST',
+    fileName: 'fashion-mnist-embeddings-umap-dense-supervised-4d.pq',
+    url: `${GCS_BASE}/fashion-mnist-embeddings-umap-dense-supervised-4d.pq`,
+  },
+  {
+    type: 'remote',
+    label: 'News Headlines',
+    fileName: 'huffpost-news-embeddings-umap-dense-supervised-4d.pq',
+    url: `${GCS_BASE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
+  },
+  {
+    type: 'remote',
+    label: 'Single Cell',
+    fileName: 'mair-2022-tumor-006-ozette-umap-4d.pq',
+    url: `${GCS_BASE}/mair-2022-tumor-006-ozette-umap-4d.pq`,
+  },
+  {
+    type: 'generate',
+    label: 'Lorenz Attractor',
+    fileName: 'lorenz-stenflo-1m.arrow',
+  },
 ];
 
 const THEME_STORAGE_KEY = 'dtour-theme-mode';

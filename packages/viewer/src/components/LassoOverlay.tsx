@@ -163,7 +163,19 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
 
     setLassoMode(false);
     setPath([]);
-  }, [lassoMode, path, scatter, width, height, panX, panY, zoom, clearLongPress, hideIndicator, setLegendSelection]);
+  }, [
+    lassoMode,
+    path,
+    scatter,
+    width,
+    height,
+    panX,
+    panY,
+    zoom,
+    clearLongPress,
+    hideIndicator,
+    setLegendSelection,
+  ]);
 
   // Double-click or Escape clears selection
   const handleDoubleClick = useCallback(() => {

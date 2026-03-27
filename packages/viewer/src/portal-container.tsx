@@ -10,5 +10,5 @@ import { createContext, useContext } from 'react';
 export const PortalContainerContext = createContext<HTMLElement | undefined>(undefined);
 
 export function usePortalContainer(): HTMLElement | undefined {
-	return useContext(PortalContainerContext);
+  return useContext(PortalContainerContext);
 }

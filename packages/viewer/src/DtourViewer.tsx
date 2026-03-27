@@ -1,4 +1,11 @@
-import { GLASBEY_DARK, GLASBEY_LIGHT, OKABE_ITO, computeArcLengths, createScatter, interpolateAtPosition } from '@dtour/scatter';
+import {
+  GLASBEY_DARK,
+  GLASBEY_LIGHT,
+  OKABE_ITO,
+  computeArcLengths,
+  createScatter,
+  interpolateAtPosition,
+} from '@dtour/scatter';
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,9 +31,9 @@ import {
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
-  resolvedThemeAtom,
   previewCountAtom,
   previewScaleAtom,
+  resolvedThemeAtom,
   tourByAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -263,7 +270,14 @@ export const DtourViewer = ({
         previewScale,
         coloredTracks.length,
       ),
-    [containerSize.width, containerSize.height, previewCount, isToolbarVisible, previewScale, coloredTracks.length],
+    [
+      containerSize.width,
+      containerSize.height,
+      previewCount,
+      isToolbarVisible,
+      previewScale,
+      coloredTracks.length,
+    ],
   );
 
   // Initialize scatter — create main + preview canvases imperatively
@@ -370,7 +384,12 @@ export const DtourViewer = ({
     const scatter = scatterRef.current;
     if (!scatter) return;
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2 && metadata) {
-      const pcaBases = createPCAViews(pcaResult.eigenvectors, metadata.dimCount, pcaResult.numDims, previewCount);
+      const pcaBases = createPCAViews(
+        pcaResult.eigenvectors,
+        metadata.dimCount,
+        pcaResult.numDims,
+        previewCount,
+      );
       scatter.setBases(pcaBases);
     } else if (views && views.length > 0) {
       scatter.setBases(views.map((b) => new Float32Array(b)));

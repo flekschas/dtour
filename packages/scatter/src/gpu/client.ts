@@ -65,13 +65,21 @@ export type ScatterInstance = {
   /** Set a single basis directly for manual/zen modes. Renders main view only. */
   setDirectBasis: (basis: Float32Array) => void;
   /** Encode a column as per-point colors. Column can be categorical or numeric. */
-  encodeColor: (column: string, palette?: string, theme?: 'light' | 'dark', colorMap?: Record<string, [number, number, number]>) => void;
+  encodeColor: (
+    column: string,
+    palette?: string,
+    theme?: 'light' | 'dark',
+    colorMap?: Record<string, [number, number, number]>,
+  ) => void;
   /** Set the background clear color (RGB 0–1). */
   setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
   clearColor: () => void;
   /** Select points by column value. Mask is built in the data worker. */
-  selectByColumn: (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }) => void;
+  selectByColumn: (
+    column: string,
+    opts: { labelIndices?: number[]; valueRanges?: Float32Array },
+  ) => void;
   /** Set a bit-packed selection mask (1 bit per point, 32 per u32). Length: ceil(numPoints / 32). */
   setSelectionMask: (mask: Uint32Array) => void;
   /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
@@ -112,7 +120,11 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  * ```
  */
 export const createScatter = (options: ScatterOptions): ScatterInstance => {
-  const { canvases, zoom: initialZoom = 1, dpr = (typeof self !== 'undefined' && 'devicePixelRatio' in self ? self.devicePixelRatio : 1) } = options;
+  const {
+    canvases,
+    zoom: initialZoom = 1,
+    dpr = typeof self !== 'undefined' && 'devicePixelRatio' in self ? self.devicePixelRatio : 1,
+  } = options;
 
   if (canvases.length === 0) {
     throw new Error('createScatter requires at least one canvas');
@@ -156,10 +168,11 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   const offscreens = canvases.map((c) => c.transferControlToOffscreen());
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
-  sendToGpu(gpuWorker, { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom, dpr }, [
-    ...offscreens,
-    channel.port2,
-  ]);
+  sendToGpu(
+    gpuWorker,
+    { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom, dpr },
+    [...offscreens, channel.port2],
+  );
 
   // Track current style/camera for merging partial updates
   let currentStyle: {
@@ -171,7 +184,12 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     opacity: 'auto',
     color: [0.25, 0.5, 0.9],
   };
-  let currentCamera = { pan: [0, 0] as [number, number], zoom: initialZoom, insetOffsetY: 0, insetZoom: 1 };
+  let currentCamera = {
+    pan: [0, 0] as [number, number],
+    zoom: initialZoom,
+    insetOffsetY: 0,
+    insetZoom: 1,
+  };
 
   const loadData = (buffer: ArrayBuffer): void => {
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
@@ -229,8 +247,19 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'setDirectBasis', basis }, [basis.buffer]);
   };
 
-  const encodeColor = (column: string, palette?: string, theme?: 'light' | 'dark', colorMap?: Record<string, [number, number, number]>): void => {
-    const msg: MainToData = { type: 'encodeColor', column, ...(palette ? { palette } : {}), ...(theme ? { theme } : {}), ...(colorMap ? { colorMap } : {}) };
+  const encodeColor = (
+    column: string,
+    palette?: string,
+    theme?: 'light' | 'dark',
+    colorMap?: Record<string, [number, number, number]>,
+  ): void => {
+    const msg: MainToData = {
+      type: 'encodeColor',
+      column,
+      ...(palette ? { palette } : {}),
+      ...(theme ? { theme } : {}),
+      ...(colorMap ? { colorMap } : {}),
+    };
     sendToData(dataWorker, msg);
   };
 
@@ -242,12 +271,19 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'clearColors' });
   };
 
-  const selectByColumn = (column: string, opts: { labelIndices?: number[]; valueRanges?: Float32Array }): void => {
+  const selectByColumn = (
+    column: string,
+    opts: { labelIndices?: number[]; valueRanges?: Float32Array },
+  ): void => {
     // Clone valueRanges before transferring so the caller's buffer isn't detached
     const ranges = opts.valueRanges ? new Float32Array(opts.valueRanges) : undefined;
     const transfers: Transferable[] = [];
     if (ranges) transfers.push(ranges.buffer);
-    sendToData(dataWorker, { type: 'selectByColumn', column, labelIndices: opts.labelIndices, valueRanges: ranges }, transfers);
+    sendToData(
+      dataWorker,
+      { type: 'selectByColumn', column, labelIndices: opts.labelIndices, valueRanges: ranges },
+      transfers,
+    );
   };
 
   const setSelectionMask = (mask: Uint32Array): void => {

@@ -13,17 +13,17 @@ export const DropdownMenuContent = ({
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>) => {
   const container = usePortalContainer();
   return (
-  <DropdownMenuPrimitive.Portal container={container}>
-    <DropdownMenuPrimitive.Content
-      sideOffset={sideOffset}
-      className={cn(
-        'z-50 min-w-[8rem] overflow-hidden rounded-md border border-dtour-border bg-dtour-surface p-1 text-dtour-text shadow-md',
-        'origin-(--radix-dropdown-menu-content-transform-origin) animate-ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        className,
-      )}
-      {...props}
-    />
-  </DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={container}>
+      <DropdownMenuPrimitive.Content
+        sideOffset={sideOffset}
+        className={cn(
+          'z-50 min-w-[8rem] overflow-hidden rounded-md border border-dtour-border bg-dtour-surface p-1 text-dtour-text shadow-md',
+          'origin-(--radix-dropdown-menu-content-transform-origin) animate-ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
   );
 };
 

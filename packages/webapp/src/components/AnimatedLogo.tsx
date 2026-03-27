@@ -34,15 +34,17 @@ const DELAYS = {
   r2: 0.85,
 } as const;
 
-const CUBIC_BEZIER = [.17,.17,0,1];
+const CUBIC_BEZIER = [0.17, 0.17, 0, 1];
 
 const animate = (letter: string, duration: number, delay: number) => {
   const jigger = Math.random() * 0.1 - 0.05; // Defines extra delay
   const newDuration = duration + jigger;
   const newDelay = Math.max(0, delay - jigger);
-  const cubicBezier = CUBIC_BEZIER.map((value) => Math.min(1, Math.max(0, value + jigger))).join(',');
+  const cubicBezier = CUBIC_BEZIER.map((value) => Math.min(1, Math.max(0, value + jigger))).join(
+    ',',
+  );
   return `dtour-${letter}-dash ${newDuration}s cubic-bezier(${cubicBezier}) ${newDelay}s forwards`;
-}
+};
 
 const springTransition: Transition = {
   type: 'spring',
@@ -51,7 +53,12 @@ const springTransition: Transition = {
   mass: 0.8,
 };
 
-export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: AnimatedLogoProps) => {
+export const AnimatedLogo = ({
+  phase,
+  theme,
+  onDrawComplete,
+  onMoveComplete,
+}: AnimatedLogoProps) => {
   const prefersReducedMotion = useReducedMotion();
   const drawFiredRef = useRef(false);
   const moveFiredRef = useRef(false);
@@ -204,7 +211,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeLinecap="square"
               clipPath="url(#anim-d)"
               d="M7.028,8.1C6.775,8.098 6.518,8.169 6.028,7.882C5.667,7.671 5.373,7.358 5.348,6.858C5.348,6.855 5.348,5.396 5.348,5.396C5.348,4.846 5.262,4.356 5.09,3.927C4.918,3.498 4.66,3.161 4.317,2.916C3.973,2.671 3.545,2.548 3.03,2.548C2.509,2.548 2.067,2.674 1.704,2.924C1.34,3.175 1.064,3.515 0.876,3.945C0.687,4.375 0.592,4.858 0.592,5.396C0.592,5.934 0.686,6.419 0.875,6.85C1.063,7.282 1.336,7.623 1.694,7.875C2.051,8.127 2.486,8.252 2.998,8.252C3.525,8.252 3.963,8.128 4.31,7.88C4.658,7.632 4.918,7.293 5.09,6.862C5.262,6.431 5.348,5.943 5.348,5.396L5.348,0"
-              style={{ animation: animate("d", DURATIONS.d, DELAYS.d) }}
+              style={{ animation: animate('d', DURATIONS.d, DELAYS.d) }}
             />
           ))}
         </g>
@@ -220,7 +227,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={1.008}
               clipPath="url(#anim-t)"
               d="M 7.5 2.664 L 11.928 2.664"
-              style={{ animation: animate("t1", DURATIONS.t1, DELAYS.t1) }}
+              style={{ animation: animate('t1', DURATIONS.t1, DELAYS.t1) }}
             />
           ))}
         </g>
@@ -235,7 +242,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               stroke={color}
               clipPath="url(#anim-t)"
               d="M9.372,0.36L9.372,6.06C9.375,6.294 9.375,6.48 9.377,6.708C9.382,7.249 9.522,7.587 9.935,7.882C10.232,8.094 11.274,8.21 11.928,8.153"
-              style={{ animation: animate("t2", DURATIONS.t2, DELAYS.t2) }}
+              style={{ animation: animate('t2', DURATIONS.t2, DELAYS.t2) }}
             />
           ))}
         </g>
@@ -251,7 +258,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={2}
               clipPath="url(#anim-o)"
               d="M 15.8 2.568 C 17.189 2.568  18.314 3.834  18.314 5.396 C 18.314 6.958  17.189 8.224  15.8 8.224 C 14.411 8.224  13.286 6.958  13.286 5.396 C 13.286 3.834  14.411 2.568  15.8 2.568 Z"
-              style={{ animation: animate("o", DURATIONS.o, DELAYS.o) }}
+              style={{ animation: animate('o', DURATIONS.o, DELAYS.o) }}
             />
           ))}
         </g>
@@ -267,7 +274,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={1.5}
               clipPath="url(#anim-u)"
               d="M20.816,2.16L20.816,5.532C20.816,5.915 20.859,6.24 20.946,6.508C21.033,6.776 21.405,7.561 21.555,7.725C21.706,7.889 22.031,8.029 22.23,8.104C22.429,8.179 22.819,8.212 23.044,8.212C23.388,8.212 23.673,8.161 23.898,8.039C24.186,7.883 24.456,7.708 24.718,7.35C24.87,7.143 24.904,6.745 24.979,6.462C25.051,6.187 25.097,5.87 25.163,5.562"
-              style={{ animation: animate("u1", DURATIONS.u1, DELAYS.u1) }}
+              style={{ animation: animate('u1', DURATIONS.u1, DELAYS.u1) }}
             />
           ))}
         </g>
@@ -283,7 +290,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={1.4}
               clipPath="url(#anim-u)"
               d="M 25.442 2.16 L 25.442 8.64"
-              style={{ animation: animate("u2", DURATIONS.u2, DELAYS.u2) }}
+              style={{ animation: animate('u2', DURATIONS.u2, DELAYS.u2) }}
             />
           ))}
         </g>
@@ -299,7 +306,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={1.116}
               clipPath="url(#anim-r)"
               d="M 28.238 2.16 L 28.238 8.64"
-              style={{ animation: animate("r1", DURATIONS.r1, DELAYS.r1) }}
+              style={{ animation: animate('r1', DURATIONS.r1, DELAYS.r1) }}
             />
           ))}
         </g>
@@ -316,7 +323,7 @@ export const AnimatedLogo = ({ phase, theme, onDrawComplete, onMoveComplete }: A
               strokeWidth={1.5}
               clipPath="url(#anim-r)"
               d="M28.312,8.64L28.312,5.368C28.312,5.115 28.338,4.873 28.39,4.643C28.442,4.413 28.528,4.203 28.647,4.014C28.766,3.825 29.028,3.476 29.206,3.313C29.412,3.124 29.825,2.848 30.102,2.768C30.352,2.696 30.991,2.638 31.4,2.695"
-              style={{ animation: animate("r2", DURATIONS.r2, DELAYS.r2) }}
+              style={{ animation: animate('r2', DURATIONS.r2, DELAYS.r2) }}
             />
           ))}
         </g>

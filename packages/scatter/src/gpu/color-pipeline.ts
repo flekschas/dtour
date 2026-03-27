@@ -1,7 +1,7 @@
-import colorContinuousWgsl from '../shaders/color-continuous.wgsl?raw';
 import colorCategoricalWgsl from '../shaders/color-categorical.wgsl?raw';
-import selectContinuousWgsl from '../shaders/select-continuous.wgsl?raw';
+import colorContinuousWgsl from '../shaders/color-continuous.wgsl?raw';
 import selectCategoricalWgsl from '../shaders/select-categorical.wgsl?raw';
+import selectContinuousWgsl from '../shaders/select-continuous.wgsl?raw';
 
 const WORKGROUP_SIZE = 256;
 

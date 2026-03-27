@@ -41,7 +41,9 @@
   "files": {
     "ignore": [
       "**/node_modules",
+      "**/.venv",
       "**/dist",
+      "**/static",
       "**/.vite",
       "related-code/**",
       "papers/**",

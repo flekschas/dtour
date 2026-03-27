@@ -41,8 +41,14 @@ export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> =
       for (let i = 0; i < scanLimit; i++) {
         const value = rows[i]![key];
         if (value == null) continue;
-        if (typeof value === 'number') { inferred = 'number'; break; }
-        if (typeof value === 'string') { inferred = 'string'; break; }
+        if (typeof value === 'number') {
+          inferred = 'number';
+          break;
+        }
+        if (typeof value === 'string') {
+          inferred = 'string';
+          break;
+        }
       }
       if (inferred === 'number') numericKeys.push(key);
       else if (inferred === 'string') stringKeys.push(key);
@@ -86,7 +92,9 @@ export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> =
   // Sort labels alphabetically for deterministic ordering
   const categorical: CategoricalColumn[] = stringKeys.map((key) => {
     const unsortedLabels = [...labelSets.get(key)!.keys()];
-    const sortedLabels = [...unsortedLabels].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    const sortedLabels = [...unsortedLabels].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+    );
     const newIdx = new Map<string, number>();
     for (let j = 0; j < sortedLabels.length; j++) {
       newIdx.set(sortedLabels[j]!, j);

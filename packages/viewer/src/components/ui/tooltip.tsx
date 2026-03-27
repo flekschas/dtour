@@ -14,9 +14,7 @@ function Tooltip(props: ComponentProps<typeof TooltipPrimitive.Root>) {
   return <TooltipPrimitive.Root {...props} />;
 }
 
-function TooltipTrigger(
-  props: ComponentProps<typeof TooltipPrimitive.Trigger>,
-) {
+function TooltipTrigger(props: ComponentProps<typeof TooltipPrimitive.Trigger>) {
   return <TooltipPrimitive.Trigger {...props} />;
 }
 

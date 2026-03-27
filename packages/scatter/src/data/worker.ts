@@ -131,12 +131,15 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
         pal = labels.map((label) => colorMap[label] ?? [128, 128, 128]);
       } else {
         const glasbey = isLight ? GLASBEY_LIGHT : GLASBEY_DARK;
-        pal = labels.length <= OKABE_ITO.length
-          ? OKABE_ITO
-          : [
-              ...OKABE_ITO,
-              ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
-            ] as [number, number, number][];
+        pal =
+          labels.length <= OKABE_ITO.length
+            ? OKABE_ITO
+            : ([
+                ...OKABE_ITO,
+                ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length))
+                  .fill(undefined)
+                  .flatMap(() => glasbey),
+              ] as [number, number, number][]);
       }
       const packed = packPalette(pal);
       const gpuMsg: DataToGpu = {

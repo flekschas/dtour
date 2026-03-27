@@ -29,12 +29,9 @@ export const RadialChart = ({
   const center = size / 2;
   const [hover, setHover] = useState<HoverInfo | null>(null);
 
-  const handleEnter = useCallback(
-    (label: string, value: number, x: number, y: number) => {
-      setHover({ label, value, x, y });
-    },
-    [],
-  );
+  const handleEnter = useCallback((label: string, value: number, x: number, y: number) => {
+    setHover({ label, value, x, y });
+  }, []);
 
   const handleLeave = useCallback(() => {
     setHover(null);

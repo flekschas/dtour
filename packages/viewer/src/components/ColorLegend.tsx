@@ -87,12 +87,15 @@ export const ColorLegend = () => {
       });
     } else {
       const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
-      colors = labels.length <= OKABE_ITO.length
-        ? OKABE_ITO
-        : [
-            ...OKABE_ITO,
-            ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length)).fill(undefined).flatMap(() => glasbey)
-          ] as [number, number, number][];
+      colors =
+        labels.length <= OKABE_ITO.length
+          ? OKABE_ITO
+          : ([
+              ...OKABE_ITO,
+              ...Array(Math.ceil((labels.length - OKABE_ITO.length) / glasbey.length))
+                .fill(undefined)
+                .flatMap(() => glasbey),
+            ] as [number, number, number][]);
     }
     return (
       <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
@@ -133,7 +136,8 @@ export const ColorLegend = () => {
   const step = 2;
   const stops: { value: number; color: [number, number, number]; stopIdx: number }[] = [];
   const baseCmap = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
-  const cmap = resolvedTheme === 'light' ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
+  const cmap =
+    resolvedTheme === 'light' ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
   for (let i = 0; i < cmap.length; i += step) {
     const t = i / (cmap.length - 1);
     stops.push({ value: min + t * (max - min), color: cmap[i]!, stopIdx: i / step });
