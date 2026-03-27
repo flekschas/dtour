@@ -786,6 +786,9 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'resize') {
+    if (msg.dpr !== undefined) {
+      state.dpr = msg.dpr;
+    }
     const view = state.views[msg.viewIndex];
     if (view) {
       view.canvas.width = msg.width;
@@ -1042,7 +1045,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         numDims: 0,
         categoricalBuffers: new Map(),
         tour: null,
-        style: { pointSize: 0.012, opacity: 0.7, color: [0.25, 0.5, 0.9] },
+        style: { pointSize: 'auto', opacity: 'auto', color: [0.25, 0.5, 0.9] },
         styleFlags: { usePerPointColor: false, useSelectionMask: false },
         camera: {
           panX: 0,

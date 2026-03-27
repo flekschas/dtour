@@ -26,6 +26,13 @@ export const initDevice = async (): Promise<GpuContext> => {
     );
   }
 
+  if (!adapter.features.has('float32-blendable')) {
+    throw new Error(
+      'Your GPU does not support float32-blendable, which is required for HDR rendering. ' +
+        'Please try a different browser or device with a GPU that supports this WebGPU feature.',
+    );
+  }
+
   const device = await adapter.requestDevice({
     label: 'dtour-scatter',
     requiredFeatures: ['float32-blendable'],

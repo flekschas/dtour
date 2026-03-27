@@ -1,5 +1,5 @@
 /**
- * Inline Web Worker that generates a 2M-point Lorenz-Stenflo hyperchaotic
+ * Inline Web Worker that generates a 1M-point Lorenz-Stenflo hyperchaotic
  * attractor and returns the result as an Arrow IPC ArrayBuffer.
  *
  * The Lorenz-Stenflo system (Stenflo 1996) extends the Lorenz equations with

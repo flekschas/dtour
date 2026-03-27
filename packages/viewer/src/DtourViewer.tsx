@@ -24,8 +24,6 @@ import {
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
-  pointOpacityAtom,
-  pointSizeAtom,
   resolvedThemeAtom,
   previewCountAtom,
   previewScaleAtom,
@@ -314,19 +312,11 @@ export const DtourViewer = ({
       }
     });
 
-    // Eagerly forward the current style so the GPU worker has correct
-    // values before data arrives and triggers its first render. Without this,
-    // the worker uses its hardcoded defaults (pointSize=0.012, opacity=0.7)
-    // until useScatter's effect fires on the NEXT render cycle.
-    const ps = store.get(pointSizeAtom);
-    const op = store.get(pointOpacityAtom);
-    scatter.setStyle({ pointSize: ps, opacity: op });
-
     const ro = new ResizeObserver(([entry]) => {
       if (!entry) return;
       const { width, height } = entry.contentRect;
       const curDpr = window.devicePixelRatio || 1;
-      scatter.resize(0, Math.round(width * curDpr), Math.round(height * curDpr));
+      scatter.resize(0, Math.round(width * curDpr), Math.round(height * curDpr), curDpr);
       setContainerSize({ width, height });
       setCanvasSize({ width, height });
     });

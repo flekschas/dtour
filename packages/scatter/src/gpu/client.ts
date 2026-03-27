@@ -59,7 +59,7 @@ export type ScatterInstance = {
     insetZoom?: number;
   }) => void;
   /** Resize a canvas to the given pixel dimensions (use for DPI-aware sizing). */
-  resize: (viewIndex: number, width: number, height: number) => void;
+  resize: (viewIndex: number, width: number, height: number, dpr?: number) => void;
   /** Request a render of all views. */
   render: () => void;
   /** Set a single basis directly for manual/zen modes. Renders main view only. */
@@ -217,8 +217,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     });
   };
 
-  const resize = (viewIndex: number, width: number, height: number): void => {
-    sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height });
+  const resize = (viewIndex: number, width: number, height: number, dpr?: number): void => {
+    sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height, dpr });
   };
 
   const render = (): void => {

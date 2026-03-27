@@ -74,9 +74,6 @@ importers:
       '@dtour/scatter':
         specifier: workspace:*
         version: link:../scatter
-      '@dtour/viewer':
-        specifier: workspace:*
-        version: link:../viewer
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.2.1(vite@8.0.0(esbuild@0.27.3)(jiti@2.6.1))
@@ -89,6 +86,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.0.1(vite@8.0.0(esbuild@0.27.3)(jiti@2.6.1))
+      dtour:
+        specifier: workspace:*
+        version: link:../viewer
       jotai:
         specifier: 'catalog:'
         version: 2.18.0(@babel/core@7.29.0)(@babel/template@7.28.6)(@types/react@19.2.14)(react@19.2.4)
@@ -205,9 +205,6 @@ importers:
       '@dtour/scatter':
         specifier: workspace:*
         version: link:../scatter
-      '@dtour/viewer':
-        specifier: workspace:*
-        version: link:../viewer
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -226,6 +223,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      dtour:
+        specifier: workspace:*
+        version: link:../viewer
       jotai:
         specifier: 'catalog:'
         version: 2.18.0(@babel/core@7.29.0)(@babel/template@7.28.6)(@types/react@19.2.14)(react@19.2.4)
