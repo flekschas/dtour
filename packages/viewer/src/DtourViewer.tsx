@@ -82,6 +82,7 @@ export const DtourViewer = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const onScatterReadyRef = useRef(onScatterReady);
   onScatterReadyRef.current = onScatterReady;
+  const [scatter, setScatter] = useState<ScatterInstance | null>(null);
   const scatterRef = useRef<ScatterInstance | null>(null);
   const previewCanvasesRef = useRef<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
@@ -127,7 +128,7 @@ export const DtourViewer = ({
   scheduleFlushRef.current = schedulePositionFlush;
 
   // Delegate playback rAF to the GPU worker
-  usePlayback(scatterRef.current);
+  usePlayback(scatter);
 
   // Flush position to atom immediately when playback stops
   const playing = useAtomValue(tourPlayingAtom);
@@ -230,7 +231,7 @@ export const DtourViewer = ({
   }, [parsedTracks, legendSelection, pointColor, metadata, resolvedTheme]);
 
   // Bridge Jotai atoms (style, camera) → scatter instance
-  useScatter(scatterRef.current);
+  useScatter(scatter);
 
   const isToolbarVisible = toolbarHeight > 0 && viewMode !== 'grand';
 
@@ -243,7 +244,6 @@ export const DtourViewer = ({
   const insetAnimRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const scatter = scatterRef.current;
     if (!scatter || containerSize.height === 0) return;
 
     const targetT = viewMode === 'grand' || toolbarHeight === 0 ? 0 : 1;
@@ -295,10 +295,10 @@ export const DtourViewer = ({
         insetAnimRef.current = null;
       }
     };
-  }, [viewMode, toolbarHeight, containerSize.height]);
+  }, [scatter, viewMode, toolbarHeight, containerSize.height]);
 
   // Grand mode: Givens-rotation grand tour
-  useGrandTour(scatterRef.current, viewMode, metadata);
+  useGrandTour(scatter, viewMode, metadata);
 
   // Largest selector diameter that doesn't overlap any gallery preview
   const selectorSize = useMemo(
@@ -354,14 +354,15 @@ export const DtourViewer = ({
     }
     previewCanvasesRef.current = previews;
 
-    const scatter = createScatter({
+    const instance = createScatter({
       canvases: [mainCanvas, ...previews],
       zoom: store.get(cameraZoomAtom),
     });
-    scatterRef.current = scatter;
-    onScatterReadyRef.current?.(scatter);
+    scatterRef.current = instance;
+    setScatter(instance);
+    onScatterReadyRef.current?.(instance);
 
-    scatter.subscribe((s: ScatterStatus) => {
+    instance.subscribe((s: ScatterStatus) => {
       onStatusRef.current?.(s);
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
@@ -377,7 +378,7 @@ export const DtourViewer = ({
       if (!entry) return;
       const { width, height } = entry.contentRect;
       const curDpr = window.devicePixelRatio || 1;
-      scatter.resize(0, Math.round(width * curDpr), Math.round(height * curDpr), curDpr);
+      instance.resize(0, Math.round(width * curDpr), Math.round(height * curDpr), curDpr);
       setContainerSize({ width, height });
       setCanvasSize({ width, height });
     });
@@ -386,7 +387,7 @@ export const DtourViewer = ({
     // Re-send data to the new scatter instance (e.g. after previewCount change
     // or HMR where the scatter is recreated but data hasn't changed).
     if (dataRef.current) {
-      scatter.loadData(dataRef.current.slice(0));
+      instance.loadData(dataRef.current.slice(0));
       lastDataRef.current = dataRef.current;
     } else {
       lastDataRef.current = undefined;
@@ -394,8 +395,9 @@ export const DtourViewer = ({
 
     return () => {
       ro.disconnect();
-      scatter.destroy();
+      instance.destroy();
       scatterRef.current = null;
+      setScatter(null);
       onScatterReadyRef.current?.(null);
       mainCanvas.remove();
       for (const c of previews) c.remove();
@@ -415,20 +417,19 @@ export const DtourViewer = ({
 
   // Send data when it changes
   useEffect(() => {
-    if (!data || !scatterRef.current || data === lastDataRef.current) return;
+    if (!data || !scatter || data === lastDataRef.current) return;
     lastDataRef.current = data;
-    scatterRef.current.loadData(data.slice(0));
-  }, [data]);
+    scatter.loadData(data.slice(0));
+  }, [data, scatter]);
 
   // Trigger PCA computation when tourBy is 'pca' and data is loaded
   useEffect(() => {
-    if (tourBy !== 'pca' || !metadata || metadata.dimCount < 2 || !scatterRef.current) return;
-    scatterRef.current.computePCA();
-  }, [tourBy, metadata]);
+    if (tourBy !== 'pca' || !metadata || metadata.dimCount < 2 || !scatter) return;
+    scatter.computePCA();
+  }, [tourBy, metadata, scatter]);
 
   // Set views when available (from props, PCA, or auto-generated from metadata)
   useEffect(() => {
-    const scatter = scatterRef.current;
     if (!scatter) return;
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2 && metadata) {
       const pcaBases = createPCAViews(
@@ -447,7 +448,7 @@ export const DtourViewer = ({
     // Safety: explicitly request a full re-render after views are set,
     // ensuring all preview canvases get painted even if messages race.
     scatter.render();
-  }, [views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+  }, [scatter, views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 
@@ -545,7 +546,7 @@ export const DtourViewer = ({
         {/* Lasso selection overlay — available in all modes, below circular selector */}
         {hasData && containerSize.width > 0 && (
           <LassoOverlay
-            scatter={scatterRef.current}
+            scatter={scatter}
             width={containerSize.width}
             height={containerSize.height}
           />
@@ -554,7 +555,7 @@ export const DtourViewer = ({
         {/* Manual mode axis overlay — rendered after lasso so handles are on top */}
         {viewMode === 'manual' && hasData && containerSize.width > 0 && (
           <AxisOverlay
-            scatter={scatterRef.current}
+            scatter={scatter}
             width={containerSize.width}
             height={containerSize.height}
           />

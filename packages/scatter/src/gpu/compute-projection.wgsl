@@ -1,4 +1,4 @@
-// ND → 2D projection compute shader
+// ND → 2D projection compute shader (used only for lasso selection readback)
 //
 // Reads p-dimensional point data from a single concatenated storage buffer
 // (column-major: dim0[0..N], dim1[0..N], ..., dimP[0..N]),
@@ -6,6 +6,12 @@
 // and projects to 2D using the supplied p×2 basis matrix.
 //
 // Output: N interleaved [x, y] pairs in the projected buffer.
+//
+// IMPORTANT: This must stay mathematically equivalent to the render-path
+// projection in point.wgsl + computeAdjustedBasis() in worker.ts.
+// The render path folds normalization into the basis on CPU (adj_basis, bias)
+// while this shader normalizes per-point on GPU. Both produce identical
+// projected coordinates: (raw - min) / range - 0.5) * basis * viewport_scale.
 
 struct Params {
   num_points: u32,

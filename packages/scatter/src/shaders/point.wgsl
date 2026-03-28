@@ -4,6 +4,12 @@
 // biases (normalization folded into the basis on CPU). This eliminates the
 // separate compute-projection pass and its GPU barrier.
 //
+// Trade-off: the projection loop runs once per vertex (4x per point) since
+// vertex shaders can't share results across a strip. This is a net win
+// because eliminating the compute dispatch + barrier + projected-buffer
+// read costs more than the redundant ALU, and GPUs are throughput-oriented.
+// For very high dim counts (>200) this balance may shift — profile first.
+//
 // Applies 2D camera transform (pan/zoom/aspect). Each point is rendered as
 // a unit quad (triangle strip, 4 vertices) scaled by point_size (NDC units).
 
@@ -82,6 +88,7 @@ fn vs_main(
   // Inline ND → 2D projection with pre-adjusted basis.
   // CPU folds normalization into the basis weights and biases so the
   // hot loop is just: x += raw * adjBasisX[d], y += raw * adjBasisY[d]
+  // Must produce the same result as compute-projection.wgsl (used for lasso).
   let N = uni.num_points;
   let p = uni.num_dims;
   var x = uni.bias.x;

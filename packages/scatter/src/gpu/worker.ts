@@ -244,6 +244,10 @@ let adjBasisWeights: Float32Array | null = null;
  * adjBasis[dims+d]  = basis[dims+d]  / range[d] * VIEWPORT_SCALE
  * biasX = Σ ((-min[d]/range[d] - 0.5) * basis[d])       * VIEWPORT_SCALE
  * biasY = Σ ((-min[d]/range[d] - 0.5) * basis[dims+d])  * VIEWPORT_SCALE
+ *
+ * This is algebraically equivalent to compute-projection.wgsl which does
+ * per-point normalization on GPU. Both yield: ((raw-min)/range - 0.5) * basis * VS.
+ * If you change the math here, update compute-projection.wgsl to match.
  */
 const computeAdjustedBasis = (
   basis: Float32Array,
