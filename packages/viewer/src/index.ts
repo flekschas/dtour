@@ -15,7 +15,7 @@ export { DtourViewer } from './DtourViewer.tsx';
 export type { DtourViewerProps } from './DtourViewer.tsx';
 export { DtourToolbar } from './components/DtourToolbar.tsx';
 export { CircularSlider } from './components/CircularSlider.tsx';
-export type { CircularSliderProps } from './components/CircularSlider.tsx';
+export type { CircularSliderProps, CircularSliderHandle } from './components/CircularSlider.tsx';
 export { createDefaultViews } from './views.ts';
 
 // Radial chart — quality metrics visualization

@@ -19,7 +19,6 @@ import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
-import { usePlayback } from '../hooks/usePlayback.ts';
 import { usePortalContainer } from '../portal-container.tsx';
 import {
   activeColumnsAtom,
@@ -86,9 +85,6 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Activate the rAF playback loop
-  usePlayback();
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 

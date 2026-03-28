@@ -27,7 +27,8 @@ export type ScatterStatus =
       eigenvectors: Float32Array[];
       eigenvalues: Float32Array;
       numDims: number;
-    };
+    }
+  | { type: 'playbackTick'; position: number };
 
 export type ScatterInstance = {
   /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */
@@ -88,6 +89,10 @@ export type ScatterInstance = {
   clearSelection: () => void;
   /** Request GPU-accelerated PCA computation. Results arrive via subscribe as 'pcaResult'. */
   computePCA: () => void;
+  /** Start worker-driven playback. Worker runs its own rAF loop and posts position updates. */
+  startPlayback: (speed: number, direction: 1 | -1) => void;
+  /** Stop worker-driven playback. */
+  stopPlayback: () => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
@@ -302,6 +307,14 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'computePCA' });
   };
 
+  const startPlayback = (speed: number, direction: 1 | -1): void => {
+    sendToGpu(gpuWorker, { type: 'startPlayback', speed, direction });
+  };
+
+  const stopPlayback = (): void => {
+    sendToGpu(gpuWorker, { type: 'stopPlayback' });
+  };
+
   const subscribe = (handler: (status: ScatterStatus) => void): (() => void) => {
     subscribers.add(handler);
     return () => subscribers.delete(handler);
@@ -330,6 +343,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     lassoSelect,
     clearSelection,
     computePCA,
+    startPlayback,
+    stopPlayback,
     subscribe,
     destroy,
   };

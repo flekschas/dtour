@@ -47,7 +47,7 @@ export const renderPoints = (
   if (numPoints > 0) {
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
-    pass.draw(6, numPoints);
+    pass.draw(4, numPoints);
   }
   pass.end();
 

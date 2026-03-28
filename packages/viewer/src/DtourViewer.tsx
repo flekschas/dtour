@@ -11,10 +11,12 @@ import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AxisOverlay } from './components/AxisOverlay.tsx';
 import { CircularSlider } from './components/CircularSlider.tsx';
+import type { CircularSliderHandle } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
+import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import { RadialChart } from './radial-chart/RadialChart.tsx';
@@ -100,6 +102,46 @@ export const DtourViewer = ({
   dataRef.current = data;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const sliderRef = useRef<CircularSliderHandle>(null);
+  const positionRef = useRef(position);
+  const positionFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync positionRef with atom value (overwritten by direct drives within ~33ms)
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  // Debounced atom write — batches rapid position updates (~10fps atom writes)
+  const schedulePositionFlush = useCallback(() => {
+    if (positionFlushTimer.current !== null) {
+      clearTimeout(positionFlushTimer.current);
+    }
+    positionFlushTimer.current = setTimeout(() => {
+      positionFlushTimer.current = null;
+      setPosition(positionRef.current);
+    }, 100);
+  }, [setPosition]);
+
+  // Stable ref so the scatter subscribe callback can access the latest flush fn
+  const scheduleFlushRef = useRef(schedulePositionFlush);
+  scheduleFlushRef.current = schedulePositionFlush;
+
+  // Delegate playback rAF to the GPU worker
+  usePlayback(scatterRef.current);
+
+  // Flush position to atom immediately when playback stops
+  const playing = useAtomValue(tourPlayingAtom);
+  const prevPlayingRef = useRef(false);
+  useEffect(() => {
+    if (prevPlayingRef.current && !playing) {
+      if (positionFlushTimer.current !== null) {
+        clearTimeout(positionFlushTimer.current);
+        positionFlushTimer.current = null;
+      }
+      setPosition(positionRef.current);
+    }
+    prevPlayingRef.current = playing;
+  }, [playing, setPosition]);
 
   const setCurrentBasis = useSetAtom(currentBasisAtom);
   const tourBy = useAtomValue(tourByAtom);
@@ -324,6 +366,11 @@ export const DtourViewer = ({
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
       }
+      if (s.type === 'playbackTick') {
+        positionRef.current = s.position;
+        sliderRef.current?.setPosition(s.position);
+        scheduleFlushRef.current();
+      }
     });
 
     const ro = new ResizeObserver(([entry]) => {
@@ -420,13 +467,17 @@ export const DtourViewer = ({
     setGuidedSuspended(false);
   }, [cancelAnimation, setGuidedSuspended]);
 
-  // Slider drag move → immediate position update
+  // Slider drag move → send directly to GPU, update slider imperatively,
+  // debounce atom write to minimize React re-renders during drag.
   const handlePositionChange = useCallback(
     (pos: number) => {
       setGuidedSuspended(false);
-      setPosition(pos);
+      scatterRef.current?.setTourPosition(pos);
+      sliderRef.current?.setPosition(pos);
+      positionRef.current = pos;
+      schedulePositionFlush();
     },
-    [setPosition, setGuidedSuspended],
+    [setGuidedSuspended, schedulePositionFlush],
   );
 
   // Wheel → scrub tour position (guided mode) or zoom (Shift+wheel, all modes).
@@ -452,11 +503,13 @@ export const DtourViewer = ({
       store.set(animationGenAtom, (g) => g + 1);
       store.set(tourPlayingAtom, false);
       store.set(guidedSuspendedAtom, false);
-      store.set(tourPositionAtom, (prev) => {
-        let next = prev + e.deltaY * 0.002;
-        next = next - Math.floor(next);
-        return next;
-      });
+      // Send directly to GPU + slider, debounce atom write
+      let next = positionRef.current + e.deltaY * 0.002;
+      next = next - Math.floor(next);
+      positionRef.current = next;
+      scatterRef.current?.setTourPosition(next);
+      sliderRef.current?.setPosition(next);
+      scheduleFlushRef.current();
     };
     container.addEventListener('wheel', handler, { passive: false });
     return () => container.removeEventListener('wheel', handler);
@@ -525,6 +578,7 @@ export const DtourViewer = ({
             {/* Selector — on top for drag interaction */}
             <div className="pointer-events-none relative z-10">
               <CircularSlider
+                ref={sliderRef}
                 value={position}
                 onChange={handlePositionChange}
                 onSeek={handlePositionSeek}

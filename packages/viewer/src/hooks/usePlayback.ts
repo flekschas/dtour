@@ -1,54 +1,28 @@
-import { useAtomValue, useSetAtom } from 'jotai';
-import { useEffect, useRef } from 'react';
-import {
-  tourDirectionAtom,
-  tourPlayingAtom,
-  tourPositionAtom,
-  tourSpeedAtom,
-} from '../state/atoms.ts';
+import type { ScatterInstance } from '@dtour/scatter';
+import { useAtomValue } from 'jotai';
+import { useEffect } from 'react';
+import { tourDirectionAtom, tourPlayingAtom, tourSpeedAtom } from '../state/atoms.ts';
 
 /**
- * rAF loop that advances tour position when playing.
+ * Delegates playback to the GPU worker's rAF loop.
  *
- * Reads playing/speed/direction from atoms, writes position.
- * Automatically pauses when the tab is hidden (rAF stops firing).
- * Wraps at 0/1 for cyclic tour.
+ * When playing, sends startPlayback to the scatter instance which runs
+ * a requestAnimationFrame loop in the GPU worker — rendering directly
+ * without main-thread involvement. Position updates are broadcast back
+ * at ~30fps for UI sync (slider, atom).
  */
-export const usePlayback = () => {
+export const usePlayback = (scatter: ScatterInstance | null) => {
   const playing = useAtomValue(tourPlayingAtom);
   const speed = useAtomValue(tourSpeedAtom);
   const direction = useAtomValue(tourDirectionAtom);
-  const setPosition = useSetAtom(tourPositionAtom);
-
-  // Use refs for values read inside rAF to avoid re-creating the effect
-  const speedRef = useRef(speed);
-  speedRef.current = speed;
-  const directionRef = useRef(direction);
-  directionRef.current = direction;
 
   useEffect(() => {
-    if (!playing) return;
-
-    let prevTime: number | null = null;
-    let rafId: number;
-
-    const tick = (time: number) => {
-      if (prevTime !== null) {
-        const dt = (time - prevTime) / 1000; // seconds
-        // Full tour cycle = 20s at speed=1
-        const delta = (dt * speedRef.current * directionRef.current) / 20;
-        setPosition((prev) => {
-          let next = prev + delta;
-          // Wrap cyclically
-          next = next - Math.floor(next);
-          return next;
-        });
-      }
-      prevTime = time;
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [playing, setPosition]);
+    if (!scatter) return;
+    if (playing) {
+      scatter.startPlayback(speed, direction);
+    } else {
+      scatter.stopPlayback();
+    }
+    return () => scatter.stopPlayback();
+  }, [scatter, playing, speed, direction]);
 };

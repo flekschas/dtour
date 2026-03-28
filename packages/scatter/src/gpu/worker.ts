@@ -55,7 +55,7 @@ type GpuState = {
   // Render pipeline
   pointPipeline: ReturnType<typeof createPointPipeline>;
   renderBindGroup: GPUBindGroup | null;
-  // Compute pipelines
+  // Compute pipelines (projection kept for on-demand lasso use only)
   projectionPipeline: ReturnType<typeof createProjectionPipeline>;
   projectionResources: ProjectionResources | null;
   projectionBindGroup: GPUBindGroup | null;
@@ -86,6 +86,10 @@ type GpuState = {
   hdrTextures: (GPUTexture | null)[];
   hdrTextureViews: (GPUTextureView | null)[];
   tonemapBindGroups: (GPUBindGroup | null)[];
+  // Inline projection — adjusted basis buffer + per-dim norm params
+  adjBasisBuffer: GPUBuffer | null;
+  normMins: Float32Array | null;
+  normRanges: Float32Array | null;
 };
 
 let state: GpuState | null = null;
@@ -224,22 +228,145 @@ const ensureSelectionBuffer = (): GPUBuffer => {
   return state.selectionBuffer;
 };
 
-// ─── Projection + Render helpers ──────────────────────────────────────────
+// ─── Inline projection helpers ────────────────────────────────────────────
 
-/** Write a basis to the GPU basis buffer and dispatch compute + render for one view. */
-const projectAndRender = (
+/** Viewport scale applied to projected coordinates (maps [-0.5,0.5] → [-1,1]). */
+const VIEWPORT_SCALE = 2.0;
+
+/** Pre-allocated working buffer for adjusted basis weights (reused across frames). */
+let adjBasisWeights: Float32Array | null = null;
+
+/**
+ * Fold normalization into the basis so the vertex shader inner loop is just:
+ *   x += raw * adjBasis[d];  y += raw * adjBasis[dims + d];
+ *
+ * adjBasis[d]       = basis[d]       / range[d] * VIEWPORT_SCALE
+ * adjBasis[dims+d]  = basis[dims+d]  / range[d] * VIEWPORT_SCALE
+ * biasX = Σ ((-min[d]/range[d] - 0.5) * basis[d])       * VIEWPORT_SCALE
+ * biasY = Σ ((-min[d]/range[d] - 0.5) * basis[dims+d])  * VIEWPORT_SCALE
+ */
+const computeAdjustedBasis = (
+  basis: Float32Array,
+  mins: Float32Array,
+  ranges: Float32Array,
+  dims: number,
+): { weights: Float32Array; biasX: number; biasY: number } => {
+  if (!adjBasisWeights || adjBasisWeights.length !== dims * 2) {
+    adjBasisWeights = new Float32Array(dims * 2);
+  }
+
+  let biasX = 0;
+  let biasY = 0;
+
+  for (let d = 0; d < dims; d++) {
+    const range = Math.max(ranges[d]!, 1e-6);
+    const bx = basis[d]!;
+    const by = basis[dims + d]!;
+    const invRange = VIEWPORT_SCALE / range;
+
+    adjBasisWeights[d] = bx * invRange;
+    adjBasisWeights[dims + d] = by * invRange;
+
+    const normOffset = -mins[d]! / range - 0.5;
+    biasX += normOffset * bx * VIEWPORT_SCALE;
+    biasY += normOffset * by * VIEWPORT_SCALE;
+  }
+
+  return { weights: adjBasisWeights, biasX, biasY };
+};
+
+// ─── Worker-driven playback ───────────────────────────────────────────────
+
+type PlaybackState = {
+  speed: number;
+  direction: 1 | -1;
+  prevTime: number | null;
+  rafId: number;
+};
+
+let playbackState: PlaybackState | null = null;
+let lastBroadcastTime = 0;
+/** Throttle position broadcasts to main thread (~30fps). */
+const BROADCAST_INTERVAL_MS = 33;
+
+const playbackTick = (time: number): void => {
+  if (!playbackState || !state?.tour) return;
+
+  if (playbackState.prevTime !== null) {
+    const dt = (time - playbackState.prevTime) / 1000;
+    // Full tour cycle = 20s at speed=1
+    const delta = (dt * playbackState.speed * playbackState.direction) / 20;
+    let next = state.tour.position + delta;
+    next = next - Math.floor(next);
+    state.tour.position = next;
+  }
+  playbackState.prevTime = time;
+
+  // Render at full frame rate
+  state.directBasis = null;
+  renderMainView();
+
+  // Throttle position broadcasts to main thread for UI sync
+  if (time - lastBroadcastTime >= BROADCAST_INTERVAL_MS) {
+    postMain({ type: 'playbackTick', position: state.tour.position });
+    lastBroadcastTime = time;
+  }
+
+  playbackState.rafId = requestAnimationFrame(playbackTick);
+};
+
+const startPlayback = (speed: number, direction: 1 | -1): void => {
+  if (playbackState) {
+    // Already playing — just update speed/direction
+    playbackState.speed = speed;
+    playbackState.direction = direction;
+  } else {
+    playbackState = { speed, direction, prevTime: null, rafId: 0 };
+    playbackState.rafId = requestAnimationFrame(playbackTick);
+  }
+};
+
+const stopPlayback = (): void => {
+  if (playbackState) {
+    cancelAnimationFrame(playbackState.rafId);
+    // Post final position so main thread is in sync
+    if (state?.tour) {
+      postMain({ type: 'playbackTick', position: state.tour.position });
+    }
+    playbackState = null;
+  }
+};
+
+// ─── Render helpers ───────────────────────────────────────────────────────
+
+/** Compute adjusted basis, upload uniforms, and render one view (no compute pass). */
+const renderView = (
   basis: Float32Array,
   viewIndex: number,
   camera: CameraState,
-  projBindGroup: GPUBindGroup,
   renBindGroup: GPUBindGroup,
 ): void => {
-  if (!state || !state.projectionResources) return;
+  if (
+    !state ||
+    !state.projectionResources ||
+    !state.adjBasisBuffer ||
+    !state.normMins ||
+    !state.normRanges
+  )
+    return;
 
-  const { device, projectionPipeline, projectionResources, numPoints } = state;
+  const { device, numPoints, numDims } = state;
 
-  // Upload basis
-  device.queue.writeBuffer(projectionResources.basisBuffer, 0, basis as Float32Array<ArrayBuffer>);
+  // Fold normalization into basis on CPU (trivial for typical dim counts)
+  const { weights, biasX, biasY } = computeAdjustedBasis(
+    basis,
+    state.normMins,
+    state.normRanges,
+    numDims,
+  );
+
+  // Upload adjusted basis weights
+  device.queue.writeBuffer(state.adjBasisBuffer, 0, weights as Float32Array<ArrayBuffer>);
 
   // Resolve per-view style (handles 'auto' → concrete values for this canvas size)
   const resolved = resolveStyleForView(viewIndex);
@@ -269,6 +396,10 @@ const projectAndRender = (
     resolved,
     state.styleFlags,
     useSubtractive,
+    numPoints,
+    numDims,
+    biasX,
+    biasY,
   );
   writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
 
@@ -284,8 +415,7 @@ const projectAndRender = (
   // Ensure HDR texture matches canvas size (lazy create/resize)
   ensureHdrTexture(viewIndex);
 
-  // Two-pass: points → rgba32float FBO, then tone-map → canvas
-  const computeCmd = dispatchProjection(device, projectionPipeline, projBindGroup, numPoints);
+  // Two-pass: points → rgba32float FBO, then tone-map → canvas (no compute!)
   const renderCmd = renderPoints(
     device,
     state.hdrTextureViews[viewIndex]!,
@@ -301,7 +431,7 @@ const projectAndRender = (
     state.tonemapBindGroups[viewIndex]!,
   );
 
-  device.queue.submit([computeCmd, renderCmd, tonemapCmd]);
+  device.queue.submit([renderCmd, tonemapCmd]);
 };
 
 // ─── Deferred preview rendering ───────────────────────────────────────────
@@ -312,48 +442,17 @@ const projectAndRender = (
 
 let previewRenderPending = false;
 
-/** Render a single preview view with an ephemeral projected buffer. */
+/** Render a single preview view. No ephemeral buffers needed — inline
+ *  projection reuses the shared adjBasisBuffer (written before each submit). */
 const renderOnePreview = (viewIndex: number, basis: Float32Array): void => {
-  if (!state?.projectionResources) return;
+  if (!state?.projectionResources || !state.renderBindGroup) return;
 
-  const { device, projectionPipeline, pointPipeline, projectionResources, numPoints } = state;
-  const colorBuf = state.colorBuffer ?? pointPipeline.defaultColorBuffer;
-  const selBuf = state.selectionBuffer ?? pointPipeline.defaultSelectionBuffer;
-
-  // Ephemeral projected buffer — destroyed after submit
-  const ephemeralProjBuffer = device.createBuffer({
-    label: `preview-proj-${viewIndex}`,
-    size: numPoints * 2 * 4,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-
-  const ephemeralProjBindGroup = createProjectionBindGroup(
-    device,
-    projectionPipeline.bindGroupLayout,
-    projectionPipeline.paramsBuffer,
-    { ...projectionResources, projectedBuffer: ephemeralProjBuffer },
-  );
-
-  const ephemeralRenderBindGroup = createPointBindGroup(
-    device,
-    pointPipeline.bindGroupLayout,
-    pointPipeline.uniformBuffer,
-    ephemeralProjBuffer,
-    pointPipeline.cameraBuffer,
-    colorBuf,
-    selBuf,
-  );
-
-  projectAndRender(
+  renderView(
     basis,
     viewIndex,
     { panX: 0, panY: 0, zoom: 1, aspect: 1, viewportHeight: 1, insetOffsetY: 0, insetZoom: 1 },
-    ephemeralProjBindGroup,
-    ephemeralRenderBindGroup,
+    state.renderBindGroup,
   );
-
-  // GPU retains backing memory until submitted work completes
-  ephemeralProjBuffer.destroy();
   postMain({ type: 'rendered', viewIndex });
 };
 
@@ -389,16 +488,10 @@ const renderAllViews = (): void => {
 
 /** Re-render only the main view at the current tour position. */
 const renderMainView = (): void => {
-  if (!state?.projectionResources || !state.projectionBindGroup || !state.renderBindGroup) return;
+  if (!state?.projectionResources || !state.renderBindGroup) return;
 
   if (state.directBasis) {
-    projectAndRender(
-      state.directBasis,
-      0,
-      state.camera,
-      state.projectionBindGroup,
-      state.renderBindGroup,
-    );
+    renderView(state.directBasis, 0, state.camera, state.renderBindGroup);
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
@@ -412,26 +505,20 @@ const renderMainView = (): void => {
     tour.dims,
     tour.position,
   );
-  projectAndRender(
-    tour.interpolatedBasis,
-    0,
-    state.camera,
-    state.projectionBindGroup,
-    state.renderBindGroup,
-  );
+  renderView(tour.interpolatedBasis, 0, state.camera, state.renderBindGroup);
   postMain({ type: 'rendered', viewIndex: 0 });
 };
 
 // ─── Build bind groups after data + pipeline are ready ────────────────────
 
 const rebuildBindGroups = (): void => {
-  if (!state || !state.projectionResources) return;
+  if (!state || !state.projectionResources || !state.adjBasisBuffer) return;
 
   const { device, projectionPipeline, pointPipeline, projectionResources } = state;
   const colorBuf = state.colorBuffer ?? pointPipeline.defaultColorBuffer;
   const selBuf = state.selectionBuffer ?? pointPipeline.defaultSelectionBuffer;
 
-  // Main view bind groups (projected buffer used for lasso readback)
+  // Projection bind group — kept for on-demand lasso readback
   state.projectionBindGroup = createProjectionBindGroup(
     device,
     projectionPipeline.bindGroupLayout,
@@ -439,14 +526,16 @@ const rebuildBindGroups = (): void => {
     projectionResources,
   );
 
+  // Render bind group — uses raw data + adjusted basis (inline projection)
   state.renderBindGroup = createPointBindGroup(
     device,
     pointPipeline.bindGroupLayout,
     pointPipeline.uniformBuffer,
-    projectionResources.projectedBuffer,
+    projectionResources.dataBuffer,
     pointPipeline.cameraBuffer,
     colorBuf,
     selBuf,
+    state.adjBasisBuffer,
   );
 };
 
@@ -677,6 +766,10 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     state.projectionResources.basisBuffer.destroy();
     state.projectionResources.projectedBuffer.destroy();
   }
+  if (state.adjBasisBuffer) {
+    state.adjBasisBuffer.destroy();
+    state.adjBasisBuffer = null;
+  }
   // Clean up previous color/selection buffers
   if (state.colorBuffer) {
     state.colorBuffer.destroy();
@@ -727,8 +820,19 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     state.categoricalBuffers.set(cat.name, buf);
   }
 
-  // Write projection params
+  // Write projection params (used for on-demand lasso compute dispatch)
   writeProjectionParams(device, projectionPipeline.paramsBuffer, rows, dims, 2.0);
+
+  // Create adjusted basis buffer for inline vertex projection
+  state.adjBasisBuffer = device.createBuffer({
+    label: 'adj-basis',
+    size: dims * 2 * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Store norm params on CPU for per-frame basis adjustment
+  state.normMins = new Float32Array(mins);
+  state.normRanges = new Float32Array(ranges);
 
   state.projectionResources = { ...res, bindGroup: null as unknown as GPUBindGroup };
   state.numPoints = rows;
@@ -850,9 +954,9 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setDirectBasis') {
-    if (!state.projectionResources || !state.projectionBindGroup || !state.renderBindGroup) return;
+    if (!state.projectionResources || !state.renderBindGroup) return;
     state.directBasis = msg.basis;
-    projectAndRender(msg.basis, 0, state.camera, state.projectionBindGroup, state.renderBindGroup);
+    renderView(msg.basis, 0, state.camera, state.renderBindGroup);
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
@@ -916,6 +1020,17 @@ const handleMessage = (msg: MainToGpu): void => {
     return;
   }
 
+  if (msg.type === 'startPlayback') {
+    if (!state.tour) return;
+    startPlayback(msg.speed, msg.direction);
+    return;
+  }
+
+  if (msg.type === 'stopPlayback') {
+    stopPlayback();
+    return;
+  }
+
   if (msg.type === 'computePCA') {
     if (!state.projectionResources || state.numDims < 2) {
       postMain({ type: 'error', message: 'No data loaded for PCA' });
@@ -954,12 +1069,43 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'lassoSelect') {
-    if (!state.projectionResources || state.numPoints === 0) return;
+    if (!state.projectionResources || !state.projectionBindGroup || state.numPoints === 0) return;
 
-    const { device, numPoints, projectionResources, camera } = state;
+    const { device, numPoints, projectionPipeline, projectionResources, camera } = state;
     const { polygon } = msg;
     const numVertices = polygon.length / 2;
     if (numVertices < 3) return;
+
+    // Get the current basis to populate projectedBuffer on-demand
+    let currentBasis: Float32Array | null = null;
+    if (state.directBasis) {
+      currentBasis = state.directBasis;
+    } else if (state.tour) {
+      const { tour } = state;
+      interpolateAtPosition(
+        tour.interpolatedBasis,
+        tour.bases,
+        tour.arcLengths,
+        tour.dims,
+        tour.position,
+      );
+      currentBasis = tour.interpolatedBasis;
+    }
+    if (!currentBasis) return;
+
+    // Dispatch compute projection on-demand (not in the render hot path)
+    device.queue.writeBuffer(
+      projectionResources.basisBuffer,
+      0,
+      currentBasis as Float32Array<ArrayBuffer>,
+    );
+    const computeCmd = dispatchProjection(
+      device,
+      projectionPipeline,
+      state.projectionBindGroup,
+      numPoints,
+    );
+    device.queue.submit([computeCmd]);
 
     // Transform the polygon from NDC space (what the user drew) into
     // projection space (what projectedBuffer contains) using the inverse
@@ -1102,6 +1248,9 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         hdrTextures: [],
         hdrTextureViews: [],
         tonemapBindGroups: [],
+        adjBasisBuffer: null,
+        normMins: null,
+        normRanges: null,
       };
 
       msg.dataPort.onmessage = onDataMessage;

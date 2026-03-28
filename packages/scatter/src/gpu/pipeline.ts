@@ -17,15 +17,19 @@ export type PointPipeline = {
   defaultSelectionBuffer: GPUBuffer;
 };
 
-// Uniform layout (48 bytes, 16-byte aligned):
+// Uniform layout (64 bytes, 16-byte aligned):
 //   offset  0: point_size          (f32)
 //   offset  4: opacity             (f32)
 //   offset  8: usePerPointColor    (f32)
 //   offset 12: useSelectionMask    (f32)
 //   offset 16: color               (vec4f)
 //   offset 32: useSubtractive      (f32)
-//   offset 36-47: padding (struct alignment to 16 bytes)
-const UNIFORM_SIZE = 48;
+//   offset 36: num_points          (u32)
+//   offset 40: num_dims            (u32)
+//   offset 44: _pad                (u32)
+//   offset 48: bias                (vec2f)
+//   offset 56-63: padding (struct alignment to 16 bytes)
+const UNIFORM_SIZE = 64;
 
 // Camera layout (32 bytes — 7 fields + padding for uniform struct alignment):
 //   offset  0: pan_x           (f32)
@@ -90,6 +94,13 @@ const DEFAULT_CAMERA: CameraState = {
   insetZoom: 1,
 };
 
+// Pre-allocated typed arrays for per-frame uniform writes (avoids GC pressure).
+const uniformBuf = new ArrayBuffer(UNIFORM_SIZE);
+const uniformF32 = new Float32Array(uniformBuf);
+const uniformU32 = new Uint32Array(uniformBuf);
+const cameraBuf = new Float32Array(CAMERA_SIZE / 4);
+const tonemapBuf = new Float32Array(4);
+
 export const createPointPipeline = (
   device: GPUDevice,
   canvasFormat: GPUTextureFormat,
@@ -127,6 +138,11 @@ export const createPointPipeline = (
         visibility: GPUShaderStage.VERTEX,
         buffer: { type: 'read-only-storage' },
       },
+      {
+        binding: 5,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: 'read-only-storage' },
+      },
     ],
   });
 
@@ -155,7 +171,7 @@ export const createPointPipeline = (
         },
       ],
     },
-    primitive: { topology: 'triangle-list' },
+    primitive: { topology: 'triangle-strip' },
   });
 
   // Normal (premultiplied-over) blending — preserves per-point label colors.
@@ -177,7 +193,7 @@ export const createPointPipeline = (
         },
       ],
     },
-    primitive: { topology: 'triangle-list' },
+    primitive: { topology: 'triangle-strip' },
   });
 
   // Subtractive (reverse-subtract) blending — subtracts from light background.
@@ -204,7 +220,7 @@ export const createPointPipeline = (
         },
       ],
     },
-    primitive: { topology: 'triangle-list' },
+    primitive: { topology: 'triangle-strip' },
   });
 
   const uniformBuffer = device.createBuffer({
@@ -254,18 +270,28 @@ export const writeUniforms = (
   style: PointStyle,
   flags: StyleFlags = DEFAULT_FLAGS,
   useSubtractive = false,
+  numPoints = 0,
+  numDims = 0,
+  biasX = 0,
+  biasY = 0,
 ): void => {
-  const data = new Float32Array(12);
-  data[0] = style.pointSize;
-  data[1] = style.opacity;
-  data[2] = flags.usePerPointColor ? 1.0 : 0.0;
-  data[3] = flags.useSelectionMask ? 1.0 : 0.0;
-  data[4] = style.color[0];
-  data[5] = style.color[1];
-  data[6] = style.color[2];
-  data[7] = 1.0; // color.a
-  data[8] = useSubtractive ? 1.0 : 0.0;
-  device.queue.writeBuffer(uniformBuffer, 0, data);
+  uniformF32[0] = style.pointSize;
+  uniformF32[1] = style.opacity;
+  uniformF32[2] = flags.usePerPointColor ? 1.0 : 0.0;
+  uniformF32[3] = flags.useSelectionMask ? 1.0 : 0.0;
+  uniformF32[4] = style.color[0];
+  uniformF32[5] = style.color[1];
+  uniformF32[6] = style.color[2];
+  uniformF32[7] = 1.0; // color.a
+  uniformF32[8] = useSubtractive ? 1.0 : 0.0;
+  uniformU32[9] = numPoints;
+  uniformU32[10] = numDims;
+  uniformU32[11] = 0; // _pad
+  uniformF32[12] = biasX;
+  uniformF32[13] = biasY;
+  uniformF32[14] = 0; // padding
+  uniformF32[15] = 0; // padding
+  device.queue.writeBuffer(uniformBuffer, 0, uniformBuf);
 };
 
 export const writeCamera = (
@@ -273,35 +299,36 @@ export const writeCamera = (
   cameraBuffer: GPUBuffer,
   camera: CameraState,
 ): void => {
-  const data = new Float32Array(8);
-  data[0] = camera.panX;
-  data[1] = camera.panY;
-  data[2] = camera.zoom;
-  data[3] = camera.aspect;
-  data[4] = camera.viewportHeight;
-  data[5] = camera.insetOffsetY;
-  data[6] = camera.insetZoom;
-  device.queue.writeBuffer(cameraBuffer, 0, data);
+  cameraBuf[0] = camera.panX;
+  cameraBuf[1] = camera.panY;
+  cameraBuf[2] = camera.zoom;
+  cameraBuf[3] = camera.aspect;
+  cameraBuf[4] = camera.viewportHeight;
+  cameraBuf[5] = camera.insetOffsetY;
+  cameraBuf[6] = camera.insetZoom;
+  device.queue.writeBuffer(cameraBuffer, 0, cameraBuf);
 };
 
 export const createPointBindGroup = (
   device: GPUDevice,
   layout: GPUBindGroupLayout,
   uniformBuffer: GPUBuffer,
-  projectedBuffer: GPUBuffer,
+  dataBuffer: GPUBuffer,
   cameraBuffer: GPUBuffer,
   colorBuffer: GPUBuffer,
   selectionBuffer: GPUBuffer,
+  adjBasisBuffer: GPUBuffer,
 ): GPUBindGroup =>
   device.createBindGroup({
     label: 'point-bg',
     layout,
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: { buffer: projectedBuffer } },
+      { binding: 1, resource: { buffer: dataBuffer } },
       { binding: 2, resource: { buffer: cameraBuffer } },
       { binding: 3, resource: { buffer: colorBuffer } },
       { binding: 4, resource: { buffer: selectionBuffer } },
+      { binding: 5, resource: { buffer: adjBasisBuffer } },
     ],
   });
 
@@ -320,9 +347,8 @@ export const writeTonemapParams = (
   paramsBuffer: GPUBuffer,
   mode: number,
 ): void => {
-  const data = new Float32Array(4);
-  data[0] = mode;
-  device.queue.writeBuffer(paramsBuffer, 0, data);
+  tonemapBuf[0] = mode;
+  device.queue.writeBuffer(paramsBuffer, 0, tonemapBuf);
 };
 
 export const createTonemapPipeline = (

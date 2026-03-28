@@ -1,8 +1,11 @@
 // Point renderer — instanced quads with SDF circle discard
 //
-// Reads pre-projected 2D positions from a storage buffer (output of the
-// compute-projection shader). Applies 2D camera transform (pan/zoom/aspect).
-// Each point is rendered as a unit quad scaled by point_size (NDC units).
+// Projects raw ND data to 2D inline using pre-adjusted basis weights and
+// biases (normalization folded into the basis on CPU). This eliminates the
+// separate compute-projection pass and its GPU barrier.
+//
+// Applies 2D camera transform (pan/zoom/aspect). Each point is rendered as
+// a unit quad (triangle strip, 4 vertices) scaled by point_size (NDC units).
 
 struct Uniforms {
   point_size: f32,
@@ -11,6 +14,10 @@ struct Uniforms {
   useSelectionMask: f32,
   color: vec4f,
   useSubtractive: f32,
+  num_points: u32,
+  num_dims: u32,
+  _pad: u32,
+  bias: vec2f,
 }
 
 struct Camera {
@@ -28,13 +35,17 @@ struct Camera {
 }
 
 @group(0) @binding(0) var<uniform> uni: Uniforms;
-// projected[i*2] = x, projected[i*2+1] = y — output from compute shader
-@group(0) @binding(1) var<storage, read> projected: array<f32>;
+// Raw ND data (column-major): dim0[0..N], dim1[0..N], ..., dimP[0..N]
+@group(0) @binding(1) var<storage, read> data: array<f32>;
 @group(0) @binding(2) var<uniform> camera: Camera;
 // Per-point packed RGBA8 colors (u32: 0xAABBGGRR)
 @group(0) @binding(3) var<storage, read> pointColors: array<u32>;
 // Bit-packed selection mask (1 bit per point, 32 per u32)
 @group(0) @binding(4) var<storage, read> selectionMask: array<u32>;
+// Adjusted basis weights (normalization folded in):
+// first num_dims = x-weights, next num_dims = y-weights
+// adj_basis[d] = basis[d] / range[d] * viewport_scale
+@group(0) @binding(5) var<storage, read> adj_basis: array<f32>;
 
 struct VertOut {
   @builtin(position) clip_pos: vec4f,
@@ -44,14 +55,12 @@ struct VertOut {
   @location(3) @interpolate(flat) effective_opacity: f32,
 }
 
-// Two triangles making a unit square [-1, 1]^2
+// Triangle strip: 4 vertices forming a unit quad [-1, 1]²
 fn quad_vertex(vi: u32) -> vec2f {
   switch vi {
     case 0u: { return vec2f(-1.0, -1.0); }
     case 1u: { return vec2f( 1.0, -1.0); }
     case 2u: { return vec2f(-1.0,  1.0); }
-    case 3u: { return vec2f(-1.0,  1.0); }
-    case 4u: { return vec2f( 1.0, -1.0); }
     default: { return vec2f( 1.0,  1.0); }
   }
 }
@@ -70,16 +79,26 @@ fn vs_main(
   @builtin(vertex_index) vi: u32,
   @builtin(instance_index) ii: u32,
 ) -> VertOut {
-  let px = projected[ii * 2u];
-  let py = projected[ii * 2u + 1u];
+  // Inline ND → 2D projection with pre-adjusted basis.
+  // CPU folds normalization into the basis weights and biases so the
+  // hot loop is just: x += raw * adjBasisX[d], y += raw * adjBasisY[d]
+  let N = uni.num_points;
+  let p = uni.num_dims;
+  var x = uni.bias.x;
+  var y = uni.bias.y;
+  for (var d = 0u; d < p; d++) {
+    let raw = data[d * N + ii];
+    x += raw * adj_basis[d];
+    y += raw * adj_basis[p + d];
+  }
 
   // Apply camera: translate then scale, with aspect correction on x.
   // inset_zoom shrinks the scene to fit below the toolbar;
   // inset_offset_y shifts it down so it's centered in the visible area.
   let iz = camera.inset_zoom;
   let center = vec2f(
-    (px + camera.pan_x) * camera.zoom * iz / camera.aspect,
-    (py + camera.pan_y) * camera.zoom * iz + camera.inset_offset_y,
+    (x + camera.pan_x) * camera.zoom * iz / camera.aspect,
+    (y + camera.pan_y) * camera.zoom * iz + camera.inset_offset_y,
   );
 
   let q = quad_vertex(vi);

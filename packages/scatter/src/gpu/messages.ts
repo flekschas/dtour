@@ -54,7 +54,16 @@ export type MainToGpu =
       // Trigger GPU-accelerated PCA computation on the loaded data.
       // Result arrives as a GpuToMain 'pcaResult' message.
       type: 'computePCA';
-    };
+    }
+  | {
+      // Start worker-driven playback via requestAnimationFrame.
+      // Worker advances tour position, renders, and posts playbackTick
+      // events back at ~30fps for UI sync.
+      type: 'startPlayback';
+      speed: number;
+      direction: 1 | -1;
+    }
+  | { type: 'stopPlayback' };
 
 // GPU Worker → Main thread
 export type GpuToMain =
@@ -66,4 +75,9 @@ export type GpuToMain =
       eigenvectors: Float32Array[];
       eigenvalues: Float32Array;
       numDims: number;
+    }
+  | {
+      // Periodic position update during worker-driven playback (~30fps).
+      type: 'playbackTick';
+      position: number;
     };

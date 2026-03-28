@@ -17,6 +17,7 @@ import {
   pointOpacityAtom,
   pointSizeAtom,
   resolvedThemeAtom,
+  tourPlayingAtom,
   tourPositionAtom,
 } from '../state/atoms.ts';
 
@@ -33,6 +34,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const opacity = useAtomValue(pointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
   const guidedSuspended = useAtomValue(guidedSuspendedAtom);
+  const playing = useAtomValue(tourPlayingAtom);
   const panX = useAtomValue(cameraPanXAtom);
   const panY = useAtomValue(cameraPanYAtom);
   const zoom = useAtomValue(cameraZoomAtom);
@@ -58,11 +60,12 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     scatter?.setCamera({ pan: [panX, panY], zoom });
   }, [scatter, panX, panY, zoom]);
 
-  // Forward tour position (skipped when suspended after returning from manual/grand)
+  // Forward tour position (skipped during worker-driven playback and when
+  // suspended after returning from manual/grand)
   useEffect(() => {
-    if (guidedSuspended) return;
+    if (guidedSuspended || playing) return;
     scatter?.setTourPosition(position);
-  }, [scatter, position, guidedSuspended]);
+  }, [scatter, position, guidedSuspended, playing]);
 
   // Forward point style (size + opacity + uniform color)
   useEffect(() => {
