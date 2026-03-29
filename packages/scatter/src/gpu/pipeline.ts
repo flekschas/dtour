@@ -94,6 +94,8 @@ const DEFAULT_CAMERA: CameraState = {
   insetZoom: 1,
 };
 
+const DEFAULT_HDR_FORMAT: GPUTextureFormat = 'rgba32float';
+
 // Pre-allocated typed arrays for per-frame uniform writes (avoids GC pressure).
 const uniformBuf = new ArrayBuffer(UNIFORM_SIZE);
 const uniformF32 = new Float32Array(uniformBuf);
@@ -104,6 +106,7 @@ const tonemapBuf = new Float32Array(4);
 export const createPointPipeline = (
   device: GPUDevice,
   canvasFormat: GPUTextureFormat,
+  hdrFormat: GPUTextureFormat = DEFAULT_HDR_FORMAT,
 ): PointPipeline => {
   const shaderModule = device.createShaderModule({
     label: 'point-shader',
@@ -148,9 +151,8 @@ export const createPointPipeline = (
 
   const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
 
-  // Both point pipelines target rgba32float (HDR FBO) so additive blending
-  // accumulates without clamping.  A separate tonemap pass maps to the canvas.
-  const hdrFormat: GPUTextureFormat = 'rgba32float';
+  // Point pipelines target a float FBO (rgba32float or rgba16float) so additive
+  // blending accumulates without clamping. A separate tonemap pass maps to canvas.
 
   // Additive blending — accumulate light on dark background.
   // Dense regions can exceed 1.0 in the float texture; tone mapping resolves.

@@ -81,7 +81,8 @@ type GpuState = {
   backgroundColor: [number, number, number];
   // Device pixel ratio — used by auto-style for minimum visible point size
   dpr: number;
-  // HDR rendering — points render to rgba32float, then tone-map to canvas
+  // HDR rendering — points render to float FBO, then tone-map to canvas
+  hdrFormat: GPUTextureFormat;
   tonemapPipeline: TonemapPipeline;
   hdrTextures: (GPUTexture | null)[];
   hdrTextureViews: (GPUTextureView | null)[];
@@ -190,7 +191,7 @@ const ensureHdrTexture = (viewIndex: number): void => {
   const tex = device.createTexture({
     label: `hdr-${viewIndex}`,
     size: [canvas.width, canvas.height],
-    format: 'rgba32float',
+    format: state!.hdrFormat,
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
   const texView = tex.createView();
@@ -1225,7 +1226,8 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
       const views = msg.canvases.map((canvas) => configureCanvas(canvas, device));
       const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
 
-      const pointPipeline = createPointPipeline(device, canvasFormat);
+      const hdrFormat: GPUTextureFormat = 'rgba32float';
+      const pointPipeline = createPointPipeline(device, canvasFormat, hdrFormat);
       const projectionPipeline = createProjectionPipeline(device);
       const colorPipelines = createColorPipelines(device);
       const tonemapPipeline = createTonemapPipeline(device, canvasFormat);
@@ -1259,6 +1261,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         directBasis: null,
         backgroundColor: [0, 0, 0],
         dpr: msg.dpr,
+        hdrFormat,
         tonemapPipeline,
         hdrTextures: [],
         hdrTextureViews: [],
