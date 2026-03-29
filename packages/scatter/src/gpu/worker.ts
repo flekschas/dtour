@@ -87,6 +87,8 @@ type GpuState = {
   hdrTextures: (GPUTexture | null)[];
   hdrTextureViews: (GPUTextureView | null)[];
   tonemapBindGroups: (GPUBindGroup | null)[];
+  // Vertex-shader decimation: 0 = disabled (render all)
+  maxPoints: number;
   // Inline projection — adjusted basis buffer + per-dim norm params
   adjBasisBuffer: GPUBuffer | null;
   normMins: Float32Array | null;
@@ -179,28 +181,31 @@ const resolveStyleForView = (viewIndex: number): PointStyle => {
 
 // ─── HDR texture management ──────────────────────────────────────────────
 
-/** Ensure the rgba32float HDR texture for a view exists and matches canvas size. */
+/** Ensure HDR texture exists and matches canvas size. */
 const ensureHdrTexture = (viewIndex: number): void => {
   const { device, views, tonemapPipeline: tp, hdrTextures } = state!;
   const canvas = views[viewIndex]!.canvas;
-  const existing = hdrTextures[viewIndex];
+  const w = canvas.width;
+  const h = canvas.height;
 
-  if (existing && existing.width === canvas.width && existing.height === canvas.height) return;
+  const existing = hdrTextures[viewIndex];
+  if (existing && existing.width === w && existing.height === h) return;
 
   existing?.destroy();
-  const tex = device.createTexture({
+  const hdrTex = device.createTexture({
     label: `hdr-${viewIndex}`,
-    size: [canvas.width, canvas.height],
+    size: [w, h],
     format: state!.hdrFormat,
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
-  const texView = tex.createView();
-  state!.hdrTextures[viewIndex] = tex;
-  state!.hdrTextureViews[viewIndex] = texView;
+  const hdrView = hdrTex.createView();
+  state!.hdrTextures[viewIndex] = hdrTex;
+  state!.hdrTextureViews[viewIndex] = hdrView;
+
   state!.tonemapBindGroups[viewIndex] = createTonemapBindGroup(
     device,
     tp.bindGroupLayout,
-    texView,
+    hdrView,
     tp.paramsBuffer,
   );
 };
@@ -388,16 +393,17 @@ const renderView = (
   const resolved = resolveStyleForView(viewIndex);
 
   // Select blend pipeline and tonemap mode based on coloring and background luminance.
-  // Per-point colors → normal (over), uniform color → additive (dark bg) or subtractive (light bg).
+  // Per-point colors → normal (premultiplied-over), uniform → additive (dark) or subtractive (light).
   const bg = state.backgroundColor;
   const bgLuminance = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
-  const useSubtractive = !state.styleFlags.usePerPointColor && bgLuminance > 0.5;
+  const useNormal = state.styleFlags.usePerPointColor;
+  const useSubtractive = !useNormal && bgLuminance > 0.5;
 
   let activePipeline: GPURenderPipeline;
   let tonemapMode: number;
-  if (state.styleFlags.usePerPointColor) {
+  if (useNormal) {
     activePipeline = state.pointPipeline.normalPipeline;
-    tonemapMode = 1; // clamp
+    tonemapMode = 1; // clamp (over-compositing stays in [0,1])
   } else if (useSubtractive) {
     activePipeline = state.pointPipeline.subtractivePipeline;
     tonemapMode = 1; // clamp
@@ -416,6 +422,7 @@ const renderView = (
     numDims,
     biasX,
     biasY,
+    state.maxPoints,
   );
   writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
 
@@ -431,23 +438,23 @@ const renderView = (
   // Ensure HDR texture matches canvas size (lazy create/resize)
   ensureHdrTexture(viewIndex);
 
-  // Two-pass: points → rgba32float FBO, then tone-map → canvas (no compute!)
-  const renderCmd = renderPoints(
-    device,
+  // Two-pass in a single encoder: points → float FBO, then tone-map → canvas
+  const encoder = device.createCommandEncoder({ label: 'render-frame' });
+  renderPoints(
+    encoder,
     state.hdrTextureViews[viewIndex]!,
     activePipeline,
     renBindGroup,
     numPoints,
-    state.backgroundColor,
+    bg,
   );
-  const tonemapCmd = tonemapToCanvas(
-    device,
+  tonemapToCanvas(
+    encoder,
     state.views[viewIndex]!,
     state.tonemapPipeline.pipeline,
     state.tonemapBindGroups[viewIndex]!,
   );
-
-  device.queue.submit([renderCmd, tonemapCmd]);
+  device.queue.submit([encoder.finish()]);
 };
 
 // ─── Deferred preview rendering ───────────────────────────────────────────
@@ -999,6 +1006,14 @@ const handleMessage = (msg: MainToGpu): void => {
     return;
   }
 
+  if (msg.type === 'setMaxPoints') {
+    state.maxPoints = msg.maxPoints;
+    if ((state.tour || state.directBasis) && state.projectionResources) {
+      renderAllViews();
+    }
+    return;
+  }
+
   if (msg.type === 'setSelectionMask') {
     const { mask } = msg;
 
@@ -1266,6 +1281,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         hdrTextures: [],
         hdrTextureViews: [],
         tonemapBindGroups: [],
+        maxPoints: 0,
         adjBasisBuffer: null,
         normMins: null,
         normRanges: null,

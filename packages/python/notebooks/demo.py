@@ -13,8 +13,8 @@ def _():
         # dtour Demo: UMAP Tour of Immune Cell Markers
 
         This notebook loads the [Mair 2022 tumor dataset](https://pubmed.ncbi.nlm.nih.gov/35545675/), embeds the 18 winsorized
-        marker columns into 8D with [UMAP](https://umap-learn.readthedocs.io/), then runs a **little tour** through
-        the embedding with points colored by [FAUST cell-type label](https://pubmed.ncbi.nlm.nih.gov/34950900/).
+        marker columns into 4D with [UMAP](https://umap-learn.readthedocs.io/), then runs a **little tour** through
+        the embedding with points colored by [FAUST label](https://pubmed.ncbi.nlm.nih.gov/34950900/)-derived phenotypes.
         """
     )
     return
@@ -189,8 +189,6 @@ def _(cache_dir, dtour, metrics, np, tour, w, widget_df):
 
 @app.cell
 def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
-    import arro3.io
-
     # Compute a 4D UMAP tour (cached)
     tour_4d_path = cache_dir / "tour_4d.npz"
     if tour_4d_path.exists():
@@ -208,9 +206,8 @@ def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
         .sort(pl.col("phenotypes") != "Unassigned")
     )
 
-    # Embed dtour metadata (spec + tour + colormap) and write parquet
-    table = dtour.add_spec_to_parquet(
-        df_4d,
+    # Build dtour spec and write with Polars (better compression than pyarrow).
+    dtour_json = dtour.build_dtour_metadata(
         point_color="phenotypes",
         tour_by="dimensions",
         preview_count=4,
@@ -218,9 +215,13 @@ def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
         color_map=phenotype_colors,
         tour=tour_4d,
     )
-
     out_path = cache_dir / "mair-2022-tumor-4d.pq"
-    arro3.io.write_parquet(table, str(out_path))
+    df_4d.write_parquet(
+        str(out_path),
+        compression="zstd",
+        compression_level=9,
+        metadata={"dtour": dtour_json},
+    )
     out_path
     return
 

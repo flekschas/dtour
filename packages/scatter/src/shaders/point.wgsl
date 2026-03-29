@@ -1,4 +1,4 @@
-// Point renderer — instanced quads with SDF circle discard
+// Point renderer — instanced quads with SDF circle anti-aliasing
 //
 // Projects raw ND data to 2D inline using pre-adjusted basis weights and
 // biases (normalization folded into the basis on CPU). This eliminates the
@@ -22,7 +22,7 @@ struct Uniforms {
   useSubtractive: f32,
   num_points: u32,
   num_dims: u32,
-  _pad: u32,
+  max_points: u32,
   bias: vec2f,
 }
 
@@ -80,11 +80,38 @@ fn unpackColor(packed: u32) -> vec4f {
   return vec4f(r, g, b, a);
 }
 
+// PCG hash — fast, high-quality deterministic random from instance index.
+// Used for vertex-shader decimation when num_points > max_points.
+fn pcg_hash(input: u32) -> u32 {
+  var state = input * 747796405u + 2891336453u;
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+fn random_float(seed: u32) -> f32 {
+  return f32(pcg_hash(seed)) / 4294967295.0;
+}
+
 @vertex
 fn vs_main(
   @builtin(vertex_index) vi: u32,
   @builtin(instance_index) ii: u32,
 ) -> VertOut {
+  // Vertex-shader decimation: skip expensive projection for excess points.
+  // Early exit before the ND projection loop saves ~50 cycles per rejected point.
+  if (uni.max_points > 0u && uni.num_points > uni.max_points) {
+    let threshold = f32(uni.max_points) / f32(uni.num_points);
+    if (random_float(ii) > threshold) {
+      var out: VertOut;
+      out.clip_pos = vec4f(0.0, 0.0, 0.0, 0.0);
+      out.uv = vec2f(0.0);
+      out.point_color = vec4f(0.0);
+      out.selected = 0u;
+      out.effective_opacity = 0.0;
+      return out;
+    }
+  }
+
   // Inline ND → 2D projection with pre-adjusted basis.
   // CPU folds normalization into the basis weights and biases so the
   // hot loop is just: x += raw * adjBasisX[d], y += raw * adjBasisY[d]
@@ -146,18 +173,16 @@ fn vs_main(
   return out;
 }
 
-@fragment
-fn fs_main(
-  @location(0) uv: vec2f,
-  @location(1) point_color: vec4f,
-  @location(2) @interpolate(flat) selected: u32,
-  @location(3) @interpolate(flat) effective_opacity: f32,
-) -> @location(0) vec4f {
+// Shared fragment helper — computes edge, selection factor, and intensity.
+fn fragment_intensity(
+  uv: vec2f,
+  point_alpha: f32,
+  selected: u32,
+  effective_opacity: f32,
+) -> f32 {
   let dist = length(uv);
-  if dist > 1.0 {
-    discard;
-  }
-  // Smooth anti-aliased edge
+  // Smooth anti-aliased edge — naturally 0 for dist >= 1.0, so no discard needed.
+  // Avoiding discard preserves early-Z and SIMD wavefront occupancy.
   let edge = 1.0 - smoothstep(0.75, 1.0, dist);
 
   // Selection: boost selected, dim unselected
@@ -166,18 +191,26 @@ fn fs_main(
     if selected == 0u {
       sel_factor = 0.1;
     } else {
-      // Boost selected points to full brightness
       sel_factor = 1.0 / max(effective_opacity, 0.01);
     }
   }
 
-  let intensity = edge * effective_opacity * point_color.a * sel_factor;
-  // When per-point colors are active, use premultiplied-over output so the
-  // normal-blend pipeline preserves label hues.  When off, output zero alpha
-  // so the additive/subtractive pipeline accumulates on the background.
-  let out_alpha = select(0.0, intensity, uni.usePerPointColor > 0.5);
+  return edge * effective_opacity * point_alpha * sel_factor;
+}
+
+// ─── Fragment: single-target (additive / subtractive) ──────────────────────
+
+@fragment
+fn fs_main(
+  @location(0) uv: vec2f,
+  @location(1) point_color: vec4f,
+  @location(2) @interpolate(flat) selected: u32,
+  @location(3) @interpolate(flat) effective_opacity: f32,
+) -> @location(0) vec4f {
+  let intensity = fragment_intensity(uv, point_color.a, selected, effective_opacity);
   // Subtractive mode (Reusser): output complement color so that
   // reverse-subtract blend (dst - src) on a white bg yields the correct hue.
   let rgb = select(point_color.rgb, vec3f(1.0) - point_color.rgb, uni.useSubtractive > 0.5);
-  return vec4f(rgb * intensity, out_alpha);
+  return vec4f(rgb * intensity, intensity);
 }
+

@@ -63,7 +63,8 @@ export type MainToGpu =
       speed: number;
       direction: 1 | -1;
     }
-  | { type: 'stopPlayback' };
+  | { type: 'stopPlayback' }
+  | { type: 'setMaxPoints'; maxPoints: number };
 
 // GPU Worker → Main thread
 export type GpuToMain =

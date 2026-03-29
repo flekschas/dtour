@@ -4,7 +4,7 @@ import tonemapShader from '../shaders/tonemap.wgsl?raw';
 export type PointPipeline = {
   /** Additive blend pipeline — accumulates light on dark background. */
   additivePipeline: GPURenderPipeline;
-  /** Normal (premultiplied-over) blend pipeline — preserves label colors. */
+  /** Normal (premultiplied-over) pipeline — standard alpha compositing for per-point colors. */
   normalPipeline: GPURenderPipeline;
   /** Subtractive (reverse-subtract) blend pipeline — subtracts from light background. */
   subtractivePipeline: GPURenderPipeline;
@@ -26,7 +26,7 @@ export type PointPipeline = {
 //   offset 32: useSubtractive      (f32)
 //   offset 36: num_points          (u32)
 //   offset 40: num_dims            (u32)
-//   offset 44: _pad                (u32)
+//   offset 44: max_points          (u32) — 0 = disabled
 //   offset 48: bias                (vec2f)
 //   offset 56-63: padding (struct alignment to 16 bytes)
 const UNIFORM_SIZE = 64;
@@ -175,8 +175,8 @@ export const createPointPipeline = (
     primitive: { topology: 'triangle-strip' },
   });
 
-  // Normal (premultiplied-over) blending — preserves per-point label colors.
-  // Values stay in [0,1]; tone mapping acts as identity.
+  // Normal (premultiplied-over) blending — standard alpha compositing for per-point colors.
+  // Background is baked into the clear color; each point composites on top.
   const normalPipeline = device.createRenderPipeline({
     label: 'point-pipeline-normal',
     layout: pipelineLayout,
@@ -275,6 +275,7 @@ export const writeUniforms = (
   numDims = 0,
   biasX = 0,
   biasY = 0,
+  maxPoints = 0,
 ): void => {
   uniformF32[0] = style.pointSize;
   uniformF32[1] = style.opacity;
@@ -287,7 +288,7 @@ export const writeUniforms = (
   uniformF32[8] = useSubtractive ? 1.0 : 0.0;
   uniformU32[9] = numPoints;
   uniformU32[10] = numDims;
-  uniformU32[11] = 0; // _pad
+  uniformU32[11] = maxPoints;
   uniformF32[12] = biasX;
   uniformF32[13] = biasY;
   uniformF32[14] = 0; // padding
@@ -338,18 +339,18 @@ export const createPointBindGroup = (
 export type TonemapPipeline = {
   pipeline: GPURenderPipeline;
   bindGroupLayout: GPUBindGroupLayout;
-  /** Shared 16-byte uniform buffer: [mode(f32), pad, pad, pad]. */
+  /** 4-byte uniform buffer: [mode]. */
   paramsBuffer: GPUBuffer;
 };
 
-/** Tonemap mode: 0 = exponential (additive), 1 = clamp (over/subtractive). */
+/** Tonemap mode: 0 = exponential (additive), 1 = clamp (normal / subtractive). */
 export const writeTonemapParams = (
   device: GPUDevice,
   paramsBuffer: GPUBuffer,
   mode: number,
 ): void => {
   tonemapBuf[0] = mode;
-  device.queue.writeBuffer(paramsBuffer, 0, tonemapBuf);
+  device.queue.writeBuffer(paramsBuffer, 0, tonemapBuf, 0, 4);
 };
 
 export const createTonemapPipeline = (
@@ -391,7 +392,7 @@ export const createTonemapPipeline = (
 
   const paramsBuffer = device.createBuffer({
     label: 'tonemap-params',
-    size: 16,
+    size: 4,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 

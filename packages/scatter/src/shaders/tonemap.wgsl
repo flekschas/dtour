@@ -1,10 +1,10 @@
-// Fullscreen tone-map pass — reads an HDR rgba32float texture and maps
-// to [0,1] for the canvas.  Uses a single oversized triangle (3 vertices,
-// no vertex buffer) to cover the viewport.
+// Fullscreen tone-map pass — reads an HDR float texture and maps to [0,1]
+// for the canvas. Uses a single oversized triangle (3 vertices, no vertex
+// buffer) to cover the viewport.
 //
 // Mode 0 (additive): per-channel exponential compression 1-exp(-x).
 //   Preserves hue ratios, dense regions desaturate toward white.
-// Mode 1 (over / subtractive): simple clamp to [0,1].
+// Mode 1 (normal / subtractive): simple clamp to [0,1].
 //   Values are already bounded; tone mapping is identity.
 
 struct Params {
@@ -32,7 +32,7 @@ fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
     // Additive: exponential compression preserving density structure
     mapped = 1.0 - exp(-hdr.rgb);
   } else {
-    // Over / subtractive: values already in [0,1], just clamp
+    // Normal / Subtractive: values already in [0,1], just clamp
     mapped = clamp(hdr.rgb, vec3f(0.0), vec3f(1.0));
   }
   return vec4f(mapped, 1.0);

@@ -93,6 +93,8 @@ export type ScatterInstance = {
   startPlayback: (speed: number, direction: 1 | -1) => void;
   /** Stop worker-driven playback. */
   stopPlayback: () => void;
+  /** Set max rendered points. 0 = disabled (render all). Uses deterministic hash decimation. */
+  setMaxPoints: (n: number) => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
@@ -315,6 +317,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'stopPlayback' });
   };
 
+  const setMaxPoints = (n: number): void => {
+    sendToGpu(gpuWorker, { type: 'setMaxPoints', maxPoints: n });
+  };
+
   const subscribe = (handler: (status: ScatterStatus) => void): (() => void) => {
     subscribers.add(handler);
     return () => subscribers.delete(handler);
@@ -345,6 +351,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     computePCA,
     startPlayback,
     stopPlayback,
+    setMaxPoints,
     subscribe,
     destroy,
   };

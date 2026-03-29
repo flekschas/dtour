@@ -21,18 +21,16 @@ export const configureCanvas = (canvas: OffscreenCanvas, device: GPUDevice): Can
 
 /**
  * Encode a render pass for numPoints instanced quads into a texture view.
- * The target is typically an HDR (rgba32float) texture for later tone mapping.
- * Returns a GPUCommandBuffer — caller batches with compute commands before submitting.
+ * The target is typically an HDR float texture for later tone mapping.
  */
 export const renderPoints = (
-  device: GPUDevice,
+  encoder: GPUCommandEncoder,
   target: GPUTextureView,
   pipeline: GPURenderPipeline,
   bindGroup: GPUBindGroup,
   numPoints: number,
   clearColor: [number, number, number] = [0, 0, 0],
-): GPUCommandBuffer => {
-  const encoder = device.createCommandEncoder({ label: 'render-points' });
+): void => {
   const pass = encoder.beginRenderPass({
     colorAttachments: [
       {
@@ -50,20 +48,17 @@ export const renderPoints = (
     pass.draw(4, numPoints);
   }
   pass.end();
-
-  return encoder.finish();
 };
 
 /**
  * Encode a fullscreen tone-map pass that reads an HDR texture and writes to a canvas.
  */
 export const tonemapToCanvas = (
-  device: GPUDevice,
+  encoder: GPUCommandEncoder,
   view: CanvasView,
   tonemapPipeline: GPURenderPipeline,
   tonemapBindGroup: GPUBindGroup,
-): GPUCommandBuffer => {
-  const encoder = device.createCommandEncoder({ label: 'tonemap' });
+): void => {
   const pass = encoder.beginRenderPass({
     colorAttachments: [
       {
@@ -78,5 +73,4 @@ export const tonemapToCanvas = (
   pass.setBindGroup(0, tonemapBindGroup);
   pass.draw(3);
   pass.end();
-  return encoder.finish();
 };
