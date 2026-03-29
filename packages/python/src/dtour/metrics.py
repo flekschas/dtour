@@ -239,11 +239,13 @@ def _confusion(proj: np.ndarray, labels: np.ndarray) -> float:
     import pandas as pd
 
     cat = pd.Categorical(labels)
-    df = pd.DataFrame({
-        "x": proj[:, 0],
-        "y": proj[:, 1],
-        "label": cat,
-    })
+    df = pd.DataFrame(
+        {
+            "x": proj[:, 0],
+            "y": proj[:, 1],
+            "label": cat,
+        }
+    )
     cm = np.asarray(cev_metrics.confusion(df), dtype=np.float64)
     row_sums = cm.sum(axis=1)
     # Avoid division by zero for empty rows

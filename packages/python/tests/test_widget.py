@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from dtour.tours import little_tour
 from dtour.widget import Widget
 

@@ -82,6 +82,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
           mins: parsed.columns.map((c) => c.min),
           maxes: parsed.columns.map((c) => c.max),
           ranges: parsed.columns.map((c) => c.range),
+          embeddedConfig: parsed.embeddedConfig,
         },
       };
       self.postMessage(metadata);

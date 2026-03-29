@@ -105,6 +105,11 @@ export function initStoreFromSpec(
   spec: DtourSpec | undefined,
 ): void {
   if (!spec) return;
+  applySpecToStore(store, spec);
+}
+
+/** Write spec values into the jotai store. Skips undefined fields. */
+export function applySpecToStore(store: ReturnType<typeof useStore>, spec: DtourSpec): void {
   for (const key of SPEC_KEYS) {
     const value = spec[key];
     if (value !== undefined) {

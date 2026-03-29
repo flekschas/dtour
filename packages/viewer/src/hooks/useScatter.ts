@@ -2,12 +2,14 @@ import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
 import { hexToRgb, hexToRgb255, isHexColor } from '../lib/color-utils.ts';
+import { parseEmbeddedConfig } from '../spec.ts';
 import {
   backgroundColorAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
   colorMapAtom,
+  embeddedConfigAtom,
   guidedSuspendedAtom,
   legendClearGenAtom,
   legendSelectionAtom,
@@ -153,12 +155,18 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const setLegendSelectionRef = useRef(setLegendSelection);
   setLegendSelectionRef.current = setLegendSelection;
 
+  const setEmbeddedConfig = useSetAtom(embeddedConfigAtom);
+  const setEmbeddedConfigRef = useRef(setEmbeddedConfig);
+  setEmbeddedConfigRef.current = setEmbeddedConfig;
+
   useEffect(() => {
     if (!scatter) return;
     return scatter.subscribe((s: ScatterStatus) => {
       if (s.type === 'metadata') {
         setMetadataRef.current(s.metadata);
         setLegendSelectionRef.current(null);
+        // Parse and store embedded config from Parquet metadata
+        setEmbeddedConfigRef.current(parseEmbeddedConfig(s.metadata.embeddedConfig));
       }
     });
   }, [scatter]);

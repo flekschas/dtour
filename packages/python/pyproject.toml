@@ -37,11 +37,13 @@ artifacts = ["src/dtour/static/*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "RUF"]
 ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/notebooks/*.py" = ["E501", "F841"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

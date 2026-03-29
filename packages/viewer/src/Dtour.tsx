@@ -1,6 +1,6 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { bitPackIndices } from '@dtour/scatter';
-import { Provider, createStore, useAtomValue, useSetAtom } from 'jotai';
+import { Provider, createStore, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
@@ -13,6 +13,7 @@ import type { DtourSpec } from './spec.ts';
 import {
   backgroundColorAtom,
   colorMapAtom,
+  embeddedConfigAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
@@ -20,7 +21,7 @@ import {
   resolvedThemeAtom,
   viewModeAtom,
 } from './state/atoms.ts';
-import { initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
+import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
 export type DtourHandle = {
   /** Select points by index array or bit-packed mask. */
@@ -145,11 +146,36 @@ const DtourInner = ({
   useModeCycling();
   useSystemTheme();
 
-  // Sync colorMap prop → atom
+  // ── Apply embedded config from Parquet metadata ──────────────────────
+  const embeddedConfig = useAtomValue(embeddedConfigAtom);
+  const store = useStore();
+  const embeddedAppliedRef = useRef(false);
+
+  // Reset when data changes so the next file's embedded config can apply
+  // biome-ignore lint/correctness/useExhaustiveDependencies: data triggers reset
+  useEffect(() => {
+    embeddedAppliedRef.current = false;
+  }, [data]);
+
+  // Apply embedded spec fields that are NOT overridden by the prop spec
+  useEffect(() => {
+    if (!embeddedConfig || embeddedAppliedRef.current) return;
+    embeddedAppliedRef.current = true;
+
+    const fieldsToApply: DtourSpec = {};
+    for (const [key, value] of Object.entries(embeddedConfig.spec)) {
+      if (spec?.[key as keyof DtourSpec] === undefined) {
+        (fieldsToApply as Record<string, unknown>)[key] = value;
+      }
+    }
+    applySpecToStore(store, fieldsToApply);
+  }, [embeddedConfig, spec, store]);
+
+  // Sync colorMap prop → atom (embedded colorMap used as fallback)
   const setColorMap = useSetAtom(colorMapAtom);
   useEffect(() => {
-    setColorMap(colorMap ?? null);
-  }, [colorMap, setColorMap]);
+    setColorMap(colorMap ?? embeddedConfig?.colorMap ?? null);
+  }, [colorMap, embeddedConfig, setColorMap]);
 
   // Sync resolved theme → background color + CSS class
   const resolvedTheme = useAtomValue(resolvedThemeAtom);

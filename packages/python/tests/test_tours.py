@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from dtour.data import _to_ipc_bytes, from_numpy, from_pandas
 from dtour.tours import TourResult, little_tour
 

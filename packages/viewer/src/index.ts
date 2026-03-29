@@ -4,8 +4,8 @@ import './styles.css';
 // Primary API — self-contained component with spec-driven state
 export { Dtour } from './Dtour.tsx';
 export type { DtourProps, DtourHandle } from './Dtour.tsx';
-export type { DtourSpec } from './spec.ts';
-export { dtourSpecSchema, DTOUR_DEFAULTS } from './spec.ts';
+export type { DtourSpec, EmbeddedConfig } from './spec.ts';
+export { dtourSpecSchema, DTOUR_DEFAULTS, parseEmbeddedConfig } from './spec.ts';
 
 // Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
 export { PortalContainerContext } from './portal-container.tsx';
@@ -52,4 +52,5 @@ export {
   resolvedThemeAtom,
   // Read-only
   metadataAtom,
+  embeddedConfigAtom,
 } from './state/atoms.ts';

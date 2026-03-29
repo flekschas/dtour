@@ -27,6 +27,86 @@ export const dtourSpecSchema = z.object({
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
 
+/** Parsed contents of the Parquet "dtour" key_value_metadata entry. */
+export type EmbeddedConfig = {
+  spec: DtourSpec;
+  colorMap?: Record<string, string>;
+  tour?: { nDims: number; nViews: number; views: Float32Array[] };
+};
+
+const SPEC_SHAPE_KEYS = Object.keys(dtourSpecSchema.shape) as (keyof DtourSpec)[];
+
+/**
+ * Parse the raw JSON "dtour" value from Parquet key_value_metadata.
+ * Returns null if the string is falsy or unparseable.
+ * Invalid spec fields are silently dropped.
+ */
+export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | null {
+  if (!raw) return null;
+
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof obj !== 'object' || obj === null) return null;
+
+  // Extract spec fields — only keys present in the schema
+  const specCandidate: Record<string, unknown> = {};
+  for (const key of SPEC_SHAPE_KEYS) {
+    if (key in obj) specCandidate[key] = obj[key];
+  }
+  const parsed = dtourSpecSchema.safeParse(specCandidate);
+  const spec: DtourSpec = parsed.success ? parsed.data : {};
+
+  // Extract colorMap (label → hex string)
+  let colorMap: Record<string, string> | undefined;
+  if (obj.colorMap && typeof obj.colorMap === 'object' && !Array.isArray(obj.colorMap)) {
+    const cm = obj.colorMap as Record<string, unknown>;
+    const valid: Record<string, string> = {};
+    let hasEntries = false;
+    for (const [k, v] of Object.entries(cm)) {
+      if (typeof v === 'string') {
+        valid[k] = v;
+        hasEntries = true;
+      }
+    }
+    if (hasEntries) colorMap = valid;
+  }
+
+  // Extract tour views (base64 float32 column-major)
+  let tour: EmbeddedConfig['tour'] | undefined;
+  if (obj.tour && typeof obj.tour === 'object') {
+    const t = obj.tour as Record<string, unknown>;
+    const nDims = typeof t.nDims === 'number' ? t.nDims : 0;
+    const nViews = typeof t.nViews === 'number' ? t.nViews : 0;
+    const viewsB64 = typeof t.views === 'string' ? t.views : '';
+    if (nDims >= 2 && nViews >= 2 && viewsB64) {
+      try {
+        const binary = atob(viewsB64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const floats = new Float32Array(bytes.buffer);
+        const stride = nDims * 2;
+        if (floats.length === nViews * stride) {
+          const views: Float32Array[] = [];
+          for (let v = 0; v < nViews; v++) {
+            views.push(floats.slice(v * stride, (v + 1) * stride));
+          }
+          tour = { nDims, nViews, views };
+        }
+      } catch {
+        // Invalid base64 — skip tour
+      }
+    }
+  }
+
+  return { spec, colorMap, tour };
+}
+
 export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourBy: 'dimensions',
   tourPosition: 0,

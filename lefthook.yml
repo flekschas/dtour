@@ -6,4 +6,4 @@ pre-commit:
       run: pnpm biome check --no-errors-on-unmatched {staged_files}
     ruff:
       glob: "*.py"
-      run: uvx ruff check {staged_files}
+      run: uvx ruff check --config packages/python/pyproject.toml {staged_files}

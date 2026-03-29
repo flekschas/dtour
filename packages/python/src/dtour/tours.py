@@ -102,9 +102,7 @@ def _to_float32(X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table) -> np.nd
         import pyarrow as pa
 
         numeric_names = [
-            f.name
-            for f in X.schema
-            if pa.types.is_integer(f.type) or pa.types.is_floating(f.type)
+            f.name for f in X.schema if pa.types.is_integer(f.type) or pa.types.is_floating(f.type)
         ]
         arrays = [X.column(c).to_numpy(zero_copy_only=False) for c in numeric_names]
         if not arrays:
@@ -137,8 +135,7 @@ def little_tour(
 
     if arr.ndim != 2 or arr.shape[1] < 2:
         raise ValueError(
-            f"little_tour requires a 2-D array with at least 2 columns, "
-            f"got shape {arr.shape}"
+            f"little_tour requires a 2-D array with at least 2 columns, got shape {arr.shape}"
         )
     if n_components is not None and n_components < 2:
         raise ValueError(f"n_components must be >= 2, got {n_components}")

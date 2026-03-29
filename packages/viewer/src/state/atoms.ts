@@ -1,5 +1,6 @@
 import type { Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
+import type { EmbeddedConfig } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -98,6 +99,9 @@ export const canvasSizeAtom = atom({ width: 0, height: 0 });
 // ---------------------------------------------------------------------------
 
 export const metadataAtom = atom<Metadata | null>(null);
+
+/** Parsed embedded config from Parquet key_value_metadata. Reset on each data load. */
+export const embeddedConfigAtom = atom<EmbeddedConfig | null>(null);
 
 // ---------------------------------------------------------------------------
 // Column visibility — which numeric dimensions participate in the tour

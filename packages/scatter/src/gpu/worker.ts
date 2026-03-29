@@ -145,13 +145,24 @@ const computeAutoStyle = (
   return { pointSize, opacity };
 };
 
+/** Convert a CSS-pixel diameter to the NDC convention used by the shader. */
+const cssToNdc = (cssPx: number, viewIndex: number): number => {
+  const { views, dpr } = state!;
+  const physH = views[viewIndex]!.canvas.height;
+  return (cssPx * dpr) / physH;
+};
+
 /** Resolve 'auto' point size/opacity for a specific view's canvas. */
 const resolveStyleForView = (viewIndex: number): PointStyle => {
   const { style, numPoints, views, dpr } = state!;
 
-  // Fast path: no 'auto' values
+  // Fast path: no 'auto' values — still need px→NDC conversion for pointSize
   if (style.pointSize !== 'auto' && style.opacity !== 'auto') {
-    return style as PointStyle;
+    return {
+      pointSize: cssToNdc(style.pointSize, viewIndex),
+      opacity: style.opacity,
+      color: style.color,
+    };
   }
 
   // Canvas dimensions are physical pixels; computeAutoStyle expects CSS pixels + dpr
@@ -159,7 +170,7 @@ const resolveStyleForView = (viewIndex: number): PointStyle => {
   const auto = computeAutoStyle(numPoints, canvas.width / dpr, canvas.height / dpr, dpr);
 
   return {
-    pointSize: style.pointSize === 'auto' ? auto.pointSize : style.pointSize,
+    pointSize: style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, viewIndex),
     opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
     color: style.color,
   };

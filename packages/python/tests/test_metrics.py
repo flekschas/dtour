@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from dtour.metrics import MetricResult, compute_metrics
 from dtour.tours import little_tour
 
@@ -69,9 +68,7 @@ def test_compute_metrics_neighborhood_hit(clustered):
 
 def test_compute_metrics_multiple(clustered):
     X, views, labels = clustered
-    result = compute_metrics(
-        X, views, labels=labels, metrics=["silhouette", "trustworthiness"]
-    )
+    result = compute_metrics(X, views, labels=labels, metrics=["silhouette", "trustworthiness"])
     assert len(result.metric_names) == 2
     assert len(result.values) == 2
 

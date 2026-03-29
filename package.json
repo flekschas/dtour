@@ -6,8 +6,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --parallel --filter @dtour/viewer --filter webapp dev",
-    "lint": "biome check .",
-    "format": "biome format --write .",
+    "lint": "biome check . && uvx ruff check --config packages/python/pyproject.toml packages/python/",
+    "format": "biome check --write . && uvx ruff check --fix --config packages/python/pyproject.toml packages/python/ && uvx ruff format --config packages/python/pyproject.toml packages/python/",
     "prepare": "lefthook install"
   },
   "devDependencies": {

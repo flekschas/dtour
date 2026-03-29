@@ -1,10 +1,12 @@
-import { parquetReadObjects } from 'hyparquet';
+import { parquetMetadata, parquetReadObjects } from 'hyparquet';
 import { compressors } from 'hyparquet-compressors';
 import type { CategoricalColumn } from './types.ts';
 
 export type ParquetResult = {
   numeric: Record<string, Float32Array>;
   categorical: CategoricalColumn[];
+  /** Raw JSON string from the Parquet "dtour" key_value_metadata entry. */
+  embeddedConfig?: string;
 };
 
 // hyparquet expects an AsyncBuffer wrapping arbitrary byte sources
@@ -24,6 +26,11 @@ const toAsyncBuffer = (buffer: ArrayBuffer): AsyncBuffer => ({
  */
 export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> => {
   const asyncBuffer = toAsyncBuffer(buffer);
+
+  // Extract embedded dtour config from Parquet footer metadata (synchronous, fast)
+  const fileMeta = parquetMetadata(buffer);
+  const dtourEntry = fileMeta.key_value_metadata?.find((kv) => kv.key === 'dtour');
+  const embeddedConfig = dtourEntry?.value;
 
   // parquetReadObjects returns Promise<Record<string, unknown>[]> (row-oriented, object format)
   const rows = await parquetReadObjects({ file: asyncBuffer, compressors });
@@ -107,5 +114,5 @@ export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> =
     return { name: key, indices, labels: sortedLabels };
   });
 
-  return { numeric, categorical };
+  return { numeric, categorical, embeddedConfig };
 };

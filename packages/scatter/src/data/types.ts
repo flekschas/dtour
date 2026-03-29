@@ -27,4 +27,6 @@ export type Metadata = {
   mins: number[];
   maxes: number[];
   ranges: number[];
+  /** Raw JSON string from the Parquet "dtour" key_value_metadata entry. Undefined for Arrow files. */
+  embeddedConfig?: string;
 };

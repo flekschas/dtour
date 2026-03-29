@@ -4,14 +4,20 @@ import { detectFormat } from './detect.ts';
 import { loadParquet } from './parquet.ts';
 import type { AnalyzedData } from './types.ts';
 
+export type ParseResult = AnalyzedData & {
+  /** Raw JSON from Parquet "dtour" key_value_metadata. Undefined for Arrow. */
+  embeddedConfig?: string;
+};
+
 /**
  * Detect format, load, extract numeric columns, normalize to [-1, 1].
  * Runs inside the Data Worker.
  */
-export const parseBuffer = async (buffer: ArrayBuffer): Promise<AnalyzedData> => {
+export const parseBuffer = async (buffer: ArrayBuffer): Promise<ParseResult> => {
   const format = detectFormat(buffer);
 
-  const result = format === 'parquet' ? await loadParquet(buffer) : loadArrow(buffer);
+  const parquetResult = format === 'parquet' ? await loadParquet(buffer) : null;
+  const result = parquetResult ?? loadArrow(buffer);
 
   const columnNames = Object.keys(result.numeric);
   if (columnNames.length === 0) {
@@ -40,5 +46,10 @@ export const parseBuffer = async (buffer: ArrayBuffer): Promise<AnalyzedData> =>
     return { name, values, min, max, range };
   });
 
-  return { columns, categoricalColumns: result.categorical, rowCount };
+  return {
+    columns,
+    categoricalColumns: result.categorical,
+    rowCount,
+    embeddedConfig: parquetResult?.embeddedConfig,
+  };
 };

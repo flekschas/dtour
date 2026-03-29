@@ -29,6 +29,7 @@ import {
   cameraZoomAtom,
   canvasSizeAtom,
   currentBasisAtom,
+  embeddedConfigAtom,
   guidedSuspendedAtom,
   legendSelectionAtom,
   metadataAtom,
@@ -87,6 +88,7 @@ export const DtourViewer = ({
   const previewCanvasesRef = useRef<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
   const metadata = useAtomValue(metadataAtom);
+  const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
   const viewMode = useAtomValue(viewModeAtom);
@@ -155,6 +157,12 @@ export const DtourViewer = ({
 
   // Resolve views (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
+  // Embedded tour views from Parquet metadata (only when nDims matches the dataset)
+  const embeddedViews =
+    embeddedConfig?.tour && metadata && embeddedConfig.tour.nDims === metadata.dimCount
+      ? embeddedConfig.tour.views
+      : null;
+
   const { resolvedViews, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
     if (activeIndices.length < 2) return { resolvedViews: null, arcLengths: null };
@@ -164,11 +172,13 @@ export const DtourViewer = ({
       rb = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
     } else if (views && views.length > 0) {
       rb = views.map((b) => new Float32Array(b));
+    } else if (!views && embeddedViews) {
+      rb = embeddedViews.map((b) => new Float32Array(b));
     } else {
       rb = createDefaultViews(dims, previewCount, activeIndices);
     }
     return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
-  }, [views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+  }, [views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
   // modes (manual, grand) can initialize from the current projection.
@@ -428,7 +438,7 @@ export const DtourViewer = ({
     scatter.computePCA();
   }, [tourBy, metadata, scatter]);
 
-  // Set views when available (from props, PCA, or auto-generated from metadata)
+  // Set views when available (from props, PCA, embedded, or auto-generated from metadata)
   useEffect(() => {
     if (!scatter) return;
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2 && metadata) {
@@ -441,6 +451,8 @@ export const DtourViewer = ({
       scatter.setBases(pcaBases);
     } else if (views && views.length > 0) {
       scatter.setBases(views.map((b) => new Float32Array(b)));
+    } else if (!views && embeddedViews) {
+      scatter.setBases(embeddedViews.map((b) => new Float32Array(b)));
     } else if (metadata && metadata.dimCount >= 2 && activeIndices.length >= 2) {
       const defaultViews = createDefaultViews(metadata.dimCount, previewCount, activeIndices);
       scatter.setBases(defaultViews);
@@ -448,7 +460,7 @@ export const DtourViewer = ({
     // Safety: explicitly request a full re-render after views are set,
     // ensuring all preview canvases get painted even if messages race.
     scatter.render();
-  }, [scatter, views, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+  }, [scatter, views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 
@@ -516,7 +528,7 @@ export const DtourViewer = ({
     return () => container.removeEventListener('wheel', handler);
   }, [store]);
 
-  const tickCount = views?.length ?? previewCount;
+  const tickCount = views?.length ?? embeddedViews?.length ?? previewCount;
   const hasData = !!data && !!metadata;
 
   if (import.meta.env.DEV && views && views.length !== previewCount) {
