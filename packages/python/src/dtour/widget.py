@@ -74,7 +74,7 @@ class Widget(anywidget.AnyWidget):
     ).tag(sync=True)
     camera_pan_x = t.Float(0.0).tag(sync=True)
     camera_pan_y = t.Float(0.0).tag(sync=True)
-    camera_zoom = t.Float(1.0).tag(sync=True)
+    camera_zoom = t.Float(1 / 1.5).tag(sync=True)
     view_mode = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
@@ -260,7 +260,7 @@ class Widget(anywidget.AnyWidget):
             kwargs["camera_pan_x"] = self.camera_pan_x
         if self.camera_pan_y != 0.0:
             kwargs["camera_pan_y"] = self.camera_pan_y
-        if self.camera_zoom != 1.0:
+        if self.camera_zoom != 1 / 1.5:
             kwargs["camera_zoom"] = self.camera_zoom
         if self.view_mode != "guided":
             kwargs["view_mode"] = self.view_mode

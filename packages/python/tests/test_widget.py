@@ -20,7 +20,7 @@ def test_widget_default_traits():
     assert w.point_color == [0.25, 0.5, 0.9]
     assert w.camera_pan_x == 0.0
     assert w.camera_pan_y == 0.0
-    assert w.camera_zoom == 1.0
+    assert w.camera_zoom == pytest.approx(1 / 1.5)
     assert w.view_mode == "guided"
     assert w.show_legend is True
     assert w.theme == "dark"

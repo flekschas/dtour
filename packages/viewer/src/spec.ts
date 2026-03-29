@@ -52,13 +52,15 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
   }
   if (typeof obj !== 'object' || obj === null) return null;
 
-  // Extract spec fields — only keys present in the schema
-  const specCandidate: Record<string, unknown> = {};
+  // Validate each spec field individually — invalid fields are dropped
+  // without affecting valid ones.
+  const spec: Record<string, unknown> = {};
   for (const key of SPEC_SHAPE_KEYS) {
-    if (key in obj) specCandidate[key] = obj[key];
+    if (!(key in obj)) continue;
+    const fieldSchema = dtourSpecSchema.shape[key];
+    const result = fieldSchema.safeParse(obj[key]);
+    if (result.success) spec[key] = result.data;
   }
-  const parsed = dtourSpecSchema.safeParse(specCandidate);
-  const spec: DtourSpec = parsed.success ? parsed.data : {};
 
   // Extract colorMap (label → hex string)
   let colorMap: Record<string, string> | undefined;
@@ -104,7 +106,7 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
     }
   }
 
-  return { spec, colorMap, tour };
+  return { spec: spec as DtourSpec, colorMap, tour };
 }
 
 export const DTOUR_DEFAULTS: Required<DtourSpec> = {
