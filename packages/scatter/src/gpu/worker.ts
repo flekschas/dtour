@@ -1227,7 +1227,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
       const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
 
       const hdrFormat: GPUTextureFormat = 'rgba32float';
-      const pointPipeline = createPointPipeline(device, canvasFormat, hdrFormat);
+      const pointPipeline = createPointPipeline(device, hdrFormat);
       const projectionPipeline = createProjectionPipeline(device);
       const colorPipelines = createColorPipelines(device);
       const tonemapPipeline = createTonemapPipeline(device, canvasFormat);

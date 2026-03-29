@@ -105,7 +105,6 @@ const tonemapBuf = new Float32Array(4);
 
 export const createPointPipeline = (
   device: GPUDevice,
-  canvasFormat: GPUTextureFormat,
   hdrFormat: GPUTextureFormat = DEFAULT_HDR_FORMAT,
 ): PointPipeline => {
   const shaderModule = device.createShaderModule({
