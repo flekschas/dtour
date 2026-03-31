@@ -33,6 +33,8 @@ _SNAKE_TO_CAMEL: dict[str, str] = {
     "camera_zoom": "cameraZoom",
     "view_mode": "viewMode",
     "show_legend": "showLegend",
+    "show_axes": "showAxes",
+    "slider_spacing": "sliderSpacing",
     "theme_mode": "themeMode",
 }
 
@@ -70,6 +72,8 @@ def build_dtour_metadata(
     camera_zoom: float | None = None,
     view_mode: str | None = None,
     show_legend: bool | None = None,
+    show_axes: bool | None = None,
+    slider_spacing: str | None = None,
     theme_mode: str | None = None,
     color_map: dict[str, str] | None = None,
     tour: TourResult | None = None,
@@ -110,6 +114,10 @@ def build_dtour_metadata(
         ``"guided"``, ``"manual"``, or ``"grand"``.
     show_legend : bool, optional
         Whether the legend panel is visible.
+    show_axes : bool, optional
+        Whether the axis biplot is visible in guided mode.
+    slider_spacing : str, optional
+        ``"equal"`` or ``"geodesic"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
     color_map : dict, optional
@@ -141,6 +149,8 @@ def build_dtour_metadata(
         "camera_zoom": camera_zoom,
         "view_mode": view_mode,
         "show_legend": show_legend,
+        "show_axes": show_axes,
+        "slider_spacing": slider_spacing,
         "theme_mode": theme_mode,
     }
 

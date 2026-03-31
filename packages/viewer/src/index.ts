@@ -50,6 +50,8 @@ export {
   viewModeAtom,
   // Legend
   showLegendAtom,
+  // Axes
+  showAxesAtom,
   legendVisibleAtom,
   // Theme
   themeModeAtom,
