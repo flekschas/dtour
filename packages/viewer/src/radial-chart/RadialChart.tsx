@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
+import { tourToVisual } from '../lib/position-remap.ts';
 import { arcPath, keyframeAngle, rectBarPath } from './arc-path.ts';
 import type { ParsedTrack } from './types.ts';
+
+const START_DEG = -135;
 
 export type RadialChartProps = {
   tracks: ParsedTrack[];
@@ -11,6 +14,10 @@ export type RadialChartProps = {
   size: number;
   /** Inner radius = selector ring radius (selectorSize * 0.4). */
   innerRadius: number;
+  /** Cumulative arc-lengths for geodesic tick positioning. */
+  arcLengths?: Float32Array | null;
+  /** Slider spacing mode. Default 'equal'. */
+  spacingMode?: 'equal' | 'geodesic';
 };
 
 const TRACK_GAP = 2;
@@ -25,6 +32,8 @@ export const RadialChart = ({
   position,
   size,
   innerRadius,
+  arcLengths,
+  spacingMode = 'equal',
 }: RadialChartProps) => {
   const center = size / 2;
   const [hover, setHover] = useState<HoverInfo | null>(null);
@@ -51,8 +60,37 @@ export const RadialChart = ({
     });
   }, [tracks, innerRadius, stacked]);
 
+  // Compute angle for keyframe index, respecting spacing mode.
+  // In geodesic mode, bars sit at arc-length positions; in equal mode, uniform.
+  const getAngle = useCallback(
+    (index: number): number => {
+      if (spacingMode === 'geodesic' && arcLengths && index < arcLengths.length) {
+        return ((arcLengths[index]! * 360 + START_DEG) * Math.PI) / 180;
+      }
+      return keyframeAngle(index, keyframeCount);
+    },
+    [spacingMode, arcLengths, keyframeCount],
+  );
+
+  // Angular span for a segment from keyframe i to i+1
+  const getSegmentSpan = useCallback(
+    (index: number): number => {
+      if (spacingMode === 'geodesic' && arcLengths && arcLengths.length > 1) {
+        const n = arcLengths.length - 1;
+        const start = arcLengths[index]!;
+        const end = arcLengths[(index + 1) % (n + 1)]!;
+        const span = end > start ? end - start : 1 - start + end;
+        return span * 2 * Math.PI;
+      }
+      return (2 * Math.PI) / keyframeCount;
+    },
+    [spacingMode, arcLengths, keyframeCount],
+  );
+
   // Flanking keyframes based on current position
-  const fractionalIndex = position * keyframeCount;
+  const visualPos =
+    spacingMode === 'equal' && arcLengths ? tourToVisual(position, arcLengths) : position;
+  const fractionalIndex = visualPos * keyframeCount;
   const leftKf = Math.floor(fractionalIndex) % keyframeCount;
   const rightKf = (leftKf + 1) % keyframeCount;
 
@@ -85,7 +123,7 @@ export const RadialChart = ({
     const barWidthPx = (tracks[0]?.barWidth as number) ?? 0;
 
     for (let kfIdx = 0; kfIdx < keyframeCount; kfIdx++) {
-      const centerAngle = keyframeAngle(kfIdx, keyframeCount);
+      const centerAngle = getAngle(kfIdx);
 
       let stackBase = baseR;
       for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
@@ -115,7 +153,7 @@ export const RadialChart = ({
       }
     }
     return bars;
-  }, [stacked, tracks, keyframeCount, baseR, center]);
+  }, [stacked, tracks, keyframeCount, baseR, center, getAngle]);
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
@@ -140,9 +178,10 @@ export const RadialChart = ({
                     {track.normalizedValues.map((normVal, kfIdx) => {
                       if (kfIdx >= keyframeCount) return null;
 
-                      const centerAngle = keyframeAngle(kfIdx, keyframeCount);
-                      const angleStart = centerAngle - segmentAngle / 2 + BAR_PAD_RAD;
-                      const angleEnd = centerAngle + segmentAngle / 2 - BAR_PAD_RAD;
+                      const centerAngle = getAngle(kfIdx);
+                      const halfSpan = getSegmentSpan(kfIdx) / 2;
+                      const angleStart = centerAngle - halfSpan + BAR_PAD_RAD;
+                      const angleEnd = centerAngle + halfSpan - BAR_PAD_RAD;
 
                       const barOuter = rInner + normVal * track.height;
                       const rawValue = track.rawValues[kfIdx] as number;

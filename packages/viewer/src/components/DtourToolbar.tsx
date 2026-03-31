@@ -1,6 +1,7 @@
 import {
   ArrowCounterClockwiseIcon,
   CaretDownIcon,
+  ChartScatterIcon,
   CompassIcon,
   CursorIcon,
   GaugeIcon,
@@ -13,6 +14,7 @@ import {
   PauseIcon,
   PlayIcon,
   SidebarSimpleIcon,
+  SlidersHorizontalIcon,
   SunIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
@@ -31,7 +33,9 @@ import {
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
+  showAxesAtom,
   showLegendAtom,
+  sliderSpacingAtom,
   themeModeAtom,
   tourByAtom,
   tourPlayingAtom,
@@ -81,7 +85,9 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
+  const [showAxes, setShowAxes] = useAtom(showAxesAtom);
   const [tourBy, setTourBy] = useAtom(tourByAtom);
+  const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -249,6 +255,19 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
+        {viewMode === 'guided' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')}
+            title={sliderSpacing === 'equal' ? 'Spacing: equal' : 'Spacing: geodesic'}
+          >
+            <SlidersHorizontalIcon
+              size={16}
+              weight={sliderSpacing === 'equal' ? 'fill' : 'regular'}
+            />
+          </Button>
+        )}
         <Popover.Root>
           <Popover.Trigger asChild>
             <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
@@ -376,6 +395,18 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
               </Popover.Content>
             </Popover.Portal>
           </Popover.Root>
+        )}
+
+        {viewMode === 'guided' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowAxes((v) => !v)}
+            title={showAxes ? 'Hide axes' : 'Show axes'}
+            className={showAxes ? '' : 'opacity-40'}
+          >
+            <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
+          </Button>
         )}
       </div>
 

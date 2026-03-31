@@ -29,10 +29,14 @@ export {
   tourPlayingAtom,
   tourSpeedAtom,
   tourDirectionAtom,
+  sliderSpacingAtom,
+  arcLengthsAtom,
   // Preview
   previewCountAtom,
   previewPaddingAtom,
   selectedKeyframeAtom,
+  currentKeyframeAtom,
+  hoveredKeyframeAtom,
   // Point style
   pointSizeAtom,
   pointOpacityAtom,

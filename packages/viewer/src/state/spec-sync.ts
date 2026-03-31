@@ -12,6 +12,7 @@ import {
   previewCountAtom,
   previewPaddingAtom,
   previewScaleAtom,
+  showAxesAtom,
   showLegendAtom,
   themeModeAtom,
   tourByAtom,
@@ -61,6 +62,7 @@ const SPEC_ATOM_MAP = {
   cameraZoom: entry(cameraZoomAtom),
   viewMode: entry(viewModeAtom),
   showLegend: entry(showLegendAtom),
+  showAxes: entry(showAxesAtom),
   themeMode: entry(themeModeAtom),
 } as const;
 

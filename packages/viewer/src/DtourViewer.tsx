@@ -11,6 +11,7 @@ import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AxisOverlay } from './components/AxisOverlay.tsx';
+import type { AxisOverlayHandle } from './components/AxisOverlay.tsx';
 import { CircularSlider } from './components/CircularSlider.tsx';
 import type { CircularSliderHandle } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
@@ -20,6 +21,8 @@ import { useGrandTour } from './hooks/useGrandTour.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
+import { tourToVisual, visualToTour } from './lib/position-remap.ts';
+import { throttleAndDebounce } from './lib/throttle-debounce.ts';
 import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
@@ -27,17 +30,23 @@ import {
   activeColumnsAtom,
   activeIndicesAtom,
   animationGenAtom,
+  arcLengthsAtom,
   cameraZoomAtom,
   canvasSizeAtom,
   currentBasisAtom,
+  currentKeyframeAtom,
   embeddedConfigAtom,
   guidedSuspendedAtom,
+  hoveredKeyframeAtom,
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
+  previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
   resolvedThemeAtom,
+  showAxesAtom,
+  sliderSpacingAtom,
   tourByAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -100,6 +109,9 @@ export const DtourViewer = ({
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
   const store = useStore();
+  const currentKeyframe = useAtomValue(currentKeyframeAtom);
+  const hoveredKeyframe = useAtomValue(hoveredKeyframeAtom);
+  const previewCenters = useAtomValue(previewCentersAtom);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const activeIndices = useAtomValue(activeIndicesAtom);
   const setActiveColumns = useSetAtom(activeColumnsAtom);
@@ -110,24 +122,23 @@ export const DtourViewer = ({
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const sliderRef = useRef<CircularSliderHandle>(null);
+  const axisOverlayRef = useRef<AxisOverlayHandle>(null);
   const positionRef = useRef(position);
-  const positionFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync positionRef with atom value (overwritten by direct drives within ~33ms)
   useEffect(() => {
     positionRef.current = position;
   }, [position]);
 
-  // Debounced atom write — batches rapid position updates (~10fps atom writes)
+  // Throttle+debounce atom write — fires at most every 100ms during playback
+  // (throttle) AND once more after the last tick (debounce), so Gallery's
+  // currentKeyframe highlight updates during playback (~10fps) while also
+  // guaranteeing the final position is flushed.
+  const positionFlushRef = useRef(throttleAndDebounce((pos: number) => setPosition(pos), 100));
+
   const schedulePositionFlush = useCallback(() => {
-    if (positionFlushTimer.current !== null) {
-      clearTimeout(positionFlushTimer.current);
-    }
-    positionFlushTimer.current = setTimeout(() => {
-      positionFlushTimer.current = null;
-      setPosition(positionRef.current);
-    }, 100);
-  }, [setPosition]);
+    positionFlushRef.current(positionRef.current);
+  }, []);
 
   // Stable ref so the scatter subscribe callback can access the latest flush fn
   const scheduleFlushRef = useRef(schedulePositionFlush);
@@ -141,10 +152,8 @@ export const DtourViewer = ({
   const prevPlayingRef = useRef(false);
   useEffect(() => {
     if (prevPlayingRef.current && !playing) {
-      if (positionFlushTimer.current !== null) {
-        clearTimeout(positionFlushTimer.current);
-        positionFlushTimer.current = null;
-      }
+      positionFlushRef.current.cancel();
+      positionFlushRef.current.reset();
       setPosition(positionRef.current);
     }
     prevPlayingRef.current = playing;
@@ -157,6 +166,9 @@ export const DtourViewer = ({
     numDims: number;
   } | null>(null);
 
+  const showAxes = useAtomValue(showAxesAtom);
+  const spacingMode = useAtomValue(sliderSpacingAtom);
+  const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = viewMode === 'guided';
 
   // Resolve views (from props or auto-generated) and precompute arc lengths
@@ -183,6 +195,42 @@ export const DtourViewer = ({
     }
     return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
   }, [views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+
+  // Sync arcLengths atom so Gallery and other components can access it
+  useEffect(() => {
+    setArcLengthsAtom_(arcLengths);
+  }, [arcLengths, setArcLengthsAtom_]);
+
+  // Refs for spacing mode and arcLengths so the scatter subscribe callback
+  // (created once in the init effect) can access the latest values.
+  const spacingModeRef = useRef(spacingMode);
+  spacingModeRef.current = spacingMode;
+  const arcLengthsRef = useRef(arcLengths);
+  arcLengthsRef.current = arcLengths;
+  const resolvedViewsRef = useRef(resolvedViews);
+  resolvedViewsRef.current = resolvedViews;
+  const metadataRef = useRef(metadata);
+  metadataRef.current = metadata;
+  // Pre-allocated scratch buffer for imperative basis interpolation
+  const basisScratchRef = useRef(new Float32Array(0));
+
+  // Imperative axis overlay update — compute the interpolated basis at
+  // a given tour position and push directly to SVG via setBasis.
+  // Called from playbackTick, slider drag, and wheel scrub.
+  const updateAxesImperative = useCallback((tourPos: number) => {
+    const rv = resolvedViewsRef.current;
+    const al = arcLengthsRef.current;
+    const meta = metadataRef.current;
+    if (!rv || !al || !meta || !axisOverlayRef.current) return;
+    const p = meta.dimCount;
+    if (basisScratchRef.current.length !== p * 2) {
+      basisScratchRef.current = new Float32Array(p * 2);
+    }
+    interpolateAtPosition(basisScratchRef.current, rv, al, p, tourPos);
+    axisOverlayRef.current.setBasis(basisScratchRef.current);
+  }, []);
+  const updateAxesRef = useRef(updateAxesImperative);
+  updateAxesRef.current = updateAxesImperative;
 
   // Keep currentBasisAtom in sync with the tour interpolation so other
   // modes (manual, grand) can initialize from the current projection.
@@ -385,8 +433,12 @@ export const DtourViewer = ({
       }
       if (s.type === 'playbackTick') {
         positionRef.current = s.position;
-        sliderRef.current?.setPosition(s.position);
+        const al = arcLengthsRef.current;
+        const visual =
+          spacingModeRef.current === 'equal' && al ? tourToVisual(s.position, al) : s.position;
+        sliderRef.current?.setPosition(visual);
         scheduleFlushRef.current();
+        updateAxesRef.current(s.position);
       }
     });
 
@@ -470,14 +522,17 @@ export const DtourViewer = ({
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
 
-  // Slider click → animated seek to the clicked position
+  // Slider click → animated seek to the clicked position.
+  // The slider reports a visual position; convert to tour position for the GPU.
   const handlePositionSeek = useCallback(
-    (pos: number) => {
+    (visualPos: number) => {
       setGuidedSuspended(false);
       setPlaying(false);
-      animateTo(pos);
+      const tourPos =
+        spacingMode === 'equal' && arcLengths ? visualToTour(visualPos, arcLengths) : visualPos;
+      animateTo(tourPos);
     },
-    [setGuidedSuspended, setPlaying, animateTo],
+    [setGuidedSuspended, setPlaying, animateTo, spacingMode, arcLengths],
   );
 
   // Slider drag start → cancel animation, switch to immediate updates
@@ -488,15 +543,19 @@ export const DtourViewer = ({
 
   // Slider drag move → send directly to GPU, update slider imperatively,
   // debounce atom write to minimize React re-renders during drag.
+  // The slider reports a visual position; convert to tour position for the GPU.
   const handlePositionChange = useCallback(
-    (pos: number) => {
+    (visualPos: number) => {
       setGuidedSuspended(false);
-      scatterRef.current?.setTourPosition(pos);
-      sliderRef.current?.setPosition(pos);
-      positionRef.current = pos;
+      const tourPos =
+        spacingMode === 'equal' && arcLengths ? visualToTour(visualPos, arcLengths) : visualPos;
+      scatterRef.current?.setTourPosition(tourPos);
+      sliderRef.current?.setPosition(visualPos);
+      positionRef.current = tourPos;
+      updateAxesImperative(tourPos);
       schedulePositionFlush();
     },
-    [setGuidedSuspended, schedulePositionFlush],
+    [setGuidedSuspended, schedulePositionFlush, spacingMode, arcLengths, updateAxesImperative],
   );
 
   // Wheel → scrub tour position (guided mode) or zoom (Shift+wheel, all modes).
@@ -522,12 +581,27 @@ export const DtourViewer = ({
       store.set(animationGenAtom, (g) => g + 1);
       store.set(tourPlayingAtom, false);
       store.set(guidedSuspendedAtom, false);
-      // Send directly to GPU + slider, debounce atom write
-      let next = positionRef.current + e.deltaY * 0.002;
-      next = next - Math.floor(next);
-      positionRef.current = next;
-      scatterRef.current?.setTourPosition(next);
-      sliderRef.current?.setPosition(next);
+      // Send directly to GPU + slider, debounce atom write.
+      // In equal mode, scrub in visual space for perceptual uniformity.
+      const al = arcLengthsRef.current;
+      const mode = spacingModeRef.current;
+      if (mode === 'equal' && al) {
+        const curVisual = tourToVisual(positionRef.current, al);
+        let nextVisual = curVisual + e.deltaY * 0.002;
+        nextVisual = nextVisual - Math.floor(nextVisual);
+        const nextTour = visualToTour(nextVisual, al);
+        positionRef.current = nextTour;
+        scatterRef.current?.setTourPosition(nextTour);
+        sliderRef.current?.setPosition(nextVisual);
+        updateAxesRef.current(nextTour);
+      } else {
+        let next = positionRef.current + e.deltaY * 0.002;
+        next = next - Math.floor(next);
+        positionRef.current = next;
+        scatterRef.current?.setTourPosition(next);
+        sliderRef.current?.setPosition(next);
+        updateAxesRef.current(next);
+      }
       scheduleFlushRef.current();
     };
     container.addEventListener('wheel', handler, { passive: false });
@@ -570,14 +644,18 @@ export const DtourViewer = ({
           />
         )}
 
-        {/* Manual mode axis overlay — rendered after lasso so handles are on top */}
-        {viewMode === 'manual' && hasData && containerSize.width > 0 && (
-          <AxisOverlay
-            scatter={scatter}
-            width={containerSize.width}
-            height={containerSize.height}
-          />
-        )}
+        {/* Axis overlay — interactive in manual mode, read-only in guided when enabled */}
+        {(viewMode === 'manual' || (isGuidedMode && showAxes)) &&
+          hasData &&
+          containerSize.width > 0 && (
+            <AxisOverlay
+              ref={axisOverlayRef}
+              scatter={scatter}
+              width={containerSize.width}
+              height={containerSize.height}
+              readOnly={isGuidedMode}
+            />
+          )}
 
         {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
         {isGuidedMode && hasData && (
@@ -591,6 +669,8 @@ export const DtourViewer = ({
                   position={position}
                   size={selectorSize}
                   innerRadius={selectorSize * 0.4}
+                  arcLengths={arcLengths}
+                  spacingMode={spacingMode}
                 />
               </div>
             )}
@@ -598,12 +678,21 @@ export const DtourViewer = ({
             <div className="pointer-events-none relative z-10">
               <CircularSlider
                 ref={sliderRef}
-                value={position}
+                value={
+                  spacingMode === 'equal' && arcLengths
+                    ? tourToVisual(position, arcLengths)
+                    : position
+                }
                 onChange={handlePositionChange}
                 onSeek={handlePositionSeek}
                 onDragStart={handleDragStart}
                 tickCount={tickCount}
                 size={selectorSize}
+                arcLengths={arcLengths}
+                spacingMode={spacingMode}
+                currentKeyframe={currentKeyframe}
+                hoveredKeyframe={hoveredKeyframe}
+                previewCenters={previewCenters}
               />
             </div>
           </div>

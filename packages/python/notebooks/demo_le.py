@@ -529,12 +529,11 @@ def _(X_scaled, cache_dir, marker_names):
     else:
         le_tour = dtour.le_tour(
             X_scaled,
+            n_frames=8,
             n_neighbors=15,
             feature_names=marker_names,
             random_state=42,
-            subsample=100_000,
             cumulative=True,
-            n_frames=8,
         )
         le_tour.save(le_tour_path)
     return dtour, le_tour
@@ -557,6 +556,27 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
         height=720,
     )
     w
+    return (le_df,)
+
+
+@app.cell
+def _(cache_dir, dtour, le_df, le_tour, phenotype_colors):
+    dtour_json = dtour.build_dtour_metadata(
+        point_color="phenotypes",
+        tour_by="dimensions",
+        preview_count=8,
+        camera_zoom=0.5,
+        color_map=phenotype_colors,
+        tour=le_tour,
+    )
+    out_path = cache_dir / "mair-2022-tumor-le-8d.pq"
+    le_df.write_parquet(
+        str(out_path),
+        compression="zstd",
+        compression_level=9,
+        metadata={"dtour": dtour_json},
+    )
+    out_path
     return
 
 

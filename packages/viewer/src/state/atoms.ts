@@ -14,6 +14,12 @@ export const tourPlayingAtom = atom(false);
 export const tourSpeedAtom = atom(1);
 export const tourDirectionAtom = atom<1 | -1>(1);
 
+/** Slider spacing mode: 'equal' = uniform tick spacing, 'geodesic' = arc-length proportional. */
+export const sliderSpacingAtom = atom<'equal' | 'geodesic'>('equal');
+
+/** Cumulative arc-lengths for the current tour bases. null when no tour is loaded. */
+export const arcLengthsAtom = atom<Float32Array | null>(null);
+
 // ---------------------------------------------------------------------------
 // View state — controls preview layout and keyframe selection
 // ---------------------------------------------------------------------------
@@ -22,6 +28,34 @@ export const previewCountAtom = atom<4 | 8 | 12 | 16>(4);
 export const previewScaleAtom = atom<1 | 0.75 | 0.5>(1);
 export const previewPaddingAtom = atom(12);
 export const selectedKeyframeAtom = atom<number | null>(null);
+
+/** Which gallery preview is currently hovered (index), or null. */
+export const hoveredKeyframeAtom = atom<number | null>(null);
+
+/** Preview center positions relative to the container center, plus preview size. */
+export const previewCentersAtom = atom<{ x: number; y: number; size: number }[]>([]);
+
+/** Derived: nearest keyframe to the current tour position. */
+export const currentKeyframeAtom = atom((get) => {
+  const position = get(tourPositionAtom);
+  const arcLengths = get(arcLengthsAtom);
+  const previewCount = get(previewCountAtom);
+  if (!arcLengths || arcLengths.length < 2) {
+    return Math.round(position * previewCount) % previewCount;
+  }
+  const n = arcLengths.length - 1;
+  let best = 0;
+  let bestDist = 1;
+  for (let i = 0; i < n; i++) {
+    let dist = Math.abs(position - arcLengths[i]!);
+    dist = Math.min(dist, 1 - dist);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
+});
 
 // ---------------------------------------------------------------------------
 // Point style — visual appearance of scatter points
@@ -132,6 +166,9 @@ export const activeIndicesAtom = atom<number[]>((get) => {
 
 /** User preference for showing the legend panel. */
 export const showLegendAtom = atom(true);
+
+/** User preference for showing axis biplot in guided mode. */
+export const showAxesAtom = atom(false);
 
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,

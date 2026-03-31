@@ -1,15 +1,18 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { computeGallerySizes } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import {
+  arcLengthsAtom,
+  currentKeyframeAtom,
   guidedSuspendedAtom,
+  hoveredKeyframeAtom,
+  previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
-  tourPositionAtom,
 } from '../state/atoms.ts';
 
 export type GalleryProps = {
@@ -31,13 +34,16 @@ export const Gallery = ({
 }: GalleryProps) => {
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
-  const position = useAtomValue(tourPositionAtom);
+  const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const arcLengths = useAtomValue(arcLengthsAtom);
+  const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
+  const setPreviewCenters = useSetAtom(previewCentersAtom);
   const { animateTo } = useAnimatePosition();
+  const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Grid area = container minus its CSS insets.
   // When the toolbar is visible overlayOffsetY shifts the wrapper down by
@@ -63,7 +69,33 @@ export const Gallery = ({
     }
   }, [previewCanvases]);
 
-  const currentKeyframe = Math.round(position * previewCount) % previewCount;
+  // Measure preview center positions relative to the container center.
+  // Written to an atom so CircularSlider can draw connector beziers.
+  useEffect(() => {
+    const galleryEl = galleryRef.current;
+    if (!galleryEl) return;
+    const galleryRect = galleryEl.getBoundingClientRect();
+    const centers: { x: number; y: number; size: number }[] = [];
+    for (let i = 0; i < previewCount; i++) {
+      const wrapper = wrapperRefs.current[i];
+      if (!wrapper) {
+        centers.push({ x: 0, y: 0, size: sizes[i] ?? 0 });
+        continue;
+      }
+      const r = wrapper.getBoundingClientRect();
+      // Center relative to gallery root
+      const cx = r.left - galleryRect.left + r.width / 2;
+      const cy = r.top - galleryRect.top + r.height / 2;
+      // Convert to container-center-relative
+      // Gallery root offset in container: left=16, top=verticalInset
+      centers.push({
+        x: cx + 16 - containerWidth / 2,
+        y: cy + verticalInset - containerHeight / 2,
+        size: sizes[i] ?? r.width,
+      });
+    }
+    setPreviewCenters(centers);
+  }, [containerWidth, containerHeight, previewCount, sizes, verticalInset, setPreviewCenters]);
 
   const getBorderColor = (i: number): string | undefined => {
     const isActive = i === selectedKeyframe || i === currentKeyframe;
@@ -91,15 +123,17 @@ export const Gallery = ({
       setGuidedSuspended(false);
       setSelectedKeyframe(i);
       setPlaying(false);
-      animateTo(i / previewCount);
+      const target = arcLengths && i < arcLengths.length ? arcLengths[i]! : i / previewCount;
+      animateTo(target);
     },
-    [previewCount, setSelectedKeyframe, setPlaying, setGuidedSuspended, animateTo],
+    [previewCount, arcLengths, setSelectedKeyframe, setPlaying, setGuidedSuspended, animateTo],
   );
 
   const k = previewCount / 4;
 
   return (
     <div
+      ref={galleryRef}
       className="absolute left-4 right-4 grid gap-8 justify-between content-between pointer-events-none"
       style={{ top: verticalInset, bottom: verticalInset, gridTemplateColumns, gridTemplateRows }}
     >

@@ -1,4 +1,12 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { cn } from '../lib/utils';
 
 export type CircularSliderHandle = {
@@ -6,8 +14,10 @@ export type CircularSliderHandle = {
   setPosition: (value: number) => void;
 };
 
+export type PreviewCenter = { x: number; y: number; size: number };
+
 export type CircularSliderProps = {
-  /** Current position [0, 1]. */
+  /** Current position [0, 1]. In equal mode this is visual position. */
   value: number;
   /** Called on each drag move (immediate position update). */
   onChange: (value: number) => void;
@@ -19,10 +29,46 @@ export type CircularSliderProps = {
   tickCount?: number;
   /** SVG diameter in px. Default 200. */
   size?: number;
+  /** Cumulative arc-lengths for variable-width ring and geodesic tick positions. */
+  arcLengths?: Float32Array | null;
+  /** Slider spacing mode. Default 'equal'. */
+  spacingMode?: 'equal' | 'geodesic';
+  /** Index of the keyframe nearest to the current tour position, or null. */
+  currentKeyframe?: number | null;
+  /** Index of the gallery preview being hovered, or null. */
+  hoveredKeyframe?: number | null;
+  /** Preview center positions relative to the container center, with sizes. */
+  previewCenters?: PreviewCenter[];
 };
 
+const START_DEG = -135;
+const BASE_STROKE = 3;
+const MIN_STROKE = 1;
+const MAX_STROKE = 7;
+
+const TICK_LEN = 5; // normal tick length (outward from ring)
+const TICK_GAP = 3; // gap between ring and tick start
+const ACTIVE_EXTRA = 4; // extra length for active tick
+const ACTIVE_WIDTH = 4; // stroke width for active tick
+const CP1_OFFSET = 24; // bezier control point 1 offset along radial direction
+
 export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderProps>(
-  ({ value, onChange, onSeek, onDragStart, tickCount = 8, size = 200 }, ref) => {
+  (
+    {
+      value,
+      onChange,
+      onSeek,
+      onDragStart,
+      tickCount = 8,
+      size = 200,
+      arcLengths,
+      spacingMode = 'equal',
+      currentKeyframe,
+      hoveredKeyframe,
+      previewCenters,
+    },
+    ref,
+  ) => {
     const [isDragging, setIsDragging] = useState(false);
     const hasDraggedRef = useRef(false);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -33,10 +79,23 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
 
     const center = size / 2;
     const radius = size * 0.4;
-    const startDeg = -135;
-    const startRad = (startDeg * Math.PI) / 180;
+    const startRad = (START_DEG * Math.PI) / 180;
     const startX = center + radius * Math.cos(startRad);
     const startY = center + radius * Math.sin(startRad);
+
+    /** Compute the angle (radians) for a given keyframe index. */
+    const tickRad = useCallback(
+      (i: number): number => {
+        let tickFraction: number;
+        if (spacingMode === 'geodesic' && arcLengths && i < arcLengths.length) {
+          tickFraction = arcLengths[i]!;
+        } else {
+          tickFraction = i / tickCount;
+        }
+        return ((tickFraction * 360 + START_DEG) * Math.PI) / 180;
+      },
+      [spacingMode, arcLengths, tickCount],
+    );
 
     /** Update SVG DOM elements directly — no React re-render needed. */
     const updateDom = useCallback(
@@ -44,7 +103,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
         const isWrapping = Math.abs(val - prevValueRef.current) > 0.5;
         prevValueRef.current = val;
 
-        const handleRad = ((val * 360 + startDeg) * Math.PI) / 180;
+        const handleRad = ((val * 360 + START_DEG) * Math.PI) / 180;
         const hx = center + radius * Math.cos(handleRad);
         const hy = center + radius * Math.sin(handleRad);
 
@@ -133,34 +192,126 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
     }, [isDragging, angleFromPointer, onChange, onDragStart]);
 
     // Initial positions from value prop (first paint; updateDom takes over after mount)
-    const handleRad = ((value * 360 + startDeg) * Math.PI) / 180;
+    const handleRad = ((value * 360 + START_DEG) * Math.PI) / 180;
     const handleX = center + radius * Math.cos(handleRad);
     const handleY = center + radius * Math.sin(handleRad);
 
-    // Tick marks (static — don't change with position)
-    const ticks = Array.from({ length: tickCount }, (_, i) => {
-      const tickRad = (((i / tickCount) * 360 + startDeg) * Math.PI) / 180;
-      const r1 = radius - 8;
-      const r2 = radius - 3;
+    // Tick marks — outward facing, positioned at arc-length fractions (geodesic)
+    // or evenly spaced (equal). Active tick is longer and wider.
+    const ticks = useMemo(() => {
+      return Array.from({ length: tickCount }, (_, i) => {
+        const angle = tickRad(i);
+        const isActive = i === currentKeyframe;
+        const extra = isActive ? ACTIVE_EXTRA : 0;
+        const r1 = radius + TICK_GAP;
+        const r2 = radius + TICK_GAP + TICK_LEN + extra;
+        return (
+          <line
+            // biome-ignore lint/suspicious/noArrayIndexKey: tick key
+            key={i}
+            x1={center + r1 * Math.cos(angle)}
+            y1={center + r1 * Math.sin(angle)}
+            x2={center + r2 * Math.cos(angle)}
+            y2={center + r2 * Math.sin(angle)}
+            stroke={isActive ? 'white' : 'var(--color-dtour-text-muted)'}
+            strokeWidth={isActive ? ACTIVE_WIDTH : 2}
+          />
+        );
+      });
+    }, [tickCount, tickRad, radius, center, currentKeyframe]);
+
+    // Bezier connector — cubic bezier from tick outward end to preview center.
+    // Shown on hover (hoveredKeyframe) or during playback (currentKeyframe).
+    const connector = useMemo(() => {
+      const kf = hoveredKeyframe ?? currentKeyframe;
+      if (kf == null || kf >= tickCount) return null;
+      const pc = previewCenters?.[kf];
+      if (!pc || (pc.x === 0 && pc.y === 0 && pc.size === 0)) return null;
+
+      const angle = tickRad(kf);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+
+      // Start: tick outward end
+      const tickEndR = radius + TICK_GAP + TICK_LEN + ACTIVE_EXTRA;
+      const sx = center + tickEndR * cos;
+      const sy = center + tickEndR * sin;
+
+      // Control point 1: 24px further along the radial from center through tick
+      const cp1x = center + (tickEndR + CP1_OFFSET) * cos;
+      const cp1y = center + (tickEndR + CP1_OFFSET) * sin;
+
+      // End: preview center in SVG coordinates
+      const ex = center + pc.x;
+      const ey = center + pc.y;
+
+      // Control point 2: from preview center, move toward SVG center by half preview size
+      const dx = center - ex;
+      const dy = center - ey;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const halfSize = pc.size / 2;
+      const cp2x = dist > 1e-6 ? ex + (dx / dist) * halfSize : ex;
+      const cp2y = dist > 1e-6 ? ey + (dy / dist) * halfSize : ey;
+
       return (
-        <line
-          // biome-ignore lint/suspicious/noArrayIndexKey: tick key
-          key={i}
-          x1={center + r1 * Math.cos(tickRad)}
-          y1={center + r1 * Math.sin(tickRad)}
-          x2={center + r2 * Math.cos(tickRad)}
-          y2={center + r2 * Math.sin(tickRad)}
-          stroke="var(--color-dtour-text-muted)"
-          strokeWidth="2"
+        <path
+          d={`M ${sx} ${sy} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${ex} ${ey}`}
+          fill="none"
+          stroke="var(--color-dtour-highlight)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          opacity="0.4"
+          className="pointer-events-none"
         />
       );
-    });
+    }, [hoveredKeyframe, currentKeyframe, tickCount, tickRad, radius, center, previewCenters]);
+
+    // Variable-width ring segments for equal mode — stroke width proportional
+    // to the segment's geodesic length. Thin = small geodesic distance (stretched),
+    // thick = large geodesic distance (compressed).
+    const ringSegments = useMemo(() => {
+      if (spacingMode !== 'equal' || !arcLengths || arcLengths.length < 2) return null;
+      const n = arcLengths.length - 1;
+      const expected = 1 / n;
+      const segments: React.ReactElement[] = [];
+      for (let i = 0; i < n; i++) {
+        const segLen = arcLengths[i + 1]! - arcLengths[i]!;
+        const ratio = expected > 1e-10 ? segLen / expected : 1;
+        const strokeW = Math.max(MIN_STROKE, Math.min(MAX_STROKE, BASE_STROKE * ratio));
+
+        const startFrac = i / n;
+        const endFrac = (i + 1) / n;
+        const a1 = ((startFrac * 360 + START_DEG) * Math.PI) / 180;
+        const a2 = ((endFrac * 360 + START_DEG) * Math.PI) / 180;
+
+        const x1 = center + radius * Math.cos(a1);
+        const y1 = center + radius * Math.sin(a1);
+        const x2 = center + radius * Math.cos(a2);
+        const y2 = center + radius * Math.sin(a2);
+
+        const sweep = endFrac - startFrac;
+        const largeArc = sweep > 0.5 ? 1 : 0;
+
+        segments.push(
+          <path
+            key={i}
+            d={`M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`}
+            fill="none"
+            stroke="var(--color-dtour-border)"
+            strokeWidth={strokeW}
+            className="pointer-events-none"
+          />,
+        );
+      }
+      return segments;
+    }, [spacingMode, arcLengths, radius, center]);
 
     return (
       <svg
         ref={svgRef}
         width={size}
         height={size}
+        overflow="visible"
         onMouseDown={handlePointerDown}
         onTouchStart={handlePointerDown}
         className="pointer-events-none select-none touch-none"
@@ -176,18 +327,22 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           strokeWidth="20"
           className="cursor-pointer pointer-events-auto"
         />
-        {/* Track ring */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke="var(--color-dtour-border)"
-          strokeWidth="3"
-          className="pointer-events-none"
-        />
-        {/* Ticks */}
+        {/* Track ring — variable width in equal mode, constant in geodesic */}
+        {ringSegments ?? (
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke="var(--color-dtour-border)"
+            strokeWidth="3"
+            className="pointer-events-none"
+          />
+        )}
+        {/* Ticks (outward facing) */}
         {ticks}
+        {/* Bezier connector — from tick to preview center */}
+        {connector}
         {/* Arc showing position — always rendered, visibility controlled imperatively */}
         <path
           ref={arcRef}
