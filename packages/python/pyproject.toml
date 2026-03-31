@@ -13,8 +13,10 @@ dependencies = [
   "anywidget>=0.9.21",
   "arro3-core>=0.6.0",
   "arro3-io>=0.6.0",
+  "marimo>=0.21.1",
   "matplotlib>=3.10.8",
   "numpy>=2.4.2",
+  "pyamg>=5.3",
   "scikit-learn>=1.8.0",
   "umap-learn>=0.5",
 ]
