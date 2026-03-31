@@ -1,22 +1,18 @@
-import colorCategoricalWgsl from '../shaders/color-categorical.wgsl?raw';
-import colorContinuousWgsl from '../shaders/color-continuous.wgsl?raw';
 import selectCategoricalWgsl from '../shaders/select-categorical.wgsl?raw';
 import selectContinuousWgsl from '../shaders/select-continuous.wgsl?raw';
 
 const WORKGROUP_SIZE = 256;
 
-// Shared bind group layout for all 4 compute operations:
+// Shared bind group layout for selection compute operations:
 //   binding 0: read-only storage  (data / indices source)
-//   binding 1: read-only storage  (colormap / palette / ranges / selected-labels)
-//   binding 2: read-write storage (color / mask output)
+//   binding 1: read-only storage  (ranges / selected-labels)
+//   binding 2: read-write storage (mask output)
 //   binding 3: uniform            (params)
 
-// Max params struct size across all shaders: 5 fields × 4 = 20 bytes → pad to 32
+// Max params struct size across selection shaders: 3 fields × 4 = 12 bytes → pad to 32
 const PARAMS_SIZE = 32;
 
 export type ColorPipelines = {
-  colorContinuous: GPUComputePipeline;
-  colorCategorical: GPUComputePipeline;
   selectContinuous: GPUComputePipeline;
   selectCategorical: GPUComputePipeline;
   bindGroupLayout: GPUBindGroupLayout;
@@ -50,8 +46,6 @@ export const createColorPipelines = (device: GPUDevice): ColorPipelines => {
   });
 
   return {
-    colorContinuous: makePipeline('color-continuous', colorContinuousWgsl),
-    colorCategorical: makePipeline('color-categorical', colorCategoricalWgsl),
     selectContinuous: makePipeline('select-continuous', selectContinuousWgsl),
     selectCategorical: makePipeline('select-categorical', selectCategoricalWgsl),
     bindGroupLayout,
@@ -59,7 +53,7 @@ export const createColorPipelines = (device: GPUDevice): ColorPipelines => {
   };
 };
 
-/** Create a bind group for any of the 4 color/selection compute operations. */
+/** Create a bind group for a selection compute operation. */
 export const createColorBindGroup = (
   device: GPUDevice,
   layout: GPUBindGroupLayout,
@@ -79,56 +73,7 @@ export const createColorBindGroup = (
     ],
   });
 
-/** Dispatch a color/selection compute shader and return the command buffer. */
-export const dispatchColorCompute = (
-  device: GPUDevice,
-  pipeline: GPUComputePipeline,
-  bindGroup: GPUBindGroup,
-  numPoints: number,
-): GPUCommandBuffer => {
-  const encoder = device.createCommandEncoder({ label: 'color-dispatch' });
-  const pass = encoder.beginComputePass({ label: 'color-compute' });
-  pass.setPipeline(pipeline);
-  pass.setBindGroup(0, bindGroup);
-  pass.dispatchWorkgroups(Math.ceil(numPoints / WORKGROUP_SIZE));
-  pass.end();
-  return encoder.finish();
-};
-
 // ─── Params writers ────────────────────────────────────────────────────────
-
-export const writeContinuousColorParams = (
-  device: GPUDevice,
-  buf: GPUBuffer,
-  numPoints: number,
-  columnOffset: number,
-  min: number,
-  range: number,
-  lutSize: number,
-): void => {
-  const data = new ArrayBuffer(PARAMS_SIZE);
-  const u = new Uint32Array(data);
-  const f = new Float32Array(data);
-  u[0] = numPoints;
-  u[1] = columnOffset;
-  f[2] = min;
-  f[3] = range;
-  u[4] = lutSize;
-  device.queue.writeBuffer(buf, 0, data);
-};
-
-export const writeCategoricalColorParams = (
-  device: GPUDevice,
-  buf: GPUBuffer,
-  numPoints: number,
-  paletteSize: number,
-): void => {
-  const data = new ArrayBuffer(PARAMS_SIZE);
-  const u = new Uint32Array(data);
-  u[0] = numPoints;
-  u[1] = paletteSize;
-  device.queue.writeBuffer(buf, 0, data);
-};
 
 export const writeContinuousSelectParams = (
   device: GPUDevice,
@@ -156,14 +101,4 @@ export const writeCategoricalSelectParams = (
   u[0] = numPoints;
   u[1] = numLabels;
   device.queue.writeBuffer(buf, 0, data);
-};
-
-/** Pack an RGB palette [[r,g,b], ...] into Uint32Array of 0xAABBGGRR values. */
-export const packPalette = (palette: [number, number, number][]): Uint32Array => {
-  const packed = new Uint32Array(palette.length);
-  for (let i = 0; i < palette.length; i++) {
-    const [r, g, b] = palette[i]!;
-    packed[i] = (255 << 24) | (b << 16) | (g << 8) | r;
-  }
-  return packed;
 };

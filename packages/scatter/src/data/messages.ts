@@ -33,9 +33,9 @@ export type DataToGpu =
       /** Categorical column indices, transferred alongside numeric buffers. */
       categoricalColumns: { name: string; indices: Uint32Array }[];
     }
-  // Color encoding — resolved by data worker, computed on GPU
+  // Color mapping — resolved by data worker, applied as shader LUT
   | {
-      type: 'encodeColorContinuous';
+      type: 'setColorContinuous';
       dataVersion: number;
       columnIndex: number;
       min: number;
@@ -44,7 +44,7 @@ export type DataToGpu =
       colormap: Uint32Array;
     }
   | {
-      type: 'encodeColorCategorical';
+      type: 'setColorCategorical';
       dataVersion: number;
       catColumnName: string;
       /** Packed RGBA u32 per label. */

@@ -11,25 +11,31 @@ export type PointPipeline = {
   bindGroupLayout: GPUBindGroupLayout;
   uniformBuffer: GPUBuffer;
   cameraBuffer: GPUBuffer;
-  /** Small 4-byte default buffer used when no per-point colors are loaded. */
-  defaultColorBuffer: GPUBuffer;
+  /** Small 4-byte default buffer used when no colormap LUT is loaded. */
+  defaultColorLutBuffer: GPUBuffer;
   /** Small 4-byte default buffer used when no selection mask is set. */
   defaultSelectionBuffer: GPUBuffer;
+  /** Small 4-byte default buffer used when no categorical indices are bound. */
+  defaultCatIndicesBuffer: GPUBuffer;
 };
 
-// Uniform layout (64 bytes, 16-byte aligned):
-//   offset  0: point_size          (f32)
-//   offset  4: opacity             (f32)
-//   offset  8: usePerPointColor    (f32)
-//   offset 12: useSelectionMask    (f32)
-//   offset 16: color               (vec4f)
-//   offset 32: useSubtractive      (f32)
-//   offset 36: num_points          (u32)
-//   offset 40: num_dims            (u32)
-//   offset 44: max_points          (u32) — 0 = disabled
-//   offset 48: bias                (vec2f)
-//   offset 56-63: padding (struct alignment to 16 bytes)
-const UNIFORM_SIZE = 64;
+// Uniform layout (80 bytes, 16-byte aligned):
+//   offset  0: point_size            (f32)
+//   offset  4: opacity               (f32)
+//   offset  8: color_mode            (u32) — 0=uniform, 1=continuous, 2=categorical
+//   offset 12: useSelectionMask      (f32)
+//   offset 16: color                 (vec4f)
+//   offset 32: useSubtractive        (f32)
+//   offset 36: num_points            (u32)
+//   offset 40: num_dims              (u32)
+//   offset 44: max_points            (u32) — 0 = disabled
+//   offset 48: bias                  (vec2f)
+//   offset 56: color_column_offset   (u32)
+//   offset 60: color_min             (f32)
+//   offset 64: color_range           (f32)
+//   offset 68: color_num_stops       (u32)
+//   offset 72-79: padding
+const UNIFORM_SIZE = 80;
 
 // Camera layout (32 bytes — 7 fields + padding for uniform struct alignment):
 //   offset  0: pan_x           (f32)
@@ -56,8 +62,19 @@ export type RawPointStyle = {
   color: [number, number, number];
 };
 
+/** Color mode: 0 = uniform color, 1 = continuous (data column → colormap), 2 = categorical. */
+export type ColorMode = 0 | 1 | 2;
+
+/** Color mapping state for the shader LUT approach. */
+export type ColorState = {
+  mode: ColorMode;
+  columnOffset: number; // columnIndex * numPoints (continuous only)
+  min: number;
+  range: number;
+  numStops: number; // LUT size
+};
+
 export type StyleFlags = {
-  usePerPointColor: boolean;
   useSelectionMask: boolean;
 };
 
@@ -80,8 +97,15 @@ const DEFAULT_STYLE: PointStyle = {
 };
 
 const DEFAULT_FLAGS: StyleFlags = {
-  usePerPointColor: false,
   useSelectionMask: false,
+};
+
+const DEFAULT_COLOR: ColorState = {
+  mode: 0,
+  columnOffset: 0,
+  min: 0,
+  range: 1,
+  numStops: 0,
 };
 
 const DEFAULT_CAMERA: CameraState = {
@@ -142,6 +166,11 @@ export const createPointPipeline = (
       },
       {
         binding: 5,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: 'read-only-storage' },
+      },
+      {
+        binding: 6,
         visibility: GPUShaderStage.VERTEX,
         buffer: { type: 'read-only-storage' },
       },
@@ -237,8 +266,8 @@ export const createPointPipeline = (
   });
 
   // Small default buffers (4 bytes each) so bind groups are always valid
-  const defaultColorBuffer = device.createBuffer({
-    label: 'default-color-buf',
+  const defaultColorLutBuffer = device.createBuffer({
+    label: 'default-color-lut-buf',
     size: 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
@@ -249,8 +278,14 @@ export const createPointPipeline = (
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
+  const defaultCatIndicesBuffer = device.createBuffer({
+    label: 'default-cat-indices-buf',
+    size: 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
   // Write defaults
-  writeUniforms(device, uniformBuffer, DEFAULT_STYLE, DEFAULT_FLAGS);
+  writeUniforms(device, uniformBuffer, DEFAULT_STYLE, DEFAULT_FLAGS, DEFAULT_COLOR);
   writeCamera(device, cameraBuffer, DEFAULT_CAMERA);
 
   return {
@@ -260,8 +295,9 @@ export const createPointPipeline = (
     bindGroupLayout,
     uniformBuffer,
     cameraBuffer,
-    defaultColorBuffer,
+    defaultColorLutBuffer,
     defaultSelectionBuffer,
+    defaultCatIndicesBuffer,
   };
 };
 
@@ -270,6 +306,7 @@ export const writeUniforms = (
   uniformBuffer: GPUBuffer,
   style: PointStyle,
   flags: StyleFlags = DEFAULT_FLAGS,
+  colorState: ColorState = DEFAULT_COLOR,
   useSubtractive = false,
   numPoints = 0,
   numDims = 0,
@@ -279,7 +316,7 @@ export const writeUniforms = (
 ): void => {
   uniformF32[0] = style.pointSize;
   uniformF32[1] = style.opacity;
-  uniformF32[2] = flags.usePerPointColor ? 1.0 : 0.0;
+  uniformU32[2] = colorState.mode;
   uniformF32[3] = flags.useSelectionMask ? 1.0 : 0.0;
   uniformF32[4] = style.color[0];
   uniformF32[5] = style.color[1];
@@ -291,8 +328,12 @@ export const writeUniforms = (
   uniformU32[11] = maxPoints;
   uniformF32[12] = biasX;
   uniformF32[13] = biasY;
-  uniformF32[14] = 0; // padding
-  uniformF32[15] = 0; // padding
+  uniformU32[14] = colorState.columnOffset;
+  uniformF32[15] = colorState.min;
+  uniformF32[16] = colorState.range;
+  uniformU32[17] = colorState.numStops;
+  uniformF32[18] = 0; // padding
+  uniformF32[19] = 0; // padding
   device.queue.writeBuffer(uniformBuffer, 0, uniformBuf);
 };
 
@@ -317,9 +358,10 @@ export const createPointBindGroup = (
   uniformBuffer: GPUBuffer,
   dataBuffer: GPUBuffer,
   cameraBuffer: GPUBuffer,
-  colorBuffer: GPUBuffer,
+  colorLutBuffer: GPUBuffer,
   selectionBuffer: GPUBuffer,
   adjBasisBuffer: GPUBuffer,
+  catIndicesBuffer: GPUBuffer,
 ): GPUBindGroup =>
   device.createBindGroup({
     label: 'point-bg',
@@ -328,9 +370,10 @@ export const createPointBindGroup = (
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: { buffer: dataBuffer } },
       { binding: 2, resource: { buffer: cameraBuffer } },
-      { binding: 3, resource: { buffer: colorBuffer } },
+      { binding: 3, resource: { buffer: colorLutBuffer } },
       { binding: 4, resource: { buffer: selectionBuffer } },
       { binding: 5, resource: { buffer: adjBasisBuffer } },
+      { binding: 6, resource: { buffer: catIndicesBuffer } },
     ],
   });
 
@@ -350,7 +393,7 @@ export const writeTonemapParams = (
   mode: number,
 ): void => {
   tonemapBuf[0] = mode;
-  device.queue.writeBuffer(paramsBuffer, 0, tonemapBuf, 0, 4);
+  device.queue.writeBuffer(paramsBuffer, 0, tonemapBuf, 0, 1);
 };
 
 export const createTonemapPipeline = (

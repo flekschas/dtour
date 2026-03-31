@@ -12,11 +12,17 @@
 //
 // Applies 2D camera transform (pan/zoom/aspect). Each point is rendered as
 // a unit quad (triangle strip, 4 vertices) scaled by point_size (NDC units).
+//
+// Color mapping: instead of a pre-computed N-element color buffer, the shader
+// reads raw data values and looks up colors from a tiny LUT at render time.
+// This eliminates the 20MB color buffer for 5M points and makes color changes
+// instant (just swap the ~100-byte LUT + update uniforms).
 
 struct Uniforms {
   point_size: f32,
   opacity: f32,
-  usePerPointColor: f32,
+  // Color mode: 0 = uniform color, 1 = continuous, 2 = categorical
+  color_mode: u32,
   useSelectionMask: f32,
   color: vec4f,
   useSubtractive: f32,
@@ -24,6 +30,11 @@ struct Uniforms {
   num_dims: u32,
   max_points: u32,
   bias: vec2f,
+  // Color mapping params (used when color_mode > 0)
+  color_column_offset: u32,  // columnIndex * num_points (continuous only)
+  color_min: f32,
+  color_range: f32,
+  color_num_stops: u32,      // LUT size
 }
 
 struct Camera {
@@ -44,14 +55,16 @@ struct Camera {
 // Raw ND data (column-major): dim0[0..N], dim1[0..N], ..., dimP[0..N]
 @group(0) @binding(1) var<storage, read> data: array<f32>;
 @group(0) @binding(2) var<uniform> camera: Camera;
-// Per-point packed RGBA8 colors (u32: 0xAABBGGRR)
-@group(0) @binding(3) var<storage, read> pointColors: array<u32>;
+// Colormap/palette LUT — packed RGBA8 u32 entries (25 for continuous, up to 256 for categorical)
+@group(0) @binding(3) var<storage, read> colorLut: array<u32>;
 // Bit-packed selection mask (1 bit per point, 32 per u32)
 @group(0) @binding(4) var<storage, read> selectionMask: array<u32>;
 // Adjusted basis weights (normalization folded in):
 // first num_dims = x-weights, next num_dims = y-weights
 // adj_basis[d] = basis[d] / range[d] * viewport_scale
 @group(0) @binding(5) var<storage, read> adj_basis: array<f32>;
+// Categorical index buffer (per-point category index, used when color_mode == 2)
+@group(0) @binding(6) var<storage, read> catIndices: array<u32>;
 
 struct VertOut {
   @builtin(position) clip_pos: vec4f,
@@ -150,10 +163,24 @@ fn vs_main(
   let z = camera.zoom * camera.inset_zoom;
   let eff_opacity = uni.opacity * z * z;
 
-  // Resolve per-point color
+  // Resolve per-point color from LUT
   var col: vec4f;
-  if uni.usePerPointColor > 0.5 {
-    col = unpackColor(pointColors[ii]);
+  if uni.color_mode == 1u {
+    // Continuous: read raw value from color column, normalize, interpolate LUT
+    let raw = data[uni.color_column_offset + ii];
+    let inv_range = select(0.0, 1.0 / uni.color_range, uni.color_range > 0.0);
+    let t = clamp((raw - uni.color_min) * inv_range, 0.0, 1.0);
+    let stops = f32(uni.color_num_stops - 1u);
+    let pos = t * stops;
+    let idx = min(u32(floor(pos)), uni.color_num_stops - 2u);
+    let frac = pos - f32(idx);
+    let c0 = unpackColor(colorLut[idx]);
+    let c1 = unpackColor(colorLut[idx + 1u]);
+    col = mix(c0, c1, frac);
+  } else if uni.color_mode == 2u {
+    // Categorical: read category index, direct palette lookup
+    let catIdx = catIndices[ii];
+    col = unpackColor(colorLut[catIdx % uni.color_num_stops]);
   } else {
     col = uni.color;
   }
@@ -213,4 +240,3 @@ fn fs_main(
   let rgb = select(point_color.rgb, vec3f(1.0) - point_color.rgb, uni.useSubtractive > 0.5);
   return vec4f(rgb * intensity, intensity);
 }
-

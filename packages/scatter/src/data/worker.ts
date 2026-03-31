@@ -144,7 +144,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       }
       const packed = packPalette(pal);
       const gpuMsg: DataToGpu = {
-        type: 'encodeColorCategorical',
+        type: 'setColorCategorical',
         dataVersion,
         catColumnName: column,
         palette: packed,
@@ -162,7 +162,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       const cmap = isLight ? ([...baseCmap].reverse() as [number, number, number][]) : baseCmap;
       const packed = packPalette(cmap);
       const gpuMsg: DataToGpu = {
-        type: 'encodeColorContinuous',
+        type: 'setColorContinuous',
         dataVersion,
         columnIndex: colIdx,
         min,

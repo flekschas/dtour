@@ -1,113 +1,10 @@
 import DataWorkerFactory from '../data/worker.ts?worker&inline';
-// ?worker&inline tells Vite to bundle each worker + all its imports and embed the
-// result as a base64 data URL in the library output. Consumers of @dtour/scatter
-// get a single self-contained JS file — no separate worker files to host.
-import GpuWorkerFactory from './worker.ts?worker&inline';
+import WebGLWorkerFactory from './worker.ts?worker&inline';
 
 import type { DataToMain, MainToData } from '../data/messages.ts';
 import type { Metadata } from '../data/types.ts';
-import type { GpuToMain, MainToGpu } from './messages.ts';
-
-export type ScatterOptions = {
-  /** All canvases to render into. Index 0 = main view, 1+ = previews. */
-  canvases: HTMLCanvasElement[];
-  /** Initial camera zoom level. Default 1. */
-  zoom?: number;
-  /** Device pixel ratio. Default `window.devicePixelRatio ?? 1`. */
-  dpr?: number;
-};
-
-export type ScatterStatus =
-  | { type: 'ready' }
-  | { type: 'rendered'; viewIndex: number }
-  | { type: 'metadata'; metadata: Metadata }
-  | { type: 'error'; message: string }
-  | {
-      type: 'pcaResult';
-      eigenvectors: Float32Array[];
-      eigenvalues: Float32Array;
-      numDims: number;
-    }
-  | { type: 'playbackTick'; position: number }
-  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number };
-
-export type ScatterInstance = {
-  /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */
-  loadData: (buffer: ArrayBuffer) => void;
-  /**
-   * Set tour basis matrices. Each basis is a p×2 column-major Float32Array:
-   * [x0, x1, ..., xp-1, y0, y1, ..., yp-1]
-   * where x_i is the x-projection weight for dimension i.
-   * dims (p) is inferred as bases[0].length / 2.
-   *
-   * @param bases - array of basis matrices, one per tour keyframe
-   */
-  setBases: (bases: Float32Array[]) => void;
-  /** Set tour position along the arc-length parameterized path [0, 1]. */
-  setTourPosition: (position: number) => void;
-  /** Update point rendering style. Use 'auto' for density-adaptive sizing. */
-  setStyle: (options: {
-    pointSize?: number | 'auto';
-    opacity?: number | 'auto';
-    color?: [number, number, number];
-  }) => void;
-  /** Set 2D camera (pan, zoom, and optional viewport inset for toolbar offset). */
-  setCamera: (options: {
-    pan?: [number, number];
-    zoom?: number;
-    /** NDC-space Y offset — shifts content to center below toolbar. */
-    insetOffsetY?: number;
-    /** Zoom multiplier — scales content to fit visible area below toolbar. */
-    insetZoom?: number;
-  }) => void;
-  /** Resize a canvas to the given pixel dimensions (use for DPI-aware sizing). */
-  resize: (viewIndex: number, width: number, height: number, dpr?: number) => void;
-  /** Request a render of all views. */
-  render: () => void;
-  /** Set a single basis directly for manual/zen modes. Renders main view only. */
-  setDirectBasis: (basis: Float32Array) => void;
-  /** Encode a column as per-point colors. Column can be categorical or numeric. */
-  encodeColor: (
-    column: string,
-    palette?: string,
-    theme?: 'light' | 'dark',
-    colorMap?: Record<string, [number, number, number]>,
-  ) => void;
-  /** Set the background clear color (RGB 0–1). */
-  setBackgroundColor: (color: [number, number, number]) => void;
-  /** Clear per-point colors and revert to uniform color. */
-  clearColor: () => void;
-  /** Select points by column value. Mask is built in the data worker. */
-  selectByColumn: (
-    column: string,
-    opts: { labelIndices?: number[]; valueRanges?: Float32Array },
-  ) => void;
-  /** Set a bit-packed selection mask (1 bit per point, 32 per u32). Length: ceil(numPoints / 32). */
-  setSelectionMask: (mask: Uint32Array) => void;
-  /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
-  lassoSelect: (polygon: Float32Array) => void;
-  /** Clear selection mask — all points visible. */
-  clearSelection: () => void;
-  /** Request GPU-accelerated PCA computation. Results arrive via subscribe as 'pcaResult'. */
-  computePCA: () => void;
-  /** Start worker-driven playback. Worker runs its own rAF loop and posts position updates. */
-  startPlayback: (speed: number, direction: 1 | -1) => void;
-  /** Stop worker-driven playback. */
-  stopPlayback: () => void;
-  /** Set max rendered points. 0 = disabled (render all). Uses deterministic hash decimation. */
-  setMaxPoints: (n: number) => void;
-  /** Run a render benchmark. Pass numPoints for synthetic data, omit or 0 to use loaded data. */
-  benchmark: (numPoints?: number) => Promise<{
-    frameTimes: Float64Array;
-    numPoints: number;
-    avgMs: number;
-    fps: number;
-  }>;
-  /** Subscribe to status events from both workers. Returns an unsubscribe function. */
-  subscribe: (handler: (status: ScatterStatus) => void) => () => void;
-  /** Terminate both workers and release resources. */
-  destroy: () => void;
-};
+import type { ScatterInstance, ScatterOptions, ScatterStatus } from '../gpu/client.ts';
+import type { GpuToMain, MainToGpu } from '../gpu/messages.ts';
 
 const sendToGpu = (worker: Worker, msg: MainToGpu, transfers?: Transferable[]): void => {
   worker.postMessage(msg, transfers ?? []);
@@ -118,23 +15,13 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
 };
 
 /**
- * Create a scatter renderer instance.
+ * Create a scatter renderer instance using the WebGL2 backend.
  *
- * Instantiates the GPU Worker and Data Worker, connects them via a
- * MessageChannel (so parsed data flows directly to the GPU worker without
- * passing through the main thread), and transfers OffscreenCanvas control
- * to the GPU worker.
- *
- * @example
- * ```ts
- * const scatter = createScatter({ canvases: [mainCanvas, ...previewCanvases] });
- * scatter.subscribe(console.log);
- * scatter.loadData(arrowBuffer);
- * scatter.setBases(bases);
- * scatter.setTourPosition(0.5);
- * ```
+ * Same API as `createScatter` (WebGPU) — instantiates a WebGL Worker
+ * and Data Worker, connects them via a MessageChannel, and transfers
+ * OffscreenCanvas control to the WebGL worker.
  */
-export const createScatter = (options: ScatterOptions): ScatterInstance => {
+export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => {
   const {
     canvases,
     zoom: initialZoom = 1,
@@ -142,13 +29,12 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   } = options;
 
   if (canvases.length === 0) {
-    throw new Error('createScatter requires at least one canvas');
+    throw new Error('createScatterWebGL requires at least one canvas');
   }
 
-  const gpuWorker = new GpuWorkerFactory();
+  const gpuWorker = new WebGLWorkerFactory();
   const dataWorker = new DataWorkerFactory();
 
-  // Direct MessageChannel between data worker and GPU worker.
   const channel = new MessageChannel();
 
   const subscribers = new Set<(status: ScatterStatus) => void>();
@@ -179,7 +65,6 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     emit({ type: 'error', message: err.message });
   };
 
-  // Transfer OffscreenCanvas control to GPU worker
   const offscreens = canvases.map((c) => c.transferControlToOffscreen());
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
@@ -189,7 +74,6 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     [...offscreens, channel.port2],
   );
 
-  // Track current style/camera for merging partial updates
   let currentStyle: {
     pointSize: number | 'auto';
     opacity: number | 'auto';
@@ -211,7 +95,6 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   };
 
   const setBases = (bases: Float32Array[]): void => {
-    // Transfer ownership of basis buffers for zero-copy
     const transfers = bases.map((b) => b.buffer);
     sendToGpu(gpuWorker, { type: 'setBases', bases }, transfers);
   };
@@ -290,7 +173,6 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     column: string,
     opts: { labelIndices?: number[]; valueRanges?: Float32Array },
   ): void => {
-    // Clone valueRanges before transferring so the caller's buffer isn't detached
     const ranges = opts.valueRanges ? new Float32Array(opts.valueRanges) : undefined;
     const transfers: Transferable[] = [];
     if (ranges) transfers.push(ranges.buffer);

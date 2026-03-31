@@ -64,7 +64,9 @@ export type MainToGpu =
       direction: 1 | -1;
     }
   | { type: 'stopPlayback' }
-  | { type: 'setMaxPoints'; maxPoints: number };
+  | { type: 'setMaxPoints'; maxPoints: number }
+  | { type: 'benchmark'; numPoints: number; numDims: number; numFrames: number }
+  | { type: 'benchmarkExisting'; numFrames: number };
 
 // GPU Worker → Main thread
 export type GpuToMain =
@@ -81,4 +83,5 @@ export type GpuToMain =
       // Periodic position update during worker-driven playback (~30fps).
       type: 'playbackTick';
       position: number;
-    };
+    }
+  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number };

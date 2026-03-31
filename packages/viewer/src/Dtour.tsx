@@ -62,6 +62,8 @@ export type DtourProps = {
   portalContainer?: HTMLElement;
   /** Called when the viewer is ready with an API handle for programmatic control. */
   onReady?: (api: DtourHandle) => void;
+  /** Rendering backend. Default 'webgpu'. */
+  backend?: 'webgpu' | 'webgl';
 };
 
 export const Dtour = ({
@@ -79,6 +81,7 @@ export const Dtour = ({
   colorMap,
   portalContainer,
   onReady,
+  backend,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -106,6 +109,7 @@ export const Dtour = ({
           onSelectionChange={onSelectionChange}
           colorMap={colorMap}
           onReady={onReady}
+          backend={backend}
         />
       </Provider>
     </PortalContainerContext.Provider>
@@ -127,6 +131,7 @@ const DtourInner = ({
   onSelectionChange,
   colorMap,
   onReady,
+  backend,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -141,6 +146,7 @@ const DtourInner = ({
   onSelectionChange: ((labels: string[]) => void) | undefined;
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
+  backend: 'webgpu' | 'webgl' | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
@@ -297,6 +303,7 @@ const DtourInner = ({
             onStatus={onStatus}
             toolbarHeight={hideToolbar ? 0 : 40}
             onScatterReady={setScatterInstance}
+            backend={backend}
           />
         </div>
       </div>

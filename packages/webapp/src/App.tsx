@@ -272,6 +272,7 @@ const App = () => {
         onLoadData={handleLoadData}
         onSpecChange={handleSpecChange}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
+        backend="webgpu"
       />
       {!data && logoPhase !== 'moving' && logoPhase !== 'moved' && (
         <motion.div

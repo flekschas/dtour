@@ -4,6 +4,7 @@ import {
   OKABE_ITO,
   computeArcLengths,
   createScatter,
+  createScatterWebGL,
   interpolateAtPosition,
 } from '@dtour/scatter';
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
@@ -63,6 +64,8 @@ export type DtourViewerProps = {
   toolbarHeight?: number | undefined;
   /** Called when the scatter instance is created (or null on destroy). */
   onScatterReady?: ((scatter: ScatterInstance | null) => void) | undefined;
+  /** Rendering backend. Default 'webgpu'. */
+  backend?: 'webgpu' | 'webgl' | undefined;
 };
 
 const PREVIEW_PHYSICAL_SIZE = 300; // Physical pixels per preview canvas
@@ -79,6 +82,7 @@ export const DtourViewer = ({
   onStatus,
   toolbarHeight = 0,
   onScatterReady,
+  backend = 'webgpu',
 }: DtourViewerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const onScatterReadyRef = useRef(onScatterReady);
@@ -364,13 +368,15 @@ export const DtourViewer = ({
     }
     previewCanvasesRef.current = previews;
 
-    const instance = createScatter({
+    const factory = backend === 'webgl' ? createScatterWebGL : createScatter;
+    const instance = factory({
       canvases: [mainCanvas, ...previews],
       zoom: store.get(cameraZoomAtom),
     });
     scatterRef.current = instance;
     setScatter(instance);
     onScatterReadyRef.current?.(instance);
+    (globalThis as Record<string, unknown>).scatter = instance;
 
     instance.subscribe((s: ScatterStatus) => {
       onStatusRef.current?.(s);
@@ -413,7 +419,7 @@ export const DtourViewer = ({
       for (const c of previews) c.remove();
       previewCanvasesRef.current = [];
     };
-  }, [previewCount, setCanvasSize, store]);
+  }, [previewCount, setCanvasSize, store, backend]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {
