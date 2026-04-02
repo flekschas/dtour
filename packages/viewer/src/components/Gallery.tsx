@@ -12,6 +12,7 @@ import {
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
+  showFrameNumbersAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 
@@ -40,6 +41,7 @@ export const Gallery = ({
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
+  const showFrameNumbers = useAtomValue(showFrameNumbersAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
   const { animateTo } = useAnimatePosition();
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -181,7 +183,7 @@ export const Gallery = ({
               onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
               onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
               className={cn(
-                'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20',
+                'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
                 visible ? 'block cursor-pointer' : 'hidden',
               )}
               style={{
@@ -191,7 +193,20 @@ export const Gallery = ({
                 borderWidth: getBorderWidth(i),
                 boxShadow: getBoxShadow(i),
               }}
-            />
+            >
+              {visible && showFrameNumbers && (
+                <span
+                  className={cn(
+                    'absolute top-0.5 left-1 text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
+                    i === selectedKeyframe || i === currentKeyframe
+                      ? 'opacity-100'
+                      : 'opacity-40 group-hover:opacity-100',
+                  )}
+                >
+                  {i + 1}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}

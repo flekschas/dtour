@@ -5,6 +5,7 @@ import {
   CompassIcon,
   CursorIcon,
   GaugeIcon,
+  HashIcon,
   ImageSquareIcon,
   MagnifyingGlassMinusIcon,
   MonitorIcon,
@@ -34,6 +35,7 @@ import {
   previewScaleAtom,
   selectedKeyframeAtom,
   showAxesAtom,
+  showFrameNumbersAtom,
   showLegendAtom,
   sliderSpacingAtom,
   themeModeAtom,
@@ -86,6 +88,7 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
   const [showAxes, setShowAxes] = useAtom(showAxesAtom);
+  const [showFrameNumbers, setShowFrameNumbers] = useAtom(showFrameNumbersAtom);
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
 
@@ -398,15 +401,26 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
         )}
 
         {viewMode === 'guided' && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowAxes((v) => !v)}
-            title={showAxes ? 'Hide axes' : 'Show axes'}
-            className={showAxes ? '' : 'opacity-40'}
-          >
-            <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowAxes((v) => !v)}
+              title={showAxes ? 'Hide axes' : 'Show axes'}
+              className={showAxes ? '' : 'opacity-40'}
+            >
+              <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowFrameNumbers((v) => !v)}
+              title={showFrameNumbers ? 'Hide frame numbers' : 'Show frame numbers'}
+              className={showFrameNumbers ? '' : 'opacity-40'}
+            >
+              <HashIcon size={16} weight={showFrameNumbers ? 'fill' : 'regular'} />
+            </Button>
+          </>
         )}
       </div>
 

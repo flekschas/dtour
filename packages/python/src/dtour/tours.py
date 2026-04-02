@@ -677,10 +677,13 @@ def _compute_frame_summaries(
     feature_names: list[str],
     tour_mode: str | None = None,
 ) -> list[str]:
-    """Compute per-frame text summaries from projected loadings.
+    """Compute per-frame text summaries from per-eigenvector loadings.
 
-    For each view, projects the per-eigenvector loadings through the basis
-    matrix to find the top-2 features driving that frame's 2D projection.
+    For each cumulative frame, reports the top-2 features (by absolute
+    loading) of the **newly added eigenvector** — i.e. the eigenvector
+    that distinguishes this frame from the previous one.  Frame 0 uses
+    eigenvector 0, frame 1 uses eigenvector 1, etc.  This matches the
+    per-row information shown in the loading heatmap.
     """
     if tour_mode == "discriminative":
         prefix = "Discriminant"
@@ -688,10 +691,13 @@ def _compute_frame_summaries(
         prefix = "Structure"
 
     summaries: list[str] = []
-    for basis in views:
-        # basis: (n_total, 2), loadings: (n_total, n_features)
-        projected = basis.T @ loadings  # (2, n_features)
-        importance = np.linalg.norm(projected, axis=0)
+    n_eigenvectors = loadings.shape[0]
+    for i, _basis in enumerate(views):
+        # In the build-up phase (frames 0..n_eigenvectors-2), each frame
+        # adds eigenvector i+1.  Frame 0 is the identity pair (ev0, ev1),
+        # so we report eigenvector 1 for it.  Clamp to valid range.
+        ev_idx = min(i + 1, n_eigenvectors - 1)
+        importance = np.abs(loadings[ev_idx])
         top_k = np.argsort(importance)[::-1][:2]
         top_names = [feature_names[j] for j in top_k]
         summaries.append(f"{prefix}: {top_names[0]}, {top_names[1]}")

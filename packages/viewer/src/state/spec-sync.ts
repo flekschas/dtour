@@ -13,6 +13,7 @@ import {
   previewPaddingAtom,
   previewScaleAtom,
   showAxesAtom,
+  showFrameNumbersAtom,
   showLegendAtom,
   sliderSpacingAtom,
   themeModeAtom,
@@ -64,6 +65,7 @@ const SPEC_ATOM_MAP = {
   viewMode: entry(viewModeAtom),
   showLegend: entry(showLegendAtom),
   showAxes: entry(showAxesAtom),
+  showFrameNumbers: entry(showFrameNumbersAtom),
   sliderSpacing: entry(sliderSpacingAtom),
   themeMode: entry(themeModeAtom),
 } as const;

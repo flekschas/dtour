@@ -170,6 +170,9 @@ export const showLegendAtom = atom(true);
 /** User preference for showing axis biplot in guided mode. */
 export const showAxesAtom = atom(false);
 
+/** User preference for showing frame numbers on preview thumbnails. */
+export const showFrameNumbersAtom = atom(false);
+
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,
  * AND points are colored by a known data column (numeric or categorical).

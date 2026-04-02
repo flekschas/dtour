@@ -52,6 +52,8 @@ export {
   showLegendAtom,
   // Axes
   showAxesAtom,
+  // Frame numbers
+  showFrameNumbersAtom,
   legendVisibleAtom,
   // Theme
   themeModeAtom,
