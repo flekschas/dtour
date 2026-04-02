@@ -533,7 +533,6 @@ def _(X_scaled, cache_dir, marker_names):
             n_neighbors=15,
             feature_names=marker_names,
             random_state=42,
-            cumulative=True,
         )
         le_tour.save(le_tour_path)
     return dtour, le_tour
@@ -577,6 +576,212 @@ def _(cache_dir, dtour, le_df, le_tour, phenotype_colors):
         metadata={"dtour": dtour_json},
     )
     out_path
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ---
+
+    ## Signed Laplacian Tour
+
+    Same data, but now the kNN graph is split by phenotype label:
+    same-label edges **attract** (positive weights) while cross-label
+    edges **repel** (negative weights).  A single signed Laplacian
+    eigenvalue problem produces eigenvectors that capture class-aware
+    structure from coarse to fine.
+    """)
+    return
+
+
+@app.cell
+def _(X_scaled, cache_dir, marker_names, phenotypes):
+    import dtour as _dtour
+
+    signed_tour_path = cache_dir / "le_tour_signed.npz"
+    if signed_tour_path.exists():
+        signed_tour = _dtour.TourResult.load(signed_tour_path)
+    else:
+        signed_tour = _dtour.le_tour(
+            X_scaled,
+            n_frames=8,
+            n_neighbors=15,
+            feature_names=marker_names,
+            random_state=42,
+            labels=phenotypes.to_numpy(),
+        )
+        signed_tour.save(signed_tour_path)
+    return (signed_tour,)
+
+
+@app.cell
+def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
+    signed_df = pl.DataFrame(
+        {
+            f"LE{i}": signed_tour.embedding[:, i]
+            for i in range(signed_tour.embedding.shape[1])
+        }
+    ).with_columns(phenotypes)
+
+    signed_w = dtour.Widget(
+        data=signed_df,
+        tour=signed_tour,
+        preview_count=min(8, signed_tour.n_views),
+        preview_size="small",
+        point_color="phenotypes",
+        color_map=phenotype_colors,
+        camera_zoom=0.5,
+        height=720,
+    )
+    signed_w
+    return (signed_df,)
+
+
+@app.cell
+def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
+    signed_json = dtour.build_dtour_metadata(
+        point_color="phenotypes",
+        tour_by="dimensions",
+        preview_count=min(8, signed_tour.n_views),
+        camera_zoom=0.5,
+        color_map=phenotype_colors,
+        tour=signed_tour,
+    )
+    signed_out_path = cache_dir / "mair-2022-tumor-le-signed.pq"
+    signed_df.write_parquet(
+        str(signed_out_path),
+        compression="zstd",
+        compression_level=9,
+        metadata={"dtour": signed_json},
+    )
+    signed_out_path
+    return
+
+
+@app.cell
+def _(mo, signed_tour):
+    _summaries = signed_tour.frame_summaries or []
+    _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
+    mo.md("### Per-Frame Loading Summaries\n\n" + "\n".join(_lines))
+    return
+
+
+@app.cell
+def _(np, signed_tour):
+    import matplotlib.pyplot as _plt2
+
+    _loadings = signed_tour.feature_loadings
+    _names = signed_tour.feature_names
+    _r2 = signed_tour.feature_r2
+    _n_comp = _loadings.shape[0]
+
+    _row_labels = [f"LE{i} (R\u00b2={_r2[i]:.2f})" for i in range(_n_comp)]
+
+    _vmax = np.abs(_loadings).max()
+    _fig, _ax = _plt2.subplots(figsize=(max(10, len(_names) * 0.6), _n_comp * 0.5 + 2))
+    _im = _ax.imshow(_loadings, cmap="RdBu_r", aspect="auto", vmin=-_vmax, vmax=_vmax)
+    _ax.set_xticks(range(len(_names)))
+    _ax.set_xticklabels(_names, rotation=45, ha="right", fontsize=9)
+    _ax.set_yticks(range(_n_comp))
+    _ax.set_yticklabels(_row_labels, fontsize=9)
+
+    _ax.set_title("Signed Laplacian Feature Loadings", fontsize=12)
+    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ---
+
+    ## Spectral Fisher Discriminant Tour
+
+    Same data, but now eigenvectors are ordered by **discriminative power**:
+    the first eigenvector maximally separates cell phenotypes, and each
+    subsequent one adds the next most class-separating direction.
+    """)
+    return
+
+
+@app.cell
+def _(X_scaled, cache_dir, marker_names, phenotypes):
+    import dtour as _dtour2
+
+    fisher_tour_path = cache_dir / "le_tour_fisher.npz"
+    if fisher_tour_path.exists():
+        fisher_tour = _dtour2.TourResult.load(fisher_tour_path)
+    else:
+        fisher_tour = _dtour2.le_tour(
+            X_scaled,
+            n_frames=8,
+            n_neighbors=15,
+            feature_names=marker_names,
+            random_state=42,
+            labels=phenotypes.to_numpy(),
+            discriminative=True,
+        )
+        fisher_tour.save(fisher_tour_path)
+    return (fisher_tour,)
+
+
+@app.cell
+def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
+    fisher_df = pl.DataFrame(
+        {
+            f"FD{i}": fisher_tour.embedding[:, i]
+            for i in range(fisher_tour.embedding.shape[1])
+        }
+    ).with_columns(phenotypes)
+
+    fisher_w = dtour.Widget(
+        data=fisher_df,
+        tour=fisher_tour,
+        preview_count=min(8, fisher_tour.n_views),
+        preview_size="small",
+        point_color="phenotypes",
+        color_map=phenotype_colors,
+        camera_zoom=0.5,
+        height=720,
+    )
+    fisher_w
+    return (fisher_df,)
+
+
+@app.cell
+def _(mo, fisher_tour):
+    _summaries = fisher_tour.frame_summaries or []
+    _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
+    mo.md("### Per-Frame Loading Summaries (Fisher)\n\n" + "\n".join(_lines))
+    return
+
+
+@app.cell
+def _(fisher_tour, np):
+    import matplotlib.pyplot as _plt3
+
+    _loadings = fisher_tour.feature_loadings
+    _names = fisher_tour.feature_names
+    _r2 = fisher_tour.feature_r2
+    _n_comp = _loadings.shape[0]
+
+    _row_labels = [f"FD{i} (R\u00b2={_r2[i]:.2f})" for i in range(_n_comp)]
+
+    _vmax = np.abs(_loadings).max()
+    _fig, _ax = _plt3.subplots(figsize=(max(10, len(_names) * 0.6), _n_comp * 0.5 + 2))
+    _im = _ax.imshow(_loadings, cmap="RdBu_r", aspect="auto", vmin=-_vmax, vmax=_vmax)
+    _ax.set_xticks(range(len(_names)))
+    _ax.set_xticklabels(_names, rotation=45, ha="right", fontsize=9)
+    _ax.set_yticks(range(_n_comp))
+    _ax.set_yticklabels(_row_labels, fontsize=9)
+
+    _ax.set_title("Fisher Discriminant Feature Loadings", fontsize=12)
+    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
+    _fig.tight_layout()
+    _fig
     return
 
 

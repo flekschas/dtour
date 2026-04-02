@@ -30,6 +30,11 @@ class TourResult:
             dimension back onto original features, shape ``(n_components, n_features)``.
         feature_names: Original feature column names for labeling loadings.
         feature_r2: Per-dimension R-squared from the OLS regression.
+        frame_summaries: Per-frame text describing the top projection-driving
+            features, e.g. ``"Structure: CD3, CD4"``.
+        tour_mode: The embedding mode: ``None`` (vanilla LE),
+            ``"signed"`` (true signed Laplacian), or
+            ``"discriminative"`` (spectral Fisher discriminant).
     """
 
     views: list[np.ndarray]
@@ -40,6 +45,8 @@ class TourResult:
     feature_loadings: np.ndarray | None = None
     feature_names: list[str] | None = None
     feature_r2: list[float] | None = None
+    frame_summaries: list[str] | None = None
+    tour_mode: str | None = None
 
     @property
     def views_raw(self) -> bytes:
@@ -72,6 +79,10 @@ class TourResult:
             arrays["feature_names_json"] = np.array([json.dumps(self.feature_names)])
         if self.feature_r2 is not None:
             arrays["feature_r2"] = np.asarray(self.feature_r2, dtype=np.float64)
+        if self.frame_summaries is not None:
+            arrays["frame_summaries_json"] = np.array([json.dumps(self.frame_summaries)])
+        if self.tour_mode is not None:
+            arrays["tour_mode"] = np.array([self.tour_mode])
         np.savez_compressed(path, **arrays)
 
     @classmethod
@@ -89,6 +100,18 @@ class TourResult:
             json.loads(str(data["feature_names_json"][0])) if "feature_names_json" in data else None
         )
         feature_r2 = data["feature_r2"].tolist() if "feature_r2" in data else None
+        frame_summaries = (
+            json.loads(str(data["frame_summaries_json"][0]))
+            if "frame_summaries_json" in data
+            else None
+        )
+        # Read tour_mode; fall back to old n_attract for backward compat
+        if "tour_mode" in data:
+            tour_mode = str(data["tour_mode"][0])
+        elif "n_attract" in data:
+            tour_mode = "signed"
+        else:
+            tour_mode = None
         return cls(
             views=views,
             n_views=n_views,
@@ -98,6 +121,8 @@ class TourResult:
             feature_loadings=feature_loadings,
             feature_names=feature_names,
             feature_r2=feature_r2,
+            frame_summaries=frame_summaries,
+            tour_mode=tour_mode,
         )
 
 
@@ -284,14 +309,302 @@ def _nystroem_extend(
     nn.fit(arr_train)
     distances, indices = nn.kneighbors(arr_oos)
 
-    # Heat-kernel weights: exp(-d^2 / 2*sigma^2), sigma = median distance
+    # Heat-kernel weights: exp(-d^2 / sigma^2), sigma = median distance
+    # (matches the kernel used by _build_knn_affinity)
     sigma = np.median(distances) + 1e-10
-    weights = np.exp(-(distances**2) / (2 * sigma**2))
+    weights = np.exp(-(distances**2) / (sigma**2))
     weights /= weights.sum(axis=1, keepdims=True)
 
     # Weighted average of neighbor embeddings
     neighbor_embeddings = embedding_train[indices]  # (m, k, n_components)
     return np.einsum("ij,ijk->ik", weights, neighbor_embeddings).astype(np.float32)
+
+
+def _stratified_subsample(
+    labels: np.ndarray,
+    n_total: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Return stratified subsample indices that preserve all classes.
+
+    Each class gets at least ``max(1, n_neighbors_min)`` representatives,
+    with remaining budget distributed proportionally to class frequency.
+
+    Raises ``ValueError`` if the requested subsample size is too small
+    to include at least one sample from every class.
+    """
+    unique, counts = np.unique(labels, return_counts=True)
+    n_classes = len(unique)
+
+    if n_total < n_classes:
+        msg = (
+            f"subsample={n_total} is too small to represent all "
+            f"{n_classes} classes. Need at least {n_classes}."
+        )
+        raise ValueError(msg)
+
+    # Guarantee at least 1 sample per class, then distribute remainder
+    per_class = np.ones(n_classes, dtype=int)
+    remainder = n_total - n_classes
+    if remainder > 0:
+        # Proportional allocation of the remainder
+        fracs = counts / counts.sum()
+        extra = np.floor(fracs * remainder).astype(int)
+        # Distribute any leftover from rounding to the largest classes
+        shortfall = remainder - extra.sum()
+        if shortfall > 0:
+            top = np.argsort(-fracs)[:shortfall]
+            extra[top] += 1
+        per_class += extra
+
+    # Cap at actual class size
+    per_class = np.minimum(per_class, counts)
+
+    indices = []
+    for lb, n_pick in zip(unique, per_class):
+        class_idx = np.where(labels == lb)[0]
+        chosen = rng.choice(class_idx, size=n_pick, replace=False)
+        indices.append(chosen)
+
+    idx = np.concatenate(indices)
+    idx.sort()
+    return idx
+
+
+def _build_knn_affinity(
+    arr: np.ndarray,
+    n_neighbors: int,
+):
+    """Build a symmetric kNN affinity matrix with heat-kernel weights.
+
+    Uses ``sklearn.neighbors.kneighbors_graph`` to find k-nearest neighbors,
+    symmetrises the graph, and applies a heat kernel with bandwidth set to
+    the median non-zero distance.
+
+    Returns a sparse CSR affinity matrix.
+    """
+    from sklearn.neighbors import kneighbors_graph
+
+    G = kneighbors_graph(arr, n_neighbors=n_neighbors, mode="distance", include_self=False)
+    # Symmetrise: take the union of kNN relationships
+    G = 0.5 * (G + G.T)
+    # Heat kernel: W_ij = exp(-d^2 / sigma^2), sigma = median nonzero distance
+    sigma = np.median(G.data) + 1e-10
+    G.data = np.exp(-(G.data**2) / (sigma**2))
+    return G
+
+
+def _split_affinity_by_labels(
+    W,
+    labels: np.ndarray,
+):
+    """Split an affinity matrix into same-label and cross-label edges.
+
+    Returns:
+        W_same: Sparse CSR matrix with only same-label edges.
+        W_cross: Sparse CSR matrix with only cross-label edges.
+    """
+    from scipy import sparse
+
+    rows, cols = W.nonzero()
+    same_mask = labels[rows] == labels[cols]
+    cross_mask = ~same_mask
+
+    W_same = W.copy().tolil()
+    W_same[rows[cross_mask], cols[cross_mask]] = 0
+    W_same = sparse.csr_matrix(W_same)
+    W_same.eliminate_zeros()
+
+    W_cross = W.copy().tolil()
+    W_cross[rows[same_mask], cols[same_mask]] = 0
+    W_cross = sparse.csr_matrix(W_cross)
+    W_cross.eliminate_zeros()
+
+    return W_same, W_cross
+
+
+def _lobpcg_eigenvectors(
+    A,
+    n_components: int,
+    B=None,
+    random_state: int | None = None,
+) -> np.ndarray:
+    """Compute smallest eigenvectors using LOBPCG with AMG preconditioner.
+
+    Uses pyamg's ``smoothed_aggregation_solver`` as preconditioner for fast
+    convergence on large sparse systems, matching the solver used by
+    ``sklearn.manifold.SpectralEmbedding`` with ``eigen_solver="amg"``.
+
+    Args:
+        A: Sparse symmetric matrix (the operator).
+        B: Optional sparse SPD matrix for the generalised problem A x = λ B x.
+        n_components: Number of eigenvectors to compute.
+        random_state: Seed for the initial random guess.
+
+    Returns:
+        Eigenvectors corresponding to the smallest eigenvalues,
+        shape ``(n, n_components)``, as float32.
+    """
+    from pyamg import smoothed_aggregation_solver
+    from scipy.sparse.linalg import lobpcg
+
+    rng = np.random.default_rng(random_state)
+    n = A.shape[0]
+    X0 = rng.standard_normal((n, n_components)).astype(np.float64)
+
+    # AMG preconditioner on A (or A itself for the standard problem)
+    ml = smoothed_aggregation_solver(A.tocsr())
+    M = ml.aspreconditioner()
+
+    eigenvalues, eigenvectors = lobpcg(
+        A, X0, B=B, M=M, largest=False, tol=1e-8, maxiter=500
+    )
+
+    # Sort by eigenvalue (ascending)
+    order = np.argsort(eigenvalues)
+    return eigenvectors[:, order].astype(np.float32)
+
+
+def _signed_laplacian_embed(
+    arr: np.ndarray,
+    labels: np.ndarray,
+    n_components: int,
+    n_neighbors: int,
+    alpha: float = 1.0,
+    random_state: int | None = None,
+) -> np.ndarray:
+    """Compute eigenvectors of the true signed graph Laplacian.
+
+    Builds ``W_signed = W_same - alpha * W_cross`` from the kNN affinity
+    graph, then solves for the smallest eigenvectors of the **normalised**
+    signed Laplacian ``L_sym = D^{-1/2} L D^{-1/2}``.
+
+    The degree-normalisation (matching what ``sklearn.SpectralEmbedding``
+    uses for standard LE) bounds the eigenvector entries and prevents
+    extreme outliers from nodes with unusual degree.
+
+    Unlike standard LE, the constant vector is NOT a trivial eigenvector
+    of the signed Laplacian, so all returned eigenvectors are informative.
+
+    Args:
+        arr: Feature matrix, shape ``(n_samples, n_features)``.
+        labels: Per-sample class labels.
+        n_components: Number of eigenvectors to compute.
+        n_neighbors: kNN graph parameter.
+        alpha: Repulsion strength.  ``0`` recovers same-label-only LE,
+            ``1`` gives balanced attraction/repulsion.
+        random_state: Seed for the eigensolver.
+
+    Returns:
+        Embedding matrix, shape ``(n_samples, n_components)``, float32.
+    """
+    from scipy import sparse
+
+    W = _build_knn_affinity(arr, n_neighbors)
+    W_same, W_cross = _split_affinity_by_labels(W, labels)
+
+    # Signed affinity: positive for same-label, negative for cross-label
+    W_signed = W_same - alpha * W_cross
+
+    # Degree matrix uses absolute values of signed affinity
+    W_abs = W_same + alpha * W_cross  # |W_signed|
+    d = np.asarray(W_abs.sum(axis=1)).ravel()
+
+    # Symmetric normalisation: L_sym = D^{-1/2} L D^{-1/2}
+    d_inv_sqrt = 1.0 / np.sqrt(np.maximum(d, 1e-10))
+    D_inv_sqrt = sparse.diags(d_inv_sqrt)
+    L = sparse.diags(d) - W_signed
+    L_sym = D_inv_sqrt @ L @ D_inv_sqrt
+    L_sym = (L_sym + L_sym.T) / 2  # numerical symmetry
+
+    evecs_norm = _lobpcg_eigenvectors(
+        L_sym, n_components, random_state=random_state,
+    )
+
+    # Transform back to original space: v = D^{-1/2} * u
+    return (D_inv_sqrt @ evecs_norm).astype(np.float32)
+
+
+def _spectral_fisher_embed(
+    arr: np.ndarray,
+    labels: np.ndarray,
+    n_components: int,
+    n_neighbors: int,
+    random_state: int | None = None,
+) -> np.ndarray:
+    """Compute Fisher-discriminant embedding by LDA on LE eigenvectors.
+
+    First computes a standard Laplacian Eigenmaps embedding (which is
+    well-scaled thanks to sklearn's degree normalisation), then solves
+    a small Fisher LDA problem in the embedding space::
+
+        S_b · v = λ · S_w · v
+
+    where ``S_b`` and ``S_w`` are the between-class and within-class
+    scatter matrices of the spectral embedding.  The largest eigenvalues
+    correspond to the most discriminative projections.
+
+    This avoids the numerical issues of graph-Laplacian generalised
+    eigenvalue problems (unbounded eigenvector entries for poorly-connected
+    minority-class nodes) because the LE embedding is already bounded
+    and the LDA reduces to a tiny dense eigenvalue problem.
+
+    Args:
+        arr: Feature matrix, shape ``(n_samples, n_features)``.
+        labels: Per-sample class labels.
+        n_components: Number of eigenvectors to compute.
+        n_neighbors: kNN graph parameter.
+        random_state: Seed for the eigensolver.
+
+    Returns:
+        Embedding matrix, shape ``(n_samples, n_components)``, float32.
+    """
+    from scipy.linalg import eigh
+    from sklearn.manifold import SpectralEmbedding
+
+    # Step 1: Standard LE embedding (well-normalised by sklearn)
+    se = SpectralEmbedding(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        affinity="nearest_neighbors",
+        eigen_solver="amg",
+        **({"random_state": random_state} if random_state is not None else {}),
+    )
+    emb = se.fit_transform(arr)  # (n, n_components)
+
+    # Step 2: Fisher LDA in the embedding space
+    unique_labels = np.unique(labels)
+    d = n_components
+    global_mean = emb.mean(axis=0)  # (d,)
+
+    S_b = np.zeros((d, d), dtype=np.float64)
+    S_w = np.zeros((d, d), dtype=np.float64)
+
+    for lb in unique_labels:
+        mask = labels == lb
+        n_c = mask.sum()
+        class_emb = emb[mask]  # (n_c, d)
+        mean_c = class_emb.mean(axis=0)
+
+        # Between-class scatter
+        diff = (mean_c - global_mean).reshape(-1, 1)
+        S_b += n_c * (diff @ diff.T)
+
+        # Within-class scatter
+        centered = class_emb - mean_c
+        S_w += centered.T @ centered
+
+    # Regularise S_w for numerical stability
+    S_w += 1e-6 * np.eye(d)
+
+    # Solve S_b v = lambda S_w v  (largest eigenvalues)
+    _, eigenvectors = eigh(S_b, S_w)
+
+    # eigh returns ascending order; reverse for descending (most discriminative first)
+    eigenvectors = eigenvectors[:, ::-1]
+
+    # Step 3: Project LE embedding through Fisher directions
+    return (emb @ eigenvectors).astype(np.float32)
 
 
 def _circular_basis(
@@ -358,6 +671,33 @@ def _cumulative_views(
     return views, emb_norm
 
 
+def _compute_frame_summaries(
+    views: list[np.ndarray],
+    loadings: np.ndarray,
+    feature_names: list[str],
+    tour_mode: str | None = None,
+) -> list[str]:
+    """Compute per-frame text summaries from projected loadings.
+
+    For each view, projects the per-eigenvector loadings through the basis
+    matrix to find the top-2 features driving that frame's 2D projection.
+    """
+    if tour_mode == "discriminative":
+        prefix = "Discriminant"
+    else:
+        prefix = "Structure"
+
+    summaries: list[str] = []
+    for basis in views:
+        # basis: (n_total, 2), loadings: (n_total, n_features)
+        projected = basis.T @ loadings  # (2, n_features)
+        importance = np.linalg.norm(projected, axis=0)
+        top_k = np.argsort(importance)[::-1][:2]
+        top_names = [feature_names[j] for j in top_k]
+        summaries.append(f"{prefix}: {top_names[0]}, {top_names[1]}")
+    return summaries
+
+
 def le_tour(
     X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_components: int = 8,
@@ -365,25 +705,41 @@ def le_tour(
     feature_names: list[str] | None = None,
     random_state: int | None = None,
     subsample: int | None = None,
-    cumulative: bool = False,
     n_frames: int | None = None,
     n_remove: int = 0,
     se_kwargs: dict | None = None,
+    labels: np.ndarray | None = None,
+    discriminative: bool = False,
+    alpha: float = 1.0,
 ) -> TourResult:
     """Compute a Laplacian Eigenmaps tour.
 
     Builds a kNN affinity graph from *X*, computes the graph Laplacian's
     smallest non-trivial eigenvectors (spectral embedding / Laplacian
-    eigenmaps), then builds a tour through the eigenvector space.
+    eigenmaps), then builds a cumulative tour through the eigenvector space.
+
+    Each view progressively incorporates one more eigenvector through a
+    fixed circular projection (global → local accumulation).  Eigenvectors
+    are variance-normalised so each contributes equally.
 
     Each eigenvector is regressed (OLS) back onto the original features so
     that loadings and R-squared values are available on the returned
     :class:`TourResult`.
 
+    When *labels* are provided, the kNN graph becomes class-aware via a
+    true signed Laplacian: same-label edges attract and cross-label edges
+    repel.  This produces a single ordered set of eigenvectors that
+    capture class-aware structure from coarse to fine.
+
+    When *discriminative* is ``True`` (requires *labels*), a spectral
+    Fisher discriminant is used instead: eigenvectors are ordered by
+    discriminative power so the tour builds up from the most to least
+    class-separating directions.
+
     Args:
         X: Input data, shape ``(n_samples, n_features)``.
-        n_components: Number of Laplacian eigenvectors to compute.  In
-            cumulative mode with *n_frames*, this is derived automatically
+        n_components: Number of Laplacian eigenvectors to compute.  When
+            *n_frames* is given, this is derived automatically
             (``n_frames + 1``) and should not be set.
         n_neighbors: Number of nearest neighbors for the kNN affinity graph.
         feature_names: Original feature column names.  If ``None`` and *X*
@@ -392,38 +748,126 @@ def le_tour(
         subsample: If set, randomly subsample this many rows for the spectral
             embedding computation, then project remaining rows via kNN
             interpolation.  Useful for large datasets (>100k rows).
-        cumulative: If ``True``, each view progressively incorporates one more
-            eigenvector through a fixed projection (global→local accumulation).
-            Eigenvectors are variance-normalized so each contributes equally.
-            If ``False`` (default), views are cyclic pairs in eigenvalue order.
-        n_frames: Number of build-up frames in cumulative mode.  Since the
-            first frame shows LE0 vs LE1 (2 eigenvectors) and each subsequent
-            frame adds one, ``n_frames + 1`` eigenvectors are computed.
-            Only used when ``cumulative=True``; ignored otherwise.
+        n_frames: Total number of tour frames.  The first frame shows
+            eigenvectors 0 and 1, each subsequent frame adds one more,
+            so ``n_frames + 1`` eigenvectors are computed.
         n_remove: Number of low-frequency eigenvectors to progressively
-            remove after the build-up phase (only used when ``cumulative=True``).
-            Creates a spectral high-pass effect, isolating local structure.
+            remove after the build-up phase.  Creates a spectral high-pass
+            effect, isolating local structure.
         se_kwargs: Extra keyword arguments passed to
-            ``sklearn.manifold.SpectralEmbedding``.
+            ``sklearn.manifold.SpectralEmbedding`` (vanilla LE path only).
+        labels: Per-sample class labels.  When provided (without
+            *discriminative*), enables the **signed Laplacian** path
+            where same-label edges attract and cross-label edges repel.
+        discriminative: If ``True``, use spectral Fisher discriminant
+            instead of the signed Laplacian.  Requires *labels*.
+            Eigenvectors are ordered by discriminative power.
+        alpha: Repulsion strength for the signed Laplacian path.
+            ``0`` recovers same-label-only LE, ``1`` (default) gives
+            balanced attraction/repulsion.  Ignored when *discriminative*
+            is ``True``.
 
     Returns:
         A :class:`TourResult` with basis matrices, embedding,
-        ``feature_loadings``, ``feature_names``, and ``feature_r2``.
+        ``feature_loadings``, ``feature_names``, ``feature_r2``, and
+        ``frame_summaries``.
     """
     from sklearn.manifold import SpectralEmbedding
 
     if feature_names is None:
         feature_names = _extract_feature_names(X)
 
-    # In cumulative mode, n_frames drives the eigenvector count
-    if cumulative and n_frames is not None:
+    if discriminative and labels is None:
+        msg = "discriminative=True requires labels to be provided."
+        raise ValueError(msg)
+
+    # Derive n_components from n_frames (or vice versa)
+    if n_frames is not None:
         n_components = n_frames + 1
 
     arr = _to_float32(X)
     n_samples = arr.shape[0]
 
+    if labels is not None and len(labels) != n_samples:
+        msg = f"labels length ({len(labels)}) must match number of samples ({n_samples})."
+        raise ValueError(msg)
+
     rng = np.random.default_rng(random_state)
 
+    # Determine tour mode
+    if discriminative:
+        tour_mode = "discriminative"
+    elif labels is not None:
+        tour_mode = "signed"
+    else:
+        tour_mode = None
+
+    # ── Label-aware paths (signed Laplacian or spectral Fisher) ───────
+    if labels is not None:
+        labels_arr = np.asarray(labels)
+
+        if subsample is not None and n_samples > subsample:
+            idx_train = _stratified_subsample(labels_arr, subsample, rng)
+            arr_train = arr[idx_train]
+            labels_train = labels_arr[idx_train]
+
+            if discriminative:
+                embedding_train = _spectral_fisher_embed(
+                    arr_train, labels_train, n_components, n_neighbors,
+                    random_state=random_state,
+                )
+            else:
+                embedding_train = _signed_laplacian_embed(
+                    arr_train, labels_train, n_components, n_neighbors,
+                    alpha=alpha, random_state=random_state,
+                )
+
+            mask_oos = np.ones(n_samples, dtype=bool)
+            mask_oos[idx_train] = False
+            arr_oos = arr[mask_oos]
+
+            embedding_oos = _nystroem_extend(
+                arr_train, embedding_train, arr_oos, n_neighbors,
+            )
+
+            embedding = np.empty((n_samples, n_components), dtype=np.float32)
+            embedding[idx_train] = embedding_train
+            embedding[mask_oos] = embedding_oos
+        else:
+            if discriminative:
+                embedding = _spectral_fisher_embed(
+                    arr, labels_arr, n_components, n_neighbors,
+                    random_state=random_state,
+                )
+            else:
+                embedding = _signed_laplacian_embed(
+                    arr, labels_arr, n_components, n_neighbors,
+                    alpha=alpha, random_state=random_state,
+                )
+
+        views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
+        loadings, r2 = _compute_feature_loadings(arr, embedding)
+
+        frame_summaries = None
+        if feature_names is not None:
+            frame_summaries = _compute_frame_summaries(
+                views, loadings, feature_names, tour_mode=tour_mode,
+            )
+
+        result = TourResult(
+            views=views,
+            n_views=len(views),
+            n_dims=n_components,
+        )
+        result.embedding = emb_for_tour
+        result.feature_loadings = loadings
+        result.feature_names = feature_names
+        result.feature_r2 = r2
+        result.frame_summaries = frame_summaries
+        result.tour_mode = tour_mode
+        return result
+
+    # ── Standard path (vanilla LE, no labels) ─────────────────────────
     kwargs: dict = {
         "n_components": n_components,
         "n_neighbors": n_neighbors,
@@ -434,38 +878,32 @@ def le_tour(
     }
 
     if subsample is not None and n_samples > subsample:
-        # Subsample for the expensive eigendecomposition
         idx_train = rng.choice(n_samples, size=subsample, replace=False)
         idx_train.sort()
         arr_train = arr[idx_train]
 
         embedding_train = SpectralEmbedding(**kwargs).fit_transform(arr_train)
 
-        # Project remaining points via kNN interpolation
         mask_oos = np.ones(n_samples, dtype=bool)
         mask_oos[idx_train] = False
         arr_oos = arr[mask_oos]
 
         embedding_oos = _nystroem_extend(arr_train, embedding_train, arr_oos, n_neighbors)
 
-        # Reassemble full embedding in original row order
         embedding = np.empty((n_samples, n_components), dtype=np.float32)
         embedding[idx_train] = embedding_train
         embedding[mask_oos] = embedding_oos
     else:
         embedding = SpectralEmbedding(**kwargs).fit_transform(arr)
 
-    if cumulative:
-        views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
-    else:
-        # Cyclic pairs in native eigenvalue order (global→local)
-        views = []
-        for i in range(n_components):
-            basis = np.zeros((n_components, 2), dtype=np.float32)
-            basis[i, 0] = 1.0
-            basis[(i + 1) % n_components, 1] = 1.0
-            views.append(basis)
-        emb_for_tour = embedding
+    views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
+    loadings, r2 = _compute_feature_loadings(arr, embedding)
+
+    frame_summaries = None
+    if feature_names is not None:
+        frame_summaries = _compute_frame_summaries(
+            views, loadings, feature_names, tour_mode=tour_mode,
+        )
 
     result = TourResult(
         views=views,
@@ -473,10 +911,9 @@ def le_tour(
         n_dims=n_components,
     )
     result.embedding = emb_for_tour
-
-    loadings, r2 = _compute_feature_loadings(arr, embedding)
     result.feature_loadings = loadings
     result.feature_names = feature_names
     result.feature_r2 = r2
+    result.frame_summaries = frame_summaries
 
     return result
