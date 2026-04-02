@@ -82,8 +82,13 @@ export const useScatter = (scatter: ScatterInstance | null) => {
       scatter.clearColor();
       scatter.setStyle({ pointSize, opacity, color: hexToRgb(color) });
     } else {
-      // Column name — encode per-point colors via data worker
+      // Column name — encode per-point colors via data worker.
+      // Skip until metadata is available: the data worker only knows column
+      // names after it has parsed the dataset, so encodeColor sent before
+      // that point would silently no-op.  Including metadata in the deps
+      // ensures we re-send once data is ready.
       scatter.setStyle({ pointSize, opacity });
+      if (!metadata) return;
       // Resolve theme-aware colorMap to Record<string, [r,g,b]> for the scatter worker
       let resolvedColorMap: Record<string, [number, number, number]> | undefined;
       if (rawColorMap) {
@@ -95,7 +100,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
       }
       scatter.encodeColor(color, palette, resolvedTheme, resolvedColorMap);
     }
-  }, [scatter, pointSize, opacity, color, palette, resolvedTheme, rawColorMap]);
+  }, [scatter, pointSize, opacity, color, palette, resolvedTheme, rawColorMap, metadata]);
 
   // Forward legend selection → scatter.selectByColumn
   useEffect(() => {
