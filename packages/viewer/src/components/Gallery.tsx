@@ -197,7 +197,9 @@ export const Gallery = ({
               {visible && showFrameNumbers && (
                 <span
                   className={cn(
-                    'absolute top-0.5 left-1 text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
+                    'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
+                    row === 0 ? 'top-0.5' : row === k ? 'bottom-0.5' : 'top-1/2 -translate-y-1/2',
+                    col === 0 ? 'left-1' : col === k ? 'right-1' : 'left-1/2 -translate-x-1/2',
                     i === selectedKeyframe || i === currentKeyframe
                       ? 'opacity-100'
                       : 'opacity-40 group-hover:opacity-100',
