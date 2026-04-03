@@ -25,6 +25,7 @@ export const dtourSpecSchema = z.object({
   showAxes: z.boolean().optional(),
   showFrameNumbers: z.boolean().optional(),
   showFrameLoadings: z.boolean().optional(),
+  showTourDescription: z.boolean().optional(),
   sliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
 });
@@ -172,6 +173,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   showAxes: false,
   showFrameNumbers: false,
   showFrameLoadings: true,
+  showTourDescription: false,
   sliderSpacing: 'equal',
   themeMode: 'dark',
 };

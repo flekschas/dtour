@@ -176,6 +176,9 @@ export const showFrameNumbersAtom = atom(false);
 /** User preference for showing feature loading pills on preview thumbnails. */
 export const showFrameLoadingsAtom = atom(true);
 
+/** User preference for showing the tour description sub-bar. */
+export const showTourDescriptionAtom = atom(false);
+
 /** Per-frame top-2 feature loadings from embedded tour config. */
 export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
 

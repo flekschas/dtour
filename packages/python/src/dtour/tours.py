@@ -26,8 +26,8 @@ class TourResult:
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
-        feature_loadings: OLS regression coefficients mapping each embedding
-            dimension back onto original features, shape ``(n_components, n_features)``.
+        feature_loadings: Pearson correlations between each embedding
+            dimension and each original feature, shape ``(n_components, n_features)``.
         feature_names: Original feature column names for labeling loadings.
         feature_r2: Per-dimension R-squared from the OLS regression.
         frame_summaries: Per-frame text describing the top projection-driving
@@ -157,27 +157,49 @@ def _compute_feature_loadings(
     X: np.ndarray,
     embedding: np.ndarray,
 ) -> tuple[np.ndarray, list[float]]:
-    """Regress each embedding dimension onto original features via OLS.
+    """Pearson correlation between each feature and each embedding dimension.
+
+    Uses marginal Pearson *r* rather than OLS regression coefficients.
+    Correlations are bounded [-1, 1], scale-invariant, and unaffected by
+    multicollinearity — making them more suitable for ranking feature
+    importance.
+
+    The per-dimension R² is still computed via OLS to indicate how well
+    *all* features together linearly predict each embedding dimension.
 
     Args:
         X: Original feature matrix, shape ``(n_samples, n_features)``.
         embedding: Low-dimensional embedding, shape ``(n_samples, n_components)``.
 
     Returns:
-        loadings: Coefficients, shape ``(n_components, n_features)``.
-        r2: Per-component R-squared values.
+        correlations: Pearson *r*, shape ``(n_components, n_features)``.
+        r2: Per-component multivariate R-squared values (OLS).
     """
     n_components = embedding.shape[1]
-    loadings = np.empty((n_components, X.shape[1]), dtype=np.float32)
+
+    # Pearson correlation: r(emb_k, X_j) for each (k, j) pair
+    X_c = X - X.mean(axis=0, keepdims=True)
+    E_c = embedding - embedding.mean(axis=0, keepdims=True)
+
+    X_norm = np.sqrt((X_c**2).sum(axis=0, keepdims=True))  # (1, n_features)
+    E_norm = np.sqrt((E_c**2).sum(axis=0, keepdims=True))  # (1, n_components)
+
+    X_norm = np.where(X_norm == 0, 1, X_norm)
+    E_norm = np.where(E_norm == 0, 1, E_norm)
+
+    # (n_components, n_features)
+    correlations = (E_c / E_norm).T @ (X_c / X_norm)
+
+    # Per-dimension multivariate R² via OLS
     r2: list[float] = []
     for k in range(n_components):
         y = embedding[:, k]
         w, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
-        loadings[k] = w
         ss_res = np.sum((y - X @ w) ** 2)
         ss_tot = np.sum((y - y.mean()) ** 2)
         r2.append(float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0)
-    return loadings, r2
+
+    return correlations.astype(np.float32), r2
 
 
 def _to_float32(X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table) -> np.ndarray:
@@ -728,8 +750,8 @@ def le_tour(
     fixed circular projection (global → local accumulation).  Eigenvectors
     are variance-normalised so each contributes equally.
 
-    Each eigenvector is regressed (OLS) back onto the original features so
-    that loadings and R-squared values are available on the returned
+    Each eigenvector is correlated (Pearson *r*) with the original features
+    so that loadings and R-squared values are available on the returned
     :class:`TourResult`.
 
     When *labels* are provided, the kNN graph becomes class-aware via a

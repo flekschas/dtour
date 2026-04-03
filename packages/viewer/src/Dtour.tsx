@@ -20,10 +20,18 @@ import {
   metadataAtom,
   pointColorAtom,
   resolvedThemeAtom,
+  showTourDescriptionAtom,
   tourModeAtom,
   viewModeAtom,
 } from './state/atoms.ts';
 import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
+
+const TOUR_DESCRIPTIONS: Record<string, string> = {
+  le: 'Neighborhood structure from broad to fine. Each frame adds increasingly local variation.',
+  signed: 'Class-aware structure from coarse to fine. Each frame adds finer group-aware patterns.',
+  discriminative:
+    'Class contrasts from strongest to subtlest. Each frame adds a new between-group difference.',
+};
 
 export type DtourHandle = {
   /** Select points by index array or bit-packed mask. */
@@ -259,6 +267,13 @@ const DtourInner = ({
   const isGrand = viewMode === 'grand';
   const legendVisible = useAtomValue(legendVisibleAtom);
 
+  // Tour description sub-bar
+  const showTourDescription = useAtomValue(showTourDescriptionAtom);
+  const frameLoadings = useAtomValue(frameLoadingsAtom);
+  const tourMode = useAtomValue(tourModeAtom);
+  const descriptionVisible = showTourDescription && viewMode === 'guided' && frameLoadings !== null;
+  const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
+
   // Sidebar width state — remembered across open/close cycles
   const [sidebarWidth, setSidebarWidth] = useState(200);
   const [dragging, setDragging] = useState(false);
@@ -301,13 +316,22 @@ const DtourInner = ({
     >
       {/* Canvas panel — grows to fill remaining space */}
       <div className="relative flex-1 min-w-0">
-        {/* Toolbar — inside left panel so it shrinks with the legend */}
+        {/* Toolbar + optional description sub-bar */}
         <div
-          className={`absolute inset-x-0 top-0 z-10 h-10 transition-[transform,opacity] duration-300 ease-out ${
+          className={`absolute inset-x-0 top-0 z-10 transition-[transform,opacity] duration-300 ease-out ${
             isGrand ? '-translate-y-full' : 'translate-y-0'
           } ${hideToolbar ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <DtourToolbar onLoadData={onLoadData} onLogoClick={onLogoClick} />
+          <div className="h-10">
+            <DtourToolbar onLoadData={onLoadData} onLogoClick={onLogoClick} />
+          </div>
+          {descriptionVisible && (
+            <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
+              <span className="text-[11px] text-dtour-text-muted italic">
+                {TOUR_DESCRIPTIONS[tourMode ?? 'le']}
+              </span>
+            </div>
+          )}
         </div>
         <div className="absolute inset-0 overflow-hidden">
           <DtourViewer
@@ -317,7 +341,7 @@ const DtourInner = ({
             metricTracks={metricTracks}
             metricBarWidth={metricBarWidth}
             onStatus={onStatus}
-            toolbarHeight={hideToolbar ? 0 : 40}
+            toolbarHeight={effectiveToolbarHeight}
             onScatterReady={setScatterInstance}
             backend={backend}
           />

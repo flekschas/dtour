@@ -1,3 +1,4 @@
+import { ArrowsLeftRightIcon, EqualsIcon } from '@phosphor-icons/react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
@@ -19,6 +20,7 @@ import {
   tourModeAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 
 export type GalleryProps = {
   /** Fixed pool of preview canvas elements (created at scatter init). */
@@ -66,18 +68,6 @@ export const Gallery = ({
 
   // Whether loading pills are actually visible (data available + user toggle on)
   const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
-
-  // Compute max absolute loading across all frames for tooltip normalization
-  const maxAbsLoading = useMemo(() => {
-    if (!frameLoadings) return 0;
-    let max = 0;
-    for (const frame of frameLoadings) {
-      for (const [, val] of frame) {
-        max = Math.max(max, Math.abs(val));
-      }
-    }
-    return max;
-  }, [frameLoadings]);
 
   // Grid area = container minus its CSS insets.
   const verticalInset = isToolbarVisible ? 36 : 16;
@@ -157,7 +147,12 @@ export const Gallery = ({
   );
 
   const k = previewCount / 4;
-  const modeLabel = tourMode === 'discriminative' ? 'discriminant' : 'structure';
+  const axisDescription =
+    tourMode === 'discriminative'
+      ? 'Group-separating axis'
+      : tourMode === 'signed'
+        ? 'Class-aware axis'
+        : 'Neighborhood axis';
 
   return (
     <div
@@ -193,6 +188,7 @@ export const Gallery = ({
         const isBottomEdge = row === k;
         const loadingPairs: FrameLoading[] | null =
           loadingsVisible && frameLoadings && i < frameLoadings.length ? frameLoadings[i]! : null;
+        const hasLoadingPills = loadingPairs !== null && loadingPairs.length >= 2;
 
         return (
           <div
@@ -203,7 +199,7 @@ export const Gallery = ({
           >
             <div
               className={cn(
-                'flex pointer-events-none',
+                'flex pointer-events-auto group/preview',
                 isBottomEdge ? 'flex-col-reverse' : 'flex-col',
                 visible ? '' : 'hidden',
               )}
@@ -217,7 +213,8 @@ export const Gallery = ({
                 onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
                 onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
                 className={cn(
-                  'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
+                  'overflow-hidden border border-dtour-border transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
+                  hasLoadingPills ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
                   visible ? 'block cursor-pointer' : 'hidden',
                 )}
                 style={{
@@ -248,42 +245,70 @@ export const Gallery = ({
                 loadingPairs &&
                 loadingPairs.length >= 2 &&
                 (() => {
-                  const [n0, v0] = loadingPairs[0]!;
-                  const [n1, v1] = loadingPairs[1]!;
+                  const [n0] = loadingPairs[0]!;
+                  const [n1] = loadingPairs[1]!;
                   const same = sameSign(loadingPairs);
-                  const pct0 =
-                    maxAbsLoading > 0 ? Math.round((Math.abs(v0) / maxAbsLoading) * 100) : 0;
-                  const pct1 =
-                    maxAbsLoading > 0 ? Math.round((Math.abs(v1) / maxAbsLoading) * 100) : 0;
                   const relation = same ? 'co-vary' : 'contrast';
+                  const isActive = i === selectedKeyframe || i === currentKeyframe;
                   return (
-                    <div
-                      className="flex items-center pointer-events-auto cursor-default select-none"
-                      style={{ width: sizes[i], height: LOADING_BAR_HEIGHT }}
-                    >
-                      <div
-                        className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden bg-white/10 h-full"
-                        title={`${n0}: ${pct0}% relative importance (top ${modeLabel} loading)`}
-                      >
-                        <span className="text-[10px] leading-none text-white truncate px-1">
-                          {n0}
-                        </span>
-                      </div>
-                      <span
-                        className="text-[10px] leading-none text-white/40 px-0.5 shrink-0"
-                        title={`${n0} and ${n1} ${relation} along this ${modeLabel} axis`}
-                      >
-                        {same ? '=' : '≠'}
-                      </span>
-                      <div
-                        className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden bg-white/10 h-full"
-                        title={`${n1}: ${pct1}% relative importance (top ${modeLabel} loading)`}
-                      >
-                        <span className="text-[10px] leading-none text-white truncate px-1">
-                          {n1}
-                        </span>
-                      </div>
-                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={cn(
+                              'flex items-center cursor-default select-none transition-colors duration-200',
+                              isActive
+                                ? 'bg-white'
+                                : 'bg-dtour-border group-hover/preview:bg-white',
+                              isBottomEdge ? 'rounded-t-sm' : 'rounded-b-sm',
+                            )}
+                            style={{ width: sizes[i], height: LOADING_BAR_HEIGHT }}
+                          >
+                            <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
+                              <span
+                                className={cn(
+                                  'text-[10px] leading-none transition-colors duration-200 truncate px-1',
+                                  isActive
+                                    ? 'text-black'
+                                    : 'text-white group-hover/preview:text-black',
+                                )}
+                              >
+                                {n0}
+                              </span>
+                            </div>
+                            <span
+                              className={cn(
+                                'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
+                                isActive
+                                  ? 'text-black/40'
+                                  : 'text-white/40 group-hover/preview:text-black/40',
+                              )}
+                            >
+                              {same ? (
+                                <EqualsIcon size={10} weight="bold" />
+                              ) : (
+                                <ArrowsLeftRightIcon size={10} weight="bold" />
+                              )}
+                            </span>
+                            <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
+                              <span
+                                className={cn(
+                                  'text-[10px] leading-none transition-colors duration-200 truncate px-1',
+                                  isActive
+                                    ? 'text-black'
+                                    : 'text-white group-hover/preview:text-black',
+                                )}
+                              >
+                                {n1}
+                              </span>
+                            </div>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side={isBottomEdge ? 'bottom' : 'top'}>
+                          {axisDescription} — {n0} and {n1} {relation}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   );
                 })()}
             </div>

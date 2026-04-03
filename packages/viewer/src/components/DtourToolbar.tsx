@@ -39,6 +39,7 @@ import {
   showFrameLoadingsAtom,
   showFrameNumbersAtom,
   showLegendAtom,
+  showTourDescriptionAtom,
   sliderSpacingAtom,
   themeModeAtom,
   tourByAtom,
@@ -48,6 +49,7 @@ import {
 } from '../state/atoms.ts';
 import { Logo } from './Logo.tsx';
 import { Button } from './ui/button.tsx';
+import { Checkbox } from './ui/checkbox.tsx';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -96,6 +98,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const hasFrameLoadings = useAtomValue(frameLoadingsAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
+  const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -281,17 +284,43 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
         {viewMode === 'guided' && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')}
-            title={sliderSpacing === 'equal' ? 'Spacing: equal' : 'Spacing: geodesic'}
-          >
-            <SlidersHorizontalIcon
-              size={16}
-              weight={sliderSpacing === 'equal' ? 'fill' : 'regular'}
-            />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" title="Tour settings">
+                <SlidersHorizontalIcon size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal');
+                }}
+              >
+                <Checkbox
+                  checked={sliderSpacing === 'geodesic'}
+                  onCheckedChange={() =>
+                    setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')
+                  }
+                />
+                <span className="text-xs">Geodesic spacing</span>
+              </DropdownMenuItem>
+              {hasFrameLoadings && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowTourDescription((v) => !v);
+                  }}
+                >
+                  <Checkbox
+                    checked={showTourDescription}
+                    onCheckedChange={() => setShowTourDescription((v) => !v)}
+                  />
+                  <span className="text-xs">Tour description</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         <Popover.Root>
           <Popover.Trigger asChild>
@@ -416,15 +445,17 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                       />
                     </div>
                   </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none pt-1">
-                    <input
-                      type="checkbox"
+                  <div
+                    className="flex items-center gap-1.5 cursor-pointer select-none pt-1"
+                    onClick={() => setShowFrameNumbers((v) => !v)}
+                    onKeyDown={undefined}
+                  >
+                    <Checkbox
                       checked={showFrameNumbers}
-                      onChange={() => setShowFrameNumbers((v) => !v)}
-                      className="accent-dtour-highlight"
+                      onCheckedChange={() => setShowFrameNumbers((v) => !v)}
                     />
                     <span className="text-xs text-dtour-text-muted">Numbers</span>
-                  </label>
+                  </div>
                 </div>
               </Popover.Content>
             </Popover.Portal>

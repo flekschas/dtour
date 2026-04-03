@@ -17,7 +17,7 @@ def _():
         embedding of the 18 winsorized marker columns, then runs a **little tour** through the eigenvectors with points
         colored by [FAUST label](https://pubmed.ncbi.nlm.nih.gov/34950900/)-derived phenotypes.
 
-        Each eigenvector is regressed (OLS) back onto the original markers so the loadings heatmap below shows which
+        Each eigenvector is correlated (Pearson *r*) with the original markers so the heatmap below shows which
         markers drive each LE dimension.
         """
     )
@@ -685,7 +685,7 @@ def _(np, signed_tour):
     _ax.set_yticks(range(_n_comp))
     _ax.set_yticklabels(_row_labels, fontsize=9)
 
-    _ax.set_title("Signed Laplacian Feature Loadings", fontsize=12)
+    _ax.set_title("Signed Laplacian Feature Correlations", fontsize=12)
     _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
     _fig.tight_layout()
     _fig
@@ -797,7 +797,7 @@ def _(fisher_tour, np):
     _ax.set_yticks(range(_n_comp))
     _ax.set_yticklabels(_row_labels, fontsize=9)
 
-    _ax.set_title("Fisher Discriminant Feature Loadings", fontsize=12)
+    _ax.set_title("Fisher Discriminant Feature Correlations", fontsize=12)
     _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
     _fig.tight_layout()
     _fig
@@ -823,7 +823,7 @@ def _(le_tour, np):
     _ax.set_xticklabels(names, rotation=45, ha="right", fontsize=9)
     _ax.set_yticks(range(n_comp))
     _ax.set_yticklabels(row_labels, fontsize=9)
-    _ax.set_title("LE Feature Loadings (OLS Regression)", fontsize=12)
+    _ax.set_title("LE Feature Correlations (Pearson r)", fontsize=12)
     _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
     _fig.tight_layout()
     _fig

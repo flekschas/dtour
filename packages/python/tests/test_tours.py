@@ -205,8 +205,11 @@ def test_compute_feature_loadings_perfect_fit():
     X = rng.standard_normal((500, 3)).astype(np.float32)
     W = rng.standard_normal((3, 2)).astype(np.float32)
     embedding = X @ W
-    loadings, r2 = _compute_feature_loadings(X, embedding)
-    assert loadings.shape == (2, 3)
+    correlations, r2 = _compute_feature_loadings(X, embedding)
+    assert correlations.shape == (2, 3)
+    # Correlations bounded [-1, 1]
+    assert np.all(np.abs(correlations) <= 1.0 + 1e-6)
+    # R² from multivariate OLS should be ~1 for perfect linear fit
     np.testing.assert_allclose(r2, [1.0, 1.0], atol=1e-4)
 
 

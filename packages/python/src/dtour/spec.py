@@ -36,6 +36,7 @@ _SNAKE_TO_CAMEL: dict[str, str] = {
     "show_axes": "showAxes",
     "show_frame_numbers": "showFrameNumbers",
     "show_frame_loadings": "showFrameLoadings",
+    "show_tour_description": "showTourDescription",
     "slider_spacing": "sliderSpacing",
     "theme_mode": "themeMode",
 }
@@ -97,6 +98,7 @@ def build_dtour_metadata(
     show_axes: bool | None = None,
     show_frame_numbers: bool | None = None,
     show_frame_loadings: bool | None = None,
+    show_tour_description: bool | None = None,
     slider_spacing: str | None = None,
     theme_mode: str | None = None,
     color_map: dict[str, str] | None = None,
@@ -144,6 +146,8 @@ def build_dtour_metadata(
         Whether frame numbers are shown on preview thumbnails.
     show_frame_loadings : bool, optional
         Whether feature loading pills are shown on preview thumbnails.
+    show_tour_description : bool, optional
+        Whether the tour description sub-bar is visible.
     slider_spacing : str, optional
         ``"equal"`` or ``"geodesic"``.
     theme_mode : str, optional
@@ -180,6 +184,7 @@ def build_dtour_metadata(
         "show_axes": show_axes,
         "show_frame_numbers": show_frame_numbers,
         "show_frame_loadings": show_frame_loadings,
+        "show_tour_description": show_tour_description,
         "slider_spacing": slider_spacing,
         "theme_mode": theme_mode,
     }

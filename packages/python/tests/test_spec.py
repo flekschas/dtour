@@ -81,6 +81,7 @@ def test_build_snake_to_camel_all_keys():
         "show_axes": True,
         "show_frame_numbers": True,
         "show_frame_loadings": False,
+        "show_tour_description": True,
         "slider_spacing": "equal",
         "theme_mode": "light",
     }
