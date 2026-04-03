@@ -54,6 +54,10 @@ export {
   showAxesAtom,
   // Frame numbers
   showFrameNumbersAtom,
+  // Frame loadings
+  showFrameLoadingsAtom,
+  frameLoadingsAtom,
+  tourModeAtom,
   legendVisibleAtom,
   // Theme
   themeModeAtom,

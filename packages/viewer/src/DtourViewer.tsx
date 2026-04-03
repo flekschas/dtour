@@ -36,6 +36,7 @@ import {
   currentBasisAtom,
   currentKeyframeAtom,
   embeddedConfigAtom,
+  frameLoadingsAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   legendSelectionAtom,
@@ -46,6 +47,7 @@ import {
   previewScaleAtom,
   resolvedThemeAtom,
   showAxesAtom,
+  showFrameLoadingsAtom,
   sliderSpacingAtom,
   tourByAtom,
   tourPlayingAtom,
@@ -170,6 +172,9 @@ export const DtourViewer = ({
   const spacingMode = useAtomValue(sliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = viewMode === 'guided';
+  const frameLoadings = useAtomValue(frameLoadingsAtom);
+  const showFrameLoadings = useAtomValue(showFrameLoadingsAtom);
+  const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
 
   // Resolve views (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
@@ -373,6 +378,7 @@ export const DtourViewer = ({
         SELECTOR_PADDING,
         previewScale,
         coloredTracks.length,
+        loadingsVisible,
       ),
     [
       containerSize.width,
@@ -381,6 +387,7 @@ export const DtourViewer = ({
       isToolbarVisible,
       previewScale,
       coloredTracks.length,
+      loadingsVisible,
     ],
   );
 

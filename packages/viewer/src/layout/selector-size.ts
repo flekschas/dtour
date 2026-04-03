@@ -1,4 +1,4 @@
-import { GAP, MAX_SIZE, sizeRatio } from './gallery-positions.ts';
+import { GAP, LOADING_BAR_HEIGHT, MAX_SIZE, sizeRatio } from './gallery-positions.ts';
 
 const MIN_SIZE = 80;
 
@@ -29,6 +29,8 @@ export function computeSelectorSize(
   scale = 1,
   /** Number of radial metric tracks rendered outside the ring. */
   metricTrackCount = 0,
+  /** Whether loading bars are shown below/above previews. */
+  showLoadings = false,
 ): number {
   if (previewCount === 0 || containerWidth <= 0 || containerHeight <= 0) {
     return Math.max(MIN_SIZE, Math.min(containerWidth, containerHeight));
@@ -36,6 +38,7 @@ export function computeSelectorSize(
 
   const k = Math.max(1, previewCount / 4);
   const numTracks = k + 1;
+  const loadingExtra = showLoadings ? LOADING_BAR_HEIGHT : 0;
 
   // Must match Gallery CSS: left-4, right-4, top/bottom = verticalInset.
   // When toolbar is visible overlayOffsetY = toolbarHeight/2 = 20 shifts
@@ -54,16 +57,20 @@ export function computeSelectorSize(
     ratios.push(r);
     ratioSum += r;
   }
-  const shortSide = Math.min(gridW, gridH);
+  const totalLoadingHeight = numTracks * loadingExtra;
+  const effectiveHeight = gridH - totalLoadingHeight;
+  const shortSide = Math.min(gridW, effectiveHeight);
   const availableForCells = shortSide - (numTracks - 1) * GAP;
   const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum) * scale;
   const trackSizes = ratios.map((r) => baseSize * r);
+  const rowTrackSizes = ratios.map((r) => baseSize * r + loadingExtra);
   const trackTotal = trackSizes.reduce((a, b) => a + b, 0);
+  const rowTrackTotal = rowTrackSizes.reduce((a, b) => a + b, 0);
 
   // Effective gaps: CSS justify-content/align-content: space-between
   // distributes remaining free space equally between inter-track gutters.
   const freeX = gridW - trackTotal - (numTracks - 1) * GAP;
-  const freeY = gridH - trackTotal - (numTracks - 1) * GAP;
+  const freeY = gridH - rowTrackTotal - (numTracks - 1) * GAP;
   const effGapX = GAP + (numTracks > 1 ? Math.max(0, freeX) / (numTracks - 1) : 0);
   const effGapY = GAP + (numTracks > 1 ? Math.max(0, freeY) / (numTracks - 1) : 0);
 
@@ -72,7 +79,7 @@ export function computeSelectorSize(
   const rowStarts: number[] = [0];
   for (let j = 1; j <= k; j++) {
     colStarts.push(colStarts[j - 1]! + trackSizes[j - 1]! + effGapX);
-    rowStarts.push(rowStarts[j - 1]! + trackSizes[j - 1]! + effGapY);
+    rowStarts.push(rowStarts[j - 1]! + rowTrackSizes[j - 1]! + effGapY);
   }
 
   // Selector centre in the overlay-wrapper coordinate system
@@ -104,7 +111,7 @@ export function computeSelectorSize(
     const cellX = gridLeft + colStarts[col]!;
     const cellY = verticalInset + rowStarts[row]!;
     const cellW = trackSizes[col]!;
-    const cellH = trackSizes[row]!;
+    const cellH = rowTrackSizes[row]!;
     const size = baseSize * sizeRatio(i % k, k);
 
     // Alignment within cell (matches Gallery flex alignment)
@@ -113,14 +120,21 @@ export function computeSelectorSize(
     else if (col === k) px = cellX + cellW - size;
     else px = cellX + (cellW - size) / 2;
 
+    // Vertical: the cell now includes loading bar height.
+    // Bottom-edge previews have the bar above (flex-col-reverse),
+    // so the preview canvas sits at the bottom of the cell.
     let py: number;
     if (row === 0) py = cellY;
     else if (row === k) py = cellY + cellH - size;
     else py = cellY + (cellH - size) / 2;
 
+    // Bounding box includes loading bar
+    const boxH = size + loadingExtra;
+    const boxY = row === k ? py - loadingExtra : py;
+
     // Euclidean distance from centre to nearest point on preview rect
     const dx = Math.max(0, px - cx, cx - (px + size));
-    const dy = Math.max(0, py - cy, cy - (py + size));
+    const dy = Math.max(0, boxY - cy, cy - (boxY + boxH));
     minDist = Math.min(minDist, Math.sqrt(dx * dx + dy * dy));
   }
 

@@ -287,7 +287,11 @@ def test_le_tour_signed_loadings():
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, feature_names=names,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        feature_names=names,
     )
     # 6 eigenvectors, 6 features
     assert result.feature_loadings.shape == (6, 6)
@@ -303,7 +307,11 @@ def test_le_tour_signed_frame_summaries():
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, feature_names=names,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        feature_names=names,
     )
     assert result.frame_summaries is not None
     assert len(result.frame_summaries) == result.n_views
@@ -325,8 +333,12 @@ def test_le_tour_signed_subsample():
     X = make_data(n=300, p=6)
     labels = np.array(["A"] * 150 + ["B"] * 150)
     result = le_tour(
-        X, n_neighbors=10, n_frames=4, labels=labels,
-        subsample=100, random_state=42,
+        X,
+        n_neighbors=10,
+        n_frames=4,
+        labels=labels,
+        subsample=100,
+        random_state=42,
     )
     assert result.embedding.shape == (300, 5)
     assert result.tour_mode == "signed"
@@ -338,7 +350,11 @@ def test_le_tour_signed_save_load(tmp_path):
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, feature_names=names,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        feature_names=names,
     )
     path = tmp_path / "signed_tour.npz"
     result.save(path)
@@ -358,7 +374,11 @@ def test_le_tour_discriminative_basic():
     X = make_data(n=300, p=6)
     labels = np.array(["A"] * 150 + ["B"] * 150)
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, discriminative=True,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        discriminative=True,
     )
     assert result.n_views == 5
     assert result.n_dims == 6  # n_frames + 1
@@ -376,7 +396,11 @@ def test_le_tour_discriminative_frame_summaries():
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, discriminative=True,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        discriminative=True,
         feature_names=names,
     )
     assert result.frame_summaries is not None
@@ -396,8 +420,13 @@ def test_le_tour_discriminative_subsample():
     X = make_data(n=300, p=6)
     labels = np.array(["A"] * 150 + ["B"] * 150)
     result = le_tour(
-        X, n_neighbors=10, n_frames=4, labels=labels, discriminative=True,
-        subsample=100, random_state=42,
+        X,
+        n_neighbors=10,
+        n_frames=4,
+        labels=labels,
+        discriminative=True,
+        subsample=100,
+        random_state=42,
     )
     assert result.embedding.shape == (300, 5)
     assert result.tour_mode == "discriminative"
@@ -409,7 +438,11 @@ def test_le_tour_discriminative_save_load(tmp_path):
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
     result = le_tour(
-        X, n_neighbors=10, n_frames=5, labels=labels, discriminative=True,
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        discriminative=True,
         feature_names=names,
     )
     path = tmp_path / "fisher_tour.npz"
@@ -428,8 +461,12 @@ def test_labeled_subsample_preserves_all_classes():
     # 3 classes with very unbalanced sizes: 270 / 20 / 10
     labels = np.array(["A"] * 270 + ["B"] * 20 + ["C"] * 10)
     result = le_tour(
-        X, n_neighbors=5, n_frames=3, labels=labels,
-        subsample=30, random_state=42,
+        X,
+        n_neighbors=5,
+        n_frames=3,
+        labels=labels,
+        subsample=30,
+        random_state=42,
     )
     assert result.embedding.shape == (300, 4)
     assert result.tour_mode == "signed"
@@ -441,8 +478,12 @@ def test_labeled_subsample_too_small_raises():
     labels = np.array(["A"] * 40 + ["B"] * 30 + ["C"] * 30)
     with pytest.raises(ValueError, match="too small to represent all"):
         le_tour(
-            X, n_neighbors=5, n_frames=3, labels=labels,
-            subsample=2, random_state=42,
+            X,
+            n_neighbors=5,
+            n_frames=3,
+            labels=labels,
+            subsample=2,
+            random_state=42,
         )
 
 
@@ -451,8 +492,13 @@ def test_labeled_subsample_imbalanced_discriminative():
     X = make_data(n=200, p=6)
     labels = np.array(["major"] * 190 + ["minor"] * 10)
     result = le_tour(
-        X, n_neighbors=5, n_frames=3, labels=labels, discriminative=True,
-        subsample=40, random_state=42,
+        X,
+        n_neighbors=5,
+        n_frames=3,
+        labels=labels,
+        discriminative=True,
+        subsample=40,
+        random_state=42,
     )
     assert result.embedding.shape == (200, 4)
     assert result.tour_mode == "discriminative"

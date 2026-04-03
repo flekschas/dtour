@@ -77,6 +77,7 @@ class Widget(anywidget.AnyWidget):
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
     view_mode = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
+    show_frame_loadings = t.Bool(True).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
@@ -266,6 +267,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["view_mode"] = self.view_mode
         if not self.show_legend:
             kwargs["show_legend"] = self.show_legend
+        if not self.show_frame_loadings:
+            kwargs["show_frame_loadings"] = self.show_frame_loadings
         if self.theme != "dark":
             kwargs["theme_mode"] = self.theme
 

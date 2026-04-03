@@ -2,6 +2,8 @@
 export const GAP = 32;
 /** Maximum preview size (CSS px). */
 export const MAX_SIZE = 320;
+/** Height of the loading bar below/above each preview (CSS px). */
+export const LOADING_BAR_HEIGHT = 24;
 /**
  * Per-edge-count ratio arrays.
  *   k=1 (4 previews)  → [1]             all same
@@ -61,6 +63,7 @@ export function computeGallerySizes(
   containerHeight: number,
   previewCount: number,
   scale = 1,
+  showLoadings = false,
 ): GallerySizes {
   const k = Math.max(1, previewCount / 4);
   const numTracks = k + 1;
@@ -74,14 +77,22 @@ export function computeGallerySizes(
     ratioSum += r;
   }
 
+  // When loading bars are shown, each row track needs extra height.
+  // Subtract the total loading bar height from the available vertical
+  // space before computing the base size so previews stay square.
+  const loadingExtra = showLoadings ? LOADING_BAR_HEIGHT : 0;
+  const totalLoadingHeight = showLoadings ? numTracks * loadingExtra : 0;
+
   // Derive all track sizes from the short side so previews stay square.
   // Available = shortSide - gaps between tracks.
   // baseSize is the unit; corner = 1.0×base, mid-edge = 0.8×base, etc.
-  const shortSide = Math.min(containerWidth, containerHeight);
+  const effectiveHeight = containerHeight - totalLoadingHeight;
+  const shortSide = Math.min(containerWidth, effectiveHeight);
   const availableForCells = shortSide - (numTracks - 1) * GAP;
   const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum) * scale;
 
-  const template = ratios.map((r) => `${Math.round(baseSize * r)}px`).join(' ');
+  const colTemplate = ratios.map((r) => `${Math.round(baseSize * r)}px`).join(' ');
+  const rowTemplate = ratios.map((r) => `${Math.round(baseSize * r + loadingExtra)}px`).join(' ');
   const previewSize = baseSize;
 
   // Per-preview sizes: each preview's size depends on its edge position.
@@ -95,8 +106,8 @@ export function computeGallerySizes(
   const padY = previewSize / 2;
 
   return {
-    gridTemplateColumns: template,
-    gridTemplateRows: template,
+    gridTemplateColumns: colTemplate,
+    gridTemplateRows: rowTemplate,
     sizes,
     previewSize,
     padX,

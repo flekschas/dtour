@@ -14,11 +14,13 @@ import {
   backgroundColorAtom,
   colorMapAtom,
   embeddedConfigAtom,
+  frameLoadingsAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
   pointColorAtom,
   resolvedThemeAtom,
+  tourModeAtom,
   viewModeAtom,
 } from './state/atoms.ts';
 import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
@@ -54,6 +56,8 @@ export type DtourProps = {
   hideToolbar?: boolean;
   /** Called when the user requests loading new data via the toolbar file picker. */
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
+  /** Called when the user clicks the toolbar logo. */
+  onLogoClick?: () => void;
   /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
   onSelectionChange?: (labels: string[]) => void;
   /** Per-label color map. Values are hex strings or theme-aware {light, dark} objects. */
@@ -77,6 +81,7 @@ export const Dtour = ({
   onStatus,
   hideToolbar = false,
   onLoadData,
+  onLogoClick,
   onSelectionChange,
   colorMap,
   portalContainer,
@@ -106,6 +111,7 @@ export const Dtour = ({
           onStatus={onStatus}
           hideToolbar={hideToolbar}
           onLoadData={onLoadData}
+          onLogoClick={onLogoClick}
           onSelectionChange={onSelectionChange}
           colorMap={colorMap}
           onReady={onReady}
@@ -128,6 +134,7 @@ const DtourInner = ({
   onStatus,
   hideToolbar,
   onLoadData,
+  onLogoClick,
   onSelectionChange,
   colorMap,
   onReady,
@@ -143,6 +150,7 @@ const DtourInner = ({
   onStatus: ((status: ScatterStatus) => void) | undefined;
   hideToolbar: boolean;
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
+  onLogoClick: (() => void) | undefined;
   onSelectionChange: ((labels: string[]) => void) | undefined;
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
@@ -182,6 +190,14 @@ const DtourInner = ({
   useEffect(() => {
     setColorMap(colorMap ?? embeddedConfig?.colorMap ?? null);
   }, [colorMap, embeddedConfig, setColorMap]);
+
+  // Sync tour frame loadings and tour mode from embedded config
+  const setFrameLoadings = useSetAtom(frameLoadingsAtom);
+  const setTourMode = useSetAtom(tourModeAtom);
+  useEffect(() => {
+    setFrameLoadings(embeddedConfig?.tour?.frameLoadings ?? null);
+    setTourMode(embeddedConfig?.tour?.tourMode ?? null);
+  }, [embeddedConfig, setFrameLoadings, setTourMode]);
 
   // Sync resolved theme → background color + CSS class
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
@@ -291,7 +307,7 @@ const DtourInner = ({
             isGrand ? '-translate-y-full' : 'translate-y-0'
           } ${hideToolbar ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
-          <DtourToolbar onLoadData={onLoadData} />
+          <DtourToolbar onLoadData={onLoadData} onLogoClick={onLogoClick} />
         </div>
         <div className="absolute inset-0 overflow-hidden">
           <DtourViewer

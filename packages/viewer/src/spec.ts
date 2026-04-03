@@ -24,17 +24,27 @@ export const dtourSpecSchema = z.object({
   showLegend: z.boolean().optional(),
   showAxes: z.boolean().optional(),
   showFrameNumbers: z.boolean().optional(),
+  showFrameLoadings: z.boolean().optional(),
   sliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
 
+/** Per-frame top-2 feature loadings: [featureName, loadingCoefficient] pairs. */
+export type FrameLoading = [string, number];
+
 /** Parsed contents of the Parquet "dtour" key_value_metadata entry. */
 export type EmbeddedConfig = {
   spec: DtourSpec;
   colorMap?: Record<string, string>;
-  tour?: { nDims: number; nViews: number; views: Float32Array[] };
+  tour?: {
+    nDims: number;
+    nViews: number;
+    views: Float32Array[];
+    tourMode?: 'signed' | 'discriminative' | null;
+    frameLoadings?: FrameLoading[][];
+  };
 };
 
 const SPEC_SHAPE_KEYS = Object.keys(dtourSpecSchema.shape) as (keyof DtourSpec)[];
@@ -102,6 +112,36 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
             views.push(floats.slice(v * stride, (v + 1) * stride));
           }
           tour = { nDims, nViews, views };
+
+          // Parse tourMode
+          if (t.tourMode === 'signed' || t.tourMode === 'discriminative') {
+            tour.tourMode = t.tourMode;
+          }
+
+          // Parse frameLoadings: array of [[name, coeff], [name, coeff]] per view
+          if (Array.isArray(t.frameLoadings)) {
+            const fl: FrameLoading[][] = [];
+            let valid = true;
+            for (const frame of t.frameLoadings as unknown[][]) {
+              if (!Array.isArray(frame)) {
+                valid = false;
+                break;
+              }
+              const pairs: FrameLoading[] = [];
+              for (const pair of frame) {
+                if (
+                  Array.isArray(pair) &&
+                  pair.length === 2 &&
+                  typeof pair[0] === 'string' &&
+                  typeof pair[1] === 'number'
+                ) {
+                  pairs.push([pair[0] as string, pair[1] as number]);
+                }
+              }
+              fl.push(pairs);
+            }
+            if (valid && fl.length > 0) tour.frameLoadings = fl;
+          }
         }
       } catch {
         // Invalid base64 — skip tour
@@ -131,6 +171,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   showLegend: true,
   showAxes: false,
   showFrameNumbers: false,
+  showFrameLoadings: true,
   sliderSpacing: 'equal',
   themeMode: 'dark',
 };

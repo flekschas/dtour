@@ -5,7 +5,6 @@ import {
   CompassIcon,
   CursorIcon,
   GaugeIcon,
-  HashIcon,
   ImageSquareIcon,
   MagnifyingGlassMinusIcon,
   MonitorIcon,
@@ -17,6 +16,7 @@ import {
   SidebarSimpleIcon,
   SlidersHorizontalIcon,
   SunIcon,
+  TagIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
@@ -26,6 +26,7 @@ import { usePortalContainer } from '../portal-container.tsx';
 import {
   activeColumnsAtom,
   cameraZoomAtom,
+  frameLoadingsAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
   legendVisibleAtom,
@@ -35,6 +36,7 @@ import {
   previewScaleAtom,
   selectedKeyframeAtom,
   showAxesAtom,
+  showFrameLoadingsAtom,
   showFrameNumbersAtom,
   showLegendAtom,
   sliderSpacingAtom,
@@ -69,9 +71,10 @@ const DEFAULT_COLOR: [number, number, number] = [0.25, 0.5, 0.9];
 
 export type DtourToolbarProps = {
   onLoadData?: ((data: ArrayBuffer, fileName: string) => void) | undefined;
+  onLogoClick?: (() => void) | undefined;
 };
 
-export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
+export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => {
   const [playing, setPlaying] = useAtom(tourPlayingAtom);
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
   const [zoom, setZoom] = useAtom(cameraZoomAtom);
@@ -89,6 +92,8 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
   const [showAxes, setShowAxes] = useAtom(showAxesAtom);
   const [showFrameNumbers, setShowFrameNumbers] = useAtom(showFrameNumbersAtom);
+  const [showFrameLoadings, setShowFrameLoadings] = useAtom(showFrameLoadingsAtom);
+  const hasFrameLoadings = useAtomValue(frameLoadingsAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
 
@@ -172,12 +177,29 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
 
       {/* Left: branding + mode switcher */}
       <div className="flex items-center gap-2">
-        <div className="relative text-sm font-semibold tracking-wide text-dtour-highlight">
-          <div className="opacity-0 pointer-events-none">dtour</div>
-          <div className="absolute inset-0" data-logo-target>
-            <Logo />
+        {onLogoClick ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onLogoClick}
+            className="-ml-1 -mr-1   relative font-semibold tracking-wide text-dtour-highlight"
+          >
+            <div className="opacity-0 px-2 pointer-events-none">dtour</div>
+            <div
+              className="absolute top-0 left-2 bottom-0 right-2 flex items-center justify-center"
+              data-logo-target
+            >
+              <Logo />
+            </div>
+          </Button>
+        ) : (
+          <div className="relative text-sm font-semibold tracking-wide text-dtour-highlight">
+            <div className="opacity-0 pointer-events-none">dtour</div>
+            <div className="absolute inset-0" data-logo-target>
+              <Logo />
+            </div>
           </div>
-        </div>
+        )}
         <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
           {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
           <div
@@ -394,6 +416,15 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
                       />
                     </div>
                   </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none pt-1">
+                    <input
+                      type="checkbox"
+                      checked={showFrameNumbers}
+                      onChange={() => setShowFrameNumbers((v) => !v)}
+                      className="accent-dtour-highlight"
+                    />
+                    <span className="text-xs text-dtour-text-muted">Numbers</span>
+                  </label>
                 </div>
               </Popover.Content>
             </Popover.Portal>
@@ -411,15 +442,17 @@ export const DtourToolbar = ({ onLoadData }: DtourToolbarProps) => {
             >
               <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowFrameNumbers((v) => !v)}
-              title={showFrameNumbers ? 'Hide frame numbers' : 'Show frame numbers'}
-              className={showFrameNumbers ? '' : 'opacity-40'}
-            >
-              <HashIcon size={16} weight={showFrameNumbers ? 'fill' : 'regular'} />
-            </Button>
+            {hasFrameLoadings && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowFrameLoadings((v) => !v)}
+                title={showFrameLoadings ? 'Hide feature loadings' : 'Show feature loadings'}
+                className={showFrameLoadings ? '' : 'opacity-40'}
+              >
+                <TagIcon size={16} weight={showFrameLoadings ? 'fill' : 'regular'} />
+              </Button>
+            )}
           </>
         )}
       </div>

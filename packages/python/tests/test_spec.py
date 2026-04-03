@@ -78,6 +78,10 @@ def test_build_snake_to_camel_all_keys():
         "camera_zoom": 1.5,
         "view_mode": "manual",
         "show_legend": False,
+        "show_axes": True,
+        "show_frame_numbers": True,
+        "show_frame_loadings": False,
+        "slider_spacing": "equal",
         "theme_mode": "light",
     }
     result = json.loads(build_dtour_metadata(**kwargs))

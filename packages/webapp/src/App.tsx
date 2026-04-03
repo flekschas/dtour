@@ -1,7 +1,7 @@
 import { Dtour } from '@dtour/viewer';
 import type { DtourSpec } from '@dtour/viewer';
 import { SpinnerIcon } from '@phosphor-icons/react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
@@ -77,6 +77,7 @@ const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
   const [fileName, setFileName] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [homeOpen, setHomeOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const prefersReducedMotion = useReducedMotion();
@@ -109,6 +110,16 @@ const App = () => {
 
   const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
 
+  // Close home modal on Escape
+  useEffect(() => {
+    if (!homeOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHomeOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [homeOpen]);
+
   const handleSpecChange = useCallback(
     (newSpec: Required<DtourSpec>) => {
       setThemeMode(newSpec.themeMode);
@@ -124,6 +135,7 @@ const App = () => {
 
   const loadFile = useCallback(
     async (file: File) => {
+      setHomeOpen(false);
       const id = ++loadIdRef.current;
       const buffer = await file.arrayBuffer();
       if (id !== loadIdRef.current) return;
@@ -270,6 +282,7 @@ const App = () => {
         data={data}
         spec={spec}
         onLoadData={handleLoadData}
+        onLogoClick={() => setHomeOpen(true)}
         onSpecChange={handleSpecChange}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
         backend="webgpu"
@@ -360,6 +373,90 @@ const App = () => {
           onMoveComplete={handleMoveComplete}
         />
       )}
+      <AnimatePresence>
+        {homeOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div
+              role="presentation"
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setHomeOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setHomeOpen(false);
+              }}
+            />
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
+              {loading ? (
+                <div className="flex flex-col items-center gap-3 px-6 py-4">
+                  <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
+                </div>
+              ) : (
+                <>
+                  <Button
+                    variant="ghost"
+                    className="cursor-pointer flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    <svg
+                      width="48"
+                      height="48"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      role="img"
+                      aria-labelledby="modal-upload-icon-title"
+                    >
+                      <title id="modal-upload-icon-title">Upload file</title>
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span className="text-sm select-none">
+                      Drop a Parquet or Arrow file to start
+                    </span>
+                  </Button>
+                  <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
+                  <div className="flex items-center gap-1 mt-3 pointer-events-auto">
+                    {EXAMPLES.map((example) => (
+                      <button
+                        key={example.fileName}
+                        type="button"
+                        className="text-xs text-dtour-text-muted hover:text-dtour-highlight hover:underline underline-offset-2 cursor-pointer transition-colors px-1 py-0.5 select-none"
+                        onClick={() => {
+                          setHomeOpen(false);
+                          loadExample(example);
+                        }}
+                      >
+                        {example.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              <p className="absolute bottom-6 text-xs text-dtour-text-muted/60">
+                Explore high-dimensional data through guided, manual, and grand tours of 2D
+                projections.
+                <a
+                  href="https://github.com/flekschas/dtour"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pointer-events-auto ml-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+                >
+                  GitHub
+                </a>
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

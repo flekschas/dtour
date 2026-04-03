@@ -35,6 +35,7 @@ _SNAKE_TO_CAMEL: dict[str, str] = {
     "show_legend": "showLegend",
     "show_axes": "showAxes",
     "show_frame_numbers": "showFrameNumbers",
+    "show_frame_loadings": "showFrameLoadings",
     "slider_spacing": "sliderSpacing",
     "theme_mode": "themeMode",
 }
@@ -48,11 +49,31 @@ def _encode_tour(tour: TourResult) -> dict[str, Any]:
     """Encode a TourResult as a JSON-serializable dict with base64 views."""
     raw_bytes = tour.views_raw
     b64 = base64.b64encode(raw_bytes).decode("ascii")
-    return {
+    result: dict[str, Any] = {
         "nDims": tour.n_dims,
         "nViews": tour.n_views,
         "views": b64,
     }
+
+    if tour.tour_mode is not None:
+        result["tourMode"] = tour.tour_mode
+
+    if tour.feature_loadings is not None and tour.feature_names is not None:
+        loadings = tour.feature_loadings  # (n_components, n_features)
+        n_eigenvectors = loadings.shape[0]
+        frame_loadings: list[list[list[Any]]] = []
+        for i in range(tour.n_views):
+            ev_idx = min(i + 1, n_eigenvectors - 1)
+            row = loadings[ev_idx]
+            top_k = abs(row).argsort()[::-1][:2]
+            pairs: list[list[Any]] = []
+            for j in top_k:
+                name = tour.feature_names[j].rstrip("_")
+                pairs.append([name, round(float(row[j]), 6)])
+            frame_loadings.append(pairs)
+        result["frameLoadings"] = frame_loadings
+
+    return result
 
 
 def build_dtour_metadata(
@@ -75,6 +96,7 @@ def build_dtour_metadata(
     show_legend: bool | None = None,
     show_axes: bool | None = None,
     show_frame_numbers: bool | None = None,
+    show_frame_loadings: bool | None = None,
     slider_spacing: str | None = None,
     theme_mode: str | None = None,
     color_map: dict[str, str] | None = None,
@@ -120,6 +142,8 @@ def build_dtour_metadata(
         Whether the axis biplot is visible in guided mode.
     show_frame_numbers : bool, optional
         Whether frame numbers are shown on preview thumbnails.
+    show_frame_loadings : bool, optional
+        Whether feature loading pills are shown on preview thumbnails.
     slider_spacing : str, optional
         ``"equal"`` or ``"geodesic"``.
     theme_mode : str, optional
@@ -155,6 +179,7 @@ def build_dtour_metadata(
         "show_legend": show_legend,
         "show_axes": show_axes,
         "show_frame_numbers": show_frame_numbers,
+        "show_frame_loadings": show_frame_loadings,
         "slider_spacing": slider_spacing,
         "theme_mode": theme_mode,
     }

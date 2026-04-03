@@ -1,6 +1,6 @@
 import type { Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
-import type { EmbeddedConfig } from '../spec.ts';
+import type { EmbeddedConfig, FrameLoading } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -172,6 +172,15 @@ export const showAxesAtom = atom(false);
 
 /** User preference for showing frame numbers on preview thumbnails. */
 export const showFrameNumbersAtom = atom(false);
+
+/** User preference for showing feature loading pills on preview thumbnails. */
+export const showFrameLoadingsAtom = atom(true);
+
+/** Per-frame top-2 feature loadings from embedded tour config. */
+export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
+
+/** Tour mode from embedded config: null (vanilla), "signed", or "discriminative". */
+export const tourModeAtom = atom<'signed' | 'discriminative' | null>(null);
 
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,

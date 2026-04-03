@@ -26,6 +26,7 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   camera_zoom: 'cameraZoom',
   view_mode: 'viewMode',
   show_legend: 'showLegend',
+  show_frame_loadings: 'showFrameLoadings',
   theme: 'themeMode',
 };
 

@@ -456,9 +456,7 @@ def _lobpcg_eigenvectors(
     ml = smoothed_aggregation_solver(A.tocsr())
     M = ml.aspreconditioner()
 
-    eigenvalues, eigenvectors = lobpcg(
-        A, X0, B=B, M=M, largest=False, tol=1e-8, maxiter=500
-    )
+    eigenvalues, eigenvectors = lobpcg(A, X0, B=B, M=M, largest=False, tol=1e-8, maxiter=500)
 
     # Sort by eigenvalue (ascending)
     order = np.argsort(eigenvalues)
@@ -518,7 +516,9 @@ def _signed_laplacian_embed(
     L_sym = (L_sym + L_sym.T) / 2  # numerical symmetry
 
     evecs_norm = _lobpcg_eigenvectors(
-        L_sym, n_components, random_state=random_state,
+        L_sym,
+        n_components,
+        random_state=random_state,
     )
 
     # Transform back to original space: v = D^{-1/2} * u
@@ -699,7 +699,7 @@ def _compute_frame_summaries(
         ev_idx = min(i + 1, n_eigenvectors - 1)
         importance = np.abs(loadings[ev_idx])
         top_k = np.argsort(importance)[::-1][:2]
-        top_names = [feature_names[j] for j in top_k]
+        top_names = [feature_names[j].rstrip("_") for j in top_k]
         summaries.append(f"{prefix}: {top_names[0]}, {top_names[1]}")
     return summaries
 
@@ -819,13 +819,20 @@ def le_tour(
 
             if discriminative:
                 embedding_train = _spectral_fisher_embed(
-                    arr_train, labels_train, n_components, n_neighbors,
+                    arr_train,
+                    labels_train,
+                    n_components,
+                    n_neighbors,
                     random_state=random_state,
                 )
             else:
                 embedding_train = _signed_laplacian_embed(
-                    arr_train, labels_train, n_components, n_neighbors,
-                    alpha=alpha, random_state=random_state,
+                    arr_train,
+                    labels_train,
+                    n_components,
+                    n_neighbors,
+                    alpha=alpha,
+                    random_state=random_state,
                 )
 
             mask_oos = np.ones(n_samples, dtype=bool)
@@ -833,7 +840,10 @@ def le_tour(
             arr_oos = arr[mask_oos]
 
             embedding_oos = _nystroem_extend(
-                arr_train, embedding_train, arr_oos, n_neighbors,
+                arr_train,
+                embedding_train,
+                arr_oos,
+                n_neighbors,
             )
 
             embedding = np.empty((n_samples, n_components), dtype=np.float32)
@@ -842,13 +852,20 @@ def le_tour(
         else:
             if discriminative:
                 embedding = _spectral_fisher_embed(
-                    arr, labels_arr, n_components, n_neighbors,
+                    arr,
+                    labels_arr,
+                    n_components,
+                    n_neighbors,
                     random_state=random_state,
                 )
             else:
                 embedding = _signed_laplacian_embed(
-                    arr, labels_arr, n_components, n_neighbors,
-                    alpha=alpha, random_state=random_state,
+                    arr,
+                    labels_arr,
+                    n_components,
+                    n_neighbors,
+                    alpha=alpha,
+                    random_state=random_state,
                 )
 
         views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
@@ -857,7 +874,10 @@ def le_tour(
         frame_summaries = None
         if feature_names is not None:
             frame_summaries = _compute_frame_summaries(
-                views, loadings, feature_names, tour_mode=tour_mode,
+                views,
+                loadings,
+                feature_names,
+                tour_mode=tour_mode,
             )
 
         result = TourResult(
@@ -908,7 +928,10 @@ def le_tour(
     frame_summaries = None
     if feature_names is not None:
         frame_summaries = _compute_frame_summaries(
-            views, loadings, feature_names, tour_mode=tour_mode,
+            views,
+            loadings,
+            feature_names,
+            tour_mode=tour_mode,
         )
 
     result = TourResult(

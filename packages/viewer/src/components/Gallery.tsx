@@ -1,18 +1,22 @@
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
-import { computeGallerySizes } from '../layout/gallery-positions.ts';
+import { LOADING_BAR_HEIGHT, computeGallerySizes } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
+import type { FrameLoading } from '../spec.ts';
 import {
   arcLengthsAtom,
   currentKeyframeAtom,
+  frameLoadingsAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
+  showFrameLoadingsAtom,
   showFrameNumbersAtom,
+  tourModeAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 
@@ -26,6 +30,16 @@ export type GalleryProps = {
   /** Is toolbar visible? */
   isToolbarVisible: boolean;
 };
+
+// ---------------------------------------------------------------------------
+// Loading pill helpers
+// ---------------------------------------------------------------------------
+
+/** Whether the two loadings in a pair have the same sign (co-vary vs contrast). */
+function sameSign(pairs: FrameLoading[]): boolean {
+  if (pairs.length < 2) return true;
+  return pairs[0]![1] * pairs[1]![1] >= 0;
+}
 
 export const Gallery = ({
   previewCanvases,
@@ -42,22 +56,37 @@ export const Gallery = ({
   const arcLengths = useAtomValue(arcLengthsAtom);
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
   const showFrameNumbers = useAtomValue(showFrameNumbersAtom);
+  const showFrameLoadings = useAtomValue(showFrameLoadingsAtom);
+  const frameLoadings = useAtomValue(frameLoadingsAtom);
+  const tourMode = useAtomValue(tourModeAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
   const { animateTo } = useAnimatePosition();
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  // Whether loading pills are actually visible (data available + user toggle on)
+  const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
+
+  // Compute max absolute loading across all frames for tooltip normalization
+  const maxAbsLoading = useMemo(() => {
+    if (!frameLoadings) return 0;
+    let max = 0;
+    for (const frame of frameLoadings) {
+      for (const [, val] of frame) {
+        max = Math.max(max, Math.abs(val));
+      }
+    }
+    return max;
+  }, [frameLoadings]);
+
   // Grid area = container minus its CSS insets.
-  // When the toolbar is visible overlayOffsetY shifts the wrapper down by
-  // toolbarHeight/2 = 20px.  Bump the top & bottom CSS insets by the same
-  // amount so the *visual* padding from the visible edges stays at 32px.
-  const verticalInset = isToolbarVisible ? 36 : 16; // 16 + toolbarHeight/2
-  const gridWidth = containerWidth - 32; // left-4 + right-4 = 32px
+  const verticalInset = isToolbarVisible ? 36 : 16;
+  const gridWidth = containerWidth - 32;
   const gridHeight = containerHeight - 2 * verticalInset;
 
   const { gridTemplateColumns, gridTemplateRows, sizes } = useMemo(
-    () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale),
-    [gridWidth, gridHeight, previewCount, previewScale],
+    () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale, loadingsVisible),
+    [gridWidth, gridHeight, previewCount, previewScale, loadingsVisible],
   );
 
   // Adopt each canvas into its wrapper div (once, on mount)
@@ -72,7 +101,6 @@ export const Gallery = ({
   }, [previewCanvases]);
 
   // Measure preview center positions relative to the container center.
-  // Written to an atom so CircularSlider can draw connector beziers.
   useEffect(() => {
     const galleryEl = galleryRef.current;
     if (!galleryEl) return;
@@ -85,11 +113,8 @@ export const Gallery = ({
         continue;
       }
       const r = wrapper.getBoundingClientRect();
-      // Center relative to gallery root
       const cx = r.left - galleryRect.left + r.width / 2;
       const cy = r.top - galleryRect.top + r.height / 2;
-      // Convert to container-center-relative
-      // Gallery root offset in container: left=16, top=verticalInset
       centers.push({
         x: cx + 16 - containerWidth / 2,
         y: cy + verticalInset - containerHeight / 2,
@@ -132,6 +157,7 @@ export const Gallery = ({
   );
 
   const k = previewCount / 4;
+  const modeLabel = tourMode === 'discriminative' ? 'discriminant' : 'structure';
 
   return (
     <div
@@ -145,19 +171,15 @@ export const Gallery = ({
         let col: number;
         let row: number;
         if (i < k) {
-          // top edge: left → right
           row = 0;
           col = i;
         } else if (i < 2 * k) {
-          // right edge: top → bottom
           row = i - k;
           col = k;
         } else if (i < 3 * k) {
-          // bottom edge: right → left
           row = k;
           col = 3 * k - i;
         } else {
-          // left edge: bottom → top
           row = 4 * k - i;
           col = 0;
         }
@@ -167,6 +189,11 @@ export const Gallery = ({
         const horizontalAlignment =
           col === 0 ? 'justify-start' : col < k ? 'justify-center' : 'justify-end';
 
+        // For bottom-edge previews, put loading bar above (flex-col-reverse)
+        const isBottomEdge = row === k;
+        const loadingPairs: FrameLoading[] | null =
+          loadingsVisible && frameLoadings && i < frameLoadings.length ? frameLoadings[i]! : null;
+
         return (
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed pool keyed by slot index
@@ -175,39 +202,90 @@ export const Gallery = ({
             style={{ gridColumn: col + 1, gridRow: row + 1 }}
           >
             <div
-              ref={(el) => {
-                wrapperRefs.current[i] = el;
-              }}
-              onClick={visible ? () => handleClick(i) : undefined}
-              onKeyDown={undefined}
-              onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
-              onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
               className={cn(
-                'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
-                visible ? 'block cursor-pointer' : 'hidden',
+                'flex pointer-events-none',
+                isBottomEdge ? 'flex-col-reverse' : 'flex-col',
+                visible ? '' : 'hidden',
               )}
-              style={{
-                width: visible ? sizes[i] : 0,
-                height: visible ? sizes[i] : 0,
-                borderColor: getBorderColor(i),
-                borderWidth: getBorderWidth(i),
-                boxShadow: getBoxShadow(i),
-              }}
             >
-              {visible && showFrameNumbers && (
-                <span
-                  className={cn(
-                    'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
-                    row === 0 ? 'top-0.5' : row === k ? 'bottom-0.5' : 'top-1/2 -translate-y-1/2',
-                    col === 0 ? 'left-1' : col === k ? 'right-1' : 'left-1/2 -translate-x-1/2',
-                    i === selectedKeyframe || i === currentKeyframe
-                      ? 'opacity-100'
-                      : 'opacity-40 group-hover:opacity-100',
-                  )}
-                >
-                  {i + 1}
-                </span>
-              )}
+              <div
+                ref={(el) => {
+                  wrapperRefs.current[i] = el;
+                }}
+                onClick={visible ? () => handleClick(i) : undefined}
+                onKeyDown={undefined}
+                onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
+                onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
+                className={cn(
+                  'pointer-events-auto overflow-hidden border border-dtour-border rounded transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
+                  visible ? 'block cursor-pointer' : 'hidden',
+                )}
+                style={{
+                  width: visible ? sizes[i] : 0,
+                  height: visible ? sizes[i] : 0,
+                  borderColor: getBorderColor(i),
+                  borderWidth: getBorderWidth(i),
+                  boxShadow: getBoxShadow(i),
+                }}
+              >
+                {visible && showFrameNumbers && (
+                  <span
+                    className={cn(
+                      'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
+                      row === 0 ? 'top-0.5' : row === k ? 'bottom-0.5' : 'top-1/2 -translate-y-1/2',
+                      col === 0 ? 'left-1' : col === k ? 'right-1' : 'left-1/2 -translate-x-1/2',
+                      i === selectedKeyframe || i === currentKeyframe
+                        ? 'opacity-100'
+                        : 'opacity-40 group-hover:opacity-100',
+                    )}
+                  >
+                    {i + 1}
+                  </span>
+                )}
+              </div>
+              {/* Loading pills: [name1] [≠ or =] [name2] */}
+              {visible &&
+                loadingPairs &&
+                loadingPairs.length >= 2 &&
+                (() => {
+                  const [n0, v0] = loadingPairs[0]!;
+                  const [n1, v1] = loadingPairs[1]!;
+                  const same = sameSign(loadingPairs);
+                  const pct0 =
+                    maxAbsLoading > 0 ? Math.round((Math.abs(v0) / maxAbsLoading) * 100) : 0;
+                  const pct1 =
+                    maxAbsLoading > 0 ? Math.round((Math.abs(v1) / maxAbsLoading) * 100) : 0;
+                  const relation = same ? 'co-vary' : 'contrast';
+                  return (
+                    <div
+                      className="flex items-center pointer-events-auto cursor-default select-none"
+                      style={{ width: sizes[i], height: LOADING_BAR_HEIGHT }}
+                    >
+                      <div
+                        className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden bg-white/10 h-full"
+                        title={`${n0}: ${pct0}% relative importance (top ${modeLabel} loading)`}
+                      >
+                        <span className="text-[10px] leading-none text-white truncate px-1">
+                          {n0}
+                        </span>
+                      </div>
+                      <span
+                        className="text-[10px] leading-none text-white/40 px-0.5 shrink-0"
+                        title={`${n0} and ${n1} ${relation} along this ${modeLabel} axis`}
+                      >
+                        {same ? '=' : '≠'}
+                      </span>
+                      <div
+                        className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden bg-white/10 h-full"
+                        title={`${n1}: ${pct1}% relative importance (top ${modeLabel} loading)`}
+                      >
+                        <span className="text-[10px] leading-none text-white truncate px-1">
+                          {n1}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
             </div>
           </div>
         );

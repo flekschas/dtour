@@ -552,7 +552,8 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
         point_color="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
-        height=720,
+        height=900,
+        theme="light",
     )
     w
     return (le_df,)
@@ -618,10 +619,7 @@ def _(X_scaled, cache_dir, marker_names, phenotypes):
 @app.cell
 def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
     signed_df = pl.DataFrame(
-        {
-            f"LE{i}": signed_tour.embedding[:, i]
-            for i in range(signed_tour.embedding.shape[1])
-        }
+        {f"LE{i}": signed_tour.embedding[:, i] for i in range(signed_tour.embedding.shape[1])}
     ).with_columns(phenotypes)
 
     signed_w = dtour.Widget(
@@ -632,7 +630,8 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
         point_color="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
-        height=720,
+        height=900,
+        theme="light",
     )
     signed_w
     return (signed_df,)
@@ -731,10 +730,7 @@ def _(X_scaled, cache_dir, marker_names, phenotypes):
 @app.cell
 def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
     fisher_df = pl.DataFrame(
-        {
-            f"FD{i}": fisher_tour.embedding[:, i]
-            for i in range(fisher_tour.embedding.shape[1])
-        }
+        {f"FD{i}": fisher_tour.embedding[:, i] for i in range(fisher_tour.embedding.shape[1])}
     ).with_columns(phenotypes)
 
     fisher_w = dtour.Widget(
@@ -745,14 +741,37 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
         point_color="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
-        height=720,
+        height=900,
+        theme="light",
     )
     fisher_w
     return (fisher_df,)
 
 
 @app.cell
-def _(mo, fisher_tour):
+def _(cache_dir, dtour, fisher_df, fisher_tour, phenotype_colors):
+    fisher_json = dtour.build_dtour_metadata(
+        point_color="phenotypes",
+        tour_by="dimensions",
+        preview_count=min(8, fisher_tour.n_views),
+        preview_scale=0.5,
+        camera_zoom=0.5,
+        color_map=phenotype_colors,
+        tour=fisher_tour,
+    )
+    fisher_out_path = cache_dir / "mair-2022-tumor-le-fisher.pq"
+    fisher_df.write_parquet(
+        str(fisher_out_path),
+        compression="zstd",
+        compression_level=9,
+        metadata={"dtour": fisher_json},
+    )
+    fisher_out_path
+    return
+
+
+@app.cell
+def _(fisher_tour, mo):
     _summaries = fisher_tour.frame_summaries or []
     _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
     mo.md("### Per-Frame Loading Summaries (Fisher)\n\n" + "\n".join(_lines))
