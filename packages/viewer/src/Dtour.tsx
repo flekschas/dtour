@@ -327,7 +327,9 @@ const DtourInner = ({
           </div>
           {descriptionVisible && (
             <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
-              <span className="text-[11px] text-dtour-text-muted italic">{tourDescription}</span>
+              <span className="text-[11px] text-dtour-text-muted italic">
+                <strong>Tour:</strong> {tourDescription}
+              </span>
             </div>
           )}
         </div>
