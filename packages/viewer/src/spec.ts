@@ -32,7 +32,7 @@ export const dtourSpecSchema = z.object({
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
 
-/** Per-frame top-2 feature loadings: [featureName, loadingCoefficient] pairs. */
+/** Per-frame top-2 feature correlations: [featureName, pearsonR] pairs. */
 export type FrameLoading = [string, number];
 
 /** Parsed contents of the Parquet "dtour" key_value_metadata entry. */
@@ -45,6 +45,10 @@ export type EmbeddedConfig = {
     views: Float32Array[];
     tourMode?: 'signed' | 'discriminative' | null;
     frameLoadings?: FrameLoading[][];
+    /** Human-readable description of the tour (shown in description sub-bar). */
+    tourDescription?: string;
+    /** Template for per-frame tooltip, with {dim1}, {dim2}, {relation} placeholders. */
+    tourFrameDescription?: string;
   };
 };
 
@@ -117,6 +121,14 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
           // Parse tourMode
           if (t.tourMode === 'signed' || t.tourMode === 'discriminative') {
             tour.tourMode = t.tourMode;
+          }
+
+          // Parse tourDescription and tourFrameDescription
+          if (typeof t.tourDescription === 'string') {
+            tour.tourDescription = t.tourDescription;
+          }
+          if (typeof t.tourFrameDescription === 'string') {
+            tour.tourFrameDescription = t.tourFrameDescription;
           }
 
           // Parse frameLoadings: array of [[name, coeff], [name, coeff]] per view

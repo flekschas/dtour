@@ -35,6 +35,10 @@ class TourResult:
         tour_mode: The embedding mode: ``None`` (vanilla LE),
             ``"signed"`` (true signed Laplacian), or
             ``"discriminative"`` (spectral Fisher discriminant).
+        tour_description: Human-readable description of the tour
+            (shown in the description sub-bar).
+        tour_frame_description: Template string for per-frame tooltips.
+            Supports ``{dim1}``, ``{dim2}``, and ``{relation}`` placeholders.
     """
 
     views: list[np.ndarray]
@@ -47,6 +51,8 @@ class TourResult:
     feature_r2: list[float] | None = None
     frame_summaries: list[str] | None = None
     tour_mode: str | None = None
+    tour_description: str | None = None
+    tour_frame_description: str | None = None
 
     @property
     def views_raw(self) -> bytes:
@@ -83,6 +89,10 @@ class TourResult:
             arrays["frame_summaries_json"] = np.array([json.dumps(self.frame_summaries)])
         if self.tour_mode is not None:
             arrays["tour_mode"] = np.array([self.tour_mode])
+        if self.tour_description is not None:
+            arrays["tour_description"] = np.array([self.tour_description])
+        if self.tour_frame_description is not None:
+            arrays["tour_frame_description"] = np.array([self.tour_frame_description])
         np.savez_compressed(path, **arrays)
 
     @classmethod
@@ -112,6 +122,10 @@ class TourResult:
             tour_mode = "signed"
         else:
             tour_mode = None
+        tour_description = str(data["tour_description"][0]) if "tour_description" in data else None
+        tour_frame_description = (
+            str(data["tour_frame_description"][0]) if "tour_frame_description" in data else None
+        )
         return cls(
             views=views,
             n_views=n_views,
@@ -123,6 +137,8 @@ class TourResult:
             feature_r2=feature_r2,
             frame_summaries=frame_summaries,
             tour_mode=tour_mode,
+            tour_description=tour_description,
+            tour_frame_description=tour_frame_description,
         )
 
 
@@ -726,6 +742,22 @@ def _compute_frame_summaries(
     return summaries
 
 
+_TOUR_DESCRIPTIONS: dict[str | None, str] = {
+    None: "Neighborhood structure from broad to fine. Each frame adds increasingly local variation.",  # noqa: E501
+    "signed": "Label-aware structure from coarse to fine. Each frame adds finer label-aware patterns.",  # noqa: E501
+    "discriminative": (
+        "Label contrasts from strongest to subtlest."
+        " Each frame adds a new between-label difference."
+    ),
+}
+
+_TOUR_FRAME_DESCRIPTIONS: dict[str | None, str] = {
+    None: "Top new correlates for finer neighborhoods: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
+    "signed": "Top new correlates for finer label patterns: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
+    "discriminative": "Top new correlates for subtler label contrasts: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
+}
+
+
 def le_tour(
     X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_components: int = 8,
@@ -913,6 +945,8 @@ def le_tour(
         result.feature_r2 = r2
         result.frame_summaries = frame_summaries
         result.tour_mode = tour_mode
+        result.tour_description = _TOUR_DESCRIPTIONS.get(tour_mode)
+        result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS.get(tour_mode)
         return result
 
     # ── Standard path (vanilla LE, no labels) ─────────────────────────
@@ -966,5 +1000,7 @@ def le_tour(
     result.feature_names = feature_names
     result.feature_r2 = r2
     result.frame_summaries = frame_summaries
+    result.tour_description = _TOUR_DESCRIPTIONS[None]
+    result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS[None]
 
     return result

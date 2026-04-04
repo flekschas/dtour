@@ -24,7 +24,7 @@ export function computeSelectorSize(
   containerWidth: number,
   containerHeight: number,
   previewCount: number,
-  isToolbarVisible: boolean,
+  toolbarHeight: number,
   padding: number,
   scale = 1,
   /** Number of radial metric tracks rendered outside the ring. */
@@ -41,10 +41,10 @@ export function computeSelectorSize(
   const loadingExtra = showLoadings ? LOADING_BAR_HEIGHT : 0;
 
   // Must match Gallery CSS: left-4, right-4, top/bottom = verticalInset.
-  // When toolbar is visible overlayOffsetY = toolbarHeight/2 = 20 shifts
-  // the wrapper down, so we bump vertical insets to keep 16px visual gap.
+  // The overlay wrapper shifts down by toolbarHeight/2, so we bump
+  // vertical insets to keep a 16px visual gap below the toolbar.
   const gridLeft = 16;
-  const toolbarOffset = isToolbarVisible ? 20 : 0; // toolbarHeight / 2
+  const toolbarOffset = toolbarHeight / 2;
   const verticalInset = 16 + toolbarOffset;
   const gridW = containerWidth - 2 * gridLeft;
   const gridH = containerHeight - 2 * verticalInset;

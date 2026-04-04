@@ -3,27 +3,27 @@
 @import "tw-animate-css";
 
 @theme {
-  --color-dtour-bg: #000000;
-  --color-dtour-surface: #222222;
-  --color-dtour-border: #333333;
-  --color-dtour-text: #bbbbbb;
-  --color-dtour-text-muted: #888888;
-  --color-dtour-accent: #4080e8;
-  --color-dtour-accent-hover: #5090f0;
-  --color-dtour-highlight: #ffffff;
+  --color-dtour-bg: oklch(0% 0 0);
+  --color-dtour-surface: oklch(18.66% 0 0);
+  --color-dtour-border: oklch(27.06% 0 0);
+  --color-dtour-text: oklch(79.91% 0 0);
+  --color-dtour-text-muted: oklch(61.66% 0 0);
+  --color-dtour-accent: oklch(61.13% 0.1707 259.68);
+  --color-dtour-accent-hover: oklch(65.65% 0.1581 258.37);
+  --color-dtour-highlight: oklch(100% 0 0);
 }
 
 /* --- Light theme overrides --- */
 
 :where(.dtour-light) {
-  --color-dtour-bg: #ffffff;
-  --color-dtour-surface: #f0f0f0;
-  --color-dtour-border: #d0d0d0;
-  --color-dtour-text: #333333;
-  --color-dtour-text-muted: #777777;
-  --color-dtour-accent: #2060c0;
-  --color-dtour-accent-hover: #1850a8;
-  --color-dtour-highlight: #000000;
+  --color-dtour-bg: oklch(100% 0 0);
+  --color-dtour-surface: oklch(95.51% 0 0);
+  --color-dtour-border: oklch(85.76% 0 0);
+  --color-dtour-text: oklch(32.11% 0 0);
+  --color-dtour-text-muted: oklch(56.93% 0 0);
+  --color-dtour-accent: oklch(50.48% 0.164 258.95);
+  --color-dtour-accent-hover: oklch(44.94% 0.1531 259.62);
+  --color-dtour-highlight: oklch(0% 0 0);
 }
 
 /* --- Animation easing utility for tw-animate-css --- */

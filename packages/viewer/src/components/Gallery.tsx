@@ -17,7 +17,7 @@ import {
   selectedKeyframeAtom,
   showFrameLoadingsAtom,
   showFrameNumbersAtom,
-  tourModeAtom,
+  tourFrameDescriptionAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -29,8 +29,8 @@ export type GalleryProps = {
   containerWidth: number;
   /** Container height (px). */
   containerHeight: number;
-  /** Is toolbar visible? */
-  isToolbarVisible: boolean;
+  /** Effective toolbar height in px (0 when hidden). */
+  toolbarHeight: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ export const Gallery = ({
   previewCanvases,
   containerWidth,
   containerHeight,
-  isToolbarVisible,
+  toolbarHeight,
 }: GalleryProps) => {
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
@@ -60,7 +60,7 @@ export const Gallery = ({
   const showFrameNumbers = useAtomValue(showFrameNumbersAtom);
   const showFrameLoadings = useAtomValue(showFrameLoadingsAtom);
   const frameLoadings = useAtomValue(frameLoadingsAtom);
-  const tourMode = useAtomValue(tourModeAtom);
+  const tourFrameDescription = useAtomValue(tourFrameDescriptionAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
   const { animateTo } = useAnimatePosition();
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -70,7 +70,7 @@ export const Gallery = ({
   const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
 
   // Grid area = container minus its CSS insets.
-  const verticalInset = isToolbarVisible ? 36 : 16;
+  const verticalInset = 16 + toolbarHeight / 2;
   const gridWidth = containerWidth - 32;
   const gridHeight = containerHeight - 2 * verticalInset;
 
@@ -147,12 +147,6 @@ export const Gallery = ({
   );
 
   const k = previewCount / 4;
-  const axisDescription =
-    tourMode === 'discriminative'
-      ? 'Group-separating axis'
-      : tourMode === 'signed'
-        ? 'Class-aware axis'
-        : 'Neighborhood axis';
 
   return (
     <div
@@ -203,6 +197,8 @@ export const Gallery = ({
                 isBottomEdge ? 'flex-col-reverse' : 'flex-col',
                 visible ? '' : 'hidden',
               )}
+              onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
+              onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
             >
               <div
                 ref={(el) => {
@@ -210,8 +206,6 @@ export const Gallery = ({
                 }}
                 onClick={visible ? () => handleClick(i) : undefined}
                 onKeyDown={undefined}
-                onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
-                onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
                 className={cn(
                   'overflow-hidden border border-dtour-border transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
                   hasLoadingPills ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
@@ -248,7 +242,6 @@ export const Gallery = ({
                   const [n0] = loadingPairs[0]!;
                   const [n1] = loadingPairs[1]!;
                   const same = sameSign(loadingPairs);
-                  const relation = same ? 'co-vary' : 'contrast';
                   const isActive = i === selectedKeyframe || i === currentKeyframe;
                   return (
                     <TooltipProvider>
@@ -256,21 +249,27 @@ export const Gallery = ({
                         <TooltipTrigger asChild>
                           <div
                             className={cn(
-                              'flex items-center cursor-default select-none transition-colors duration-200',
-                              isActive
-                                ? 'bg-white'
-                                : 'bg-dtour-border group-hover/preview:bg-white',
-                              isBottomEdge ? 'rounded-t-sm' : 'rounded-b-sm',
+                              'flex items-center cursor-default select-none transition-[color,background-color,border-color] duration-200 relative z-20',
+                              'border border-dtour-border',
+                              isBottomEdge ? 'border-b-0 rounded-t-sm' : 'border-t-0 rounded-b-sm',
                             )}
-                            style={{ width: sizes[i], height: LOADING_BAR_HEIGHT }}
+                            style={{
+                              width: sizes[i],
+                              height: LOADING_BAR_HEIGHT,
+                              borderColor: getBorderColor(i),
+                              backgroundColor:
+                                isActive || i === hoveredIndex
+                                  ? 'var(--color-dtour-highlight)'
+                                  : 'var(--color-dtour-border)',
+                            }}
                           >
                             <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
                               <span
                                 className={cn(
                                   'text-[10px] leading-none transition-colors duration-200 truncate px-1',
-                                  isActive
-                                    ? 'text-black'
-                                    : 'text-white group-hover/preview:text-black',
+                                  isActive || i === hoveredIndex
+                                    ? 'text-dtour-bg'
+                                    : 'text-dtour-highlight/70',
                                 )}
                               >
                                 {n0}
@@ -279,9 +278,9 @@ export const Gallery = ({
                             <span
                               className={cn(
                                 'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
-                                isActive
-                                  ? 'text-black/40'
-                                  : 'text-white/40 group-hover/preview:text-black/40',
+                                isActive || i === hoveredIndex
+                                  ? 'text-dtour-bg'
+                                  : 'text-dtour-highlight/70',
                               )}
                             >
                               {same ? (
@@ -294,9 +293,9 @@ export const Gallery = ({
                               <span
                                 className={cn(
                                   'text-[10px] leading-none transition-colors duration-200 truncate px-1',
-                                  isActive
-                                    ? 'text-black'
-                                    : 'text-white group-hover/preview:text-black',
+                                  isActive || i === hoveredIndex
+                                    ? 'text-dtour-bg'
+                                    : 'text-dtour-highlight/70',
                                 )}
                               >
                                 {n1}
@@ -304,8 +303,13 @@ export const Gallery = ({
                             </div>
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent side={isBottomEdge ? 'bottom' : 'top'}>
-                          {axisDescription} — {n0} and {n1} {relation}
+                        <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
+                          {tourFrameDescription
+                            ? tourFrameDescription
+                                .replace('{dim1}', n0)
+                                .replace('{dim2}', n1)
+                                .replace('{relation}', same ? 'co-varying' : 'contrasting')
+                            : `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

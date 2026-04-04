@@ -16,7 +16,6 @@ import {
   SidebarSimpleIcon,
   SlidersHorizontalIcon,
   SunIcon,
-  TagIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
@@ -43,6 +42,7 @@ import {
   sliderSpacingAtom,
   themeModeAtom,
   tourByAtom,
+  tourDescriptionAtom,
   tourPlayingAtom,
   tourSpeedAtom,
   viewModeAtom,
@@ -96,6 +96,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [showFrameNumbers, setShowFrameNumbers] = useAtom(showFrameNumbersAtom);
   const [showFrameLoadings, setShowFrameLoadings] = useAtom(showFrameLoadingsAtom);
   const hasFrameLoadings = useAtomValue(frameLoadingsAtom) !== null;
+  const hasTourDescription = useAtomValue(tourDescriptionAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
@@ -292,31 +293,48 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
               <DropdownMenuItem
+                className="gap-4"
                 onSelect={(e) => {
                   e.preventDefault();
                   setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal');
                 }}
               >
+                <span className="flex-1 text-xs">Geodesic spacing</span>
                 <Checkbox
                   checked={sliderSpacing === 'geodesic'}
                   onCheckedChange={() =>
                     setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')
                   }
                 />
-                <span className="text-xs">Geodesic spacing</span>
               </DropdownMenuItem>
               {hasFrameLoadings && (
                 <DropdownMenuItem
+                  className="gap-4"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowFrameLoadings((v) => !v);
+                  }}
+                >
+                  <span className="flex-1 text-xs">Feature correlations</span>
+                  <Checkbox
+                    checked={showFrameLoadings}
+                    onCheckedChange={() => setShowFrameLoadings((v) => !v)}
+                  />
+                </DropdownMenuItem>
+              )}
+              {hasTourDescription && (
+                <DropdownMenuItem
+                  className="gap-4"
                   onSelect={(e) => {
                     e.preventDefault();
                     setShowTourDescription((v) => !v);
                   }}
                 >
+                  <span className="flex-1 text-xs">Tour description</span>
                   <Checkbox
                     checked={showTourDescription}
                     onCheckedChange={() => setShowTourDescription((v) => !v)}
                   />
-                  <span className="text-xs">Tour description</span>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -445,16 +463,17 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                       />
                     </div>
                   </div>
+                  <div className="my-1 h-px bg-dtour-border" />
                   <div
-                    className="flex items-center gap-1.5 cursor-pointer select-none pt-1"
+                    className="flex items-center gap-4 cursor-pointer select-none"
                     onClick={() => setShowFrameNumbers((v) => !v)}
                     onKeyDown={undefined}
                   >
+                    <span className="flex-1 text-xs text-dtour-text-muted">Numbers</span>
                     <Checkbox
                       checked={showFrameNumbers}
                       onCheckedChange={() => setShowFrameNumbers((v) => !v)}
                     />
-                    <span className="text-xs text-dtour-text-muted">Numbers</span>
                   </div>
                 </div>
               </Popover.Content>
@@ -463,28 +482,15 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         )}
 
         {viewMode === 'guided' && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowAxes((v) => !v)}
-              title={showAxes ? 'Hide axes' : 'Show axes'}
-              className={showAxes ? '' : 'opacity-40'}
-            >
-              <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
-            </Button>
-            {hasFrameLoadings && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowFrameLoadings((v) => !v)}
-                title={showFrameLoadings ? 'Hide feature loadings' : 'Show feature loadings'}
-                className={showFrameLoadings ? '' : 'opacity-40'}
-              >
-                <TagIcon size={16} weight={showFrameLoadings ? 'fill' : 'regular'} />
-              </Button>
-            )}
-          </>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowAxes((v) => !v)}
+            title={showAxes ? 'Hide axes' : 'Show axes'}
+            className={showAxes ? '' : 'opacity-40'}
+          >
+            <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
+          </Button>
         )}
       </div>
 

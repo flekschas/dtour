@@ -10,7 +10,7 @@ def _():
 
     mo.md(
         """
-        # dtour Demo: Laplacian Eigenmaps Tour with Feature Loadings
+        # dtour Demo: Laplacian Eigenmaps Tour with Feature Correlations
 
         This notebook loads the [Mair 2022 tumor dataset](https://pubmed.ncbi.nlm.nih.gov/35545675/), computes an 8D
         [Laplacian Eigenmaps](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.SpectralEmbedding.html)
@@ -662,7 +662,7 @@ def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
 def _(mo, signed_tour):
     _summaries = signed_tour.frame_summaries or []
     _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
-    mo.md("### Per-Frame Loading Summaries\n\n" + "\n".join(_lines))
+    mo.md("### Per-Frame Correlation Summaries\n\n" + "\n".join(_lines))
     return
 
 
@@ -686,7 +686,7 @@ def _(np, signed_tour):
     _ax.set_yticklabels(_row_labels, fontsize=9)
 
     _ax.set_title("Signed Laplacian Feature Correlations", fontsize=12)
-    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
+    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Correlation (Pearson r)")
     _fig.tight_layout()
     _fig
     return
@@ -774,7 +774,7 @@ def _(cache_dir, dtour, fisher_df, fisher_tour, phenotype_colors):
 def _(fisher_tour, mo):
     _summaries = fisher_tour.frame_summaries or []
     _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
-    mo.md("### Per-Frame Loading Summaries (Fisher)\n\n" + "\n".join(_lines))
+    mo.md("### Per-Frame Correlation Summaries (Fisher)\n\n" + "\n".join(_lines))
     return
 
 
@@ -798,7 +798,7 @@ def _(fisher_tour, np):
     _ax.set_yticklabels(_row_labels, fontsize=9)
 
     _ax.set_title("Fisher Discriminant Feature Correlations", fontsize=12)
-    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
+    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Correlation (Pearson r)")
     _fig.tight_layout()
     _fig
     return
@@ -824,7 +824,7 @@ def _(le_tour, np):
     _ax.set_yticks(range(n_comp))
     _ax.set_yticklabels(row_labels, fontsize=9)
     _ax.set_title("LE Feature Correlations (Pearson r)", fontsize=12)
-    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Loading coefficient")
+    _fig.colorbar(_im, ax=_ax, shrink=0.6, label="Correlation (Pearson r)")
     _fig.tight_layout()
     _fig
     return (plt,)

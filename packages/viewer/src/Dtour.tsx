@@ -21,17 +21,12 @@ import {
   pointColorAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
+  tourDescriptionAtom,
+  tourFrameDescriptionAtom,
   tourModeAtom,
   viewModeAtom,
 } from './state/atoms.ts';
 import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
-
-const TOUR_DESCRIPTIONS: Record<string, string> = {
-  le: 'Neighborhood structure from broad to fine. Each frame adds increasingly local variation.',
-  signed: 'Class-aware structure from coarse to fine. Each frame adds finer group-aware patterns.',
-  discriminative:
-    'Class contrasts from strongest to subtlest. Each frame adds a new between-group difference.',
-};
 
 export type DtourHandle = {
   /** Select points by index array or bit-packed mask. */
@@ -199,18 +194,23 @@ const DtourInner = ({
     setColorMap(colorMap ?? embeddedConfig?.colorMap ?? null);
   }, [colorMap, embeddedConfig, setColorMap]);
 
-  // Sync tour frame loadings and tour mode from embedded config
+  // Sync tour frame loadings, tour mode, and description strings from embedded config
   const setFrameLoadings = useSetAtom(frameLoadingsAtom);
   const setTourMode = useSetAtom(tourModeAtom);
+  const setTourDescription = useSetAtom(tourDescriptionAtom);
+  const setTourFrameDescription = useSetAtom(tourFrameDescriptionAtom);
   useEffect(() => {
     setFrameLoadings(embeddedConfig?.tour?.frameLoadings ?? null);
     setTourMode(embeddedConfig?.tour?.tourMode ?? null);
-  }, [embeddedConfig, setFrameLoadings, setTourMode]);
+    setTourDescription(embeddedConfig?.tour?.tourDescription ?? null);
+    setTourFrameDescription(embeddedConfig?.tour?.tourFrameDescription ?? null);
+  }, [embeddedConfig, setFrameLoadings, setTourMode, setTourDescription, setTourFrameDescription]);
 
   // Sync resolved theme → background color + CSS class
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const setBackgroundColor = useSetAtom(backgroundColorAtom);
   useEffect(() => {
+    // sRGB values matching --color-dtour-bg: dark=#000000, light=#ffffff
     setBackgroundColor(resolvedTheme === 'light' ? [1, 1, 1] : [0, 0, 0]);
   }, [resolvedTheme, setBackgroundColor]);
 
@@ -269,9 +269,9 @@ const DtourInner = ({
 
   // Tour description sub-bar
   const showTourDescription = useAtomValue(showTourDescriptionAtom);
-  const frameLoadings = useAtomValue(frameLoadingsAtom);
-  const tourMode = useAtomValue(tourModeAtom);
-  const descriptionVisible = showTourDescription && viewMode === 'guided' && frameLoadings !== null;
+  const tourDescription = useAtomValue(tourDescriptionAtom);
+  const descriptionVisible =
+    showTourDescription && viewMode === 'guided' && tourDescription !== null;
   const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
 
   // Sidebar width state — remembered across open/close cycles
@@ -327,9 +327,7 @@ const DtourInner = ({
           </div>
           {descriptionVisible && (
             <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
-              <span className="text-[11px] text-dtour-text-muted italic">
-                {TOUR_DESCRIPTIONS[tourMode ?? 'le']}
-              </span>
+              <span className="text-[11px] text-dtour-text-muted italic">{tourDescription}</span>
             </div>
           )}
         </div>

@@ -179,11 +179,17 @@ export const showFrameLoadingsAtom = atom(true);
 /** User preference for showing the tour description sub-bar. */
 export const showTourDescriptionAtom = atom(false);
 
-/** Per-frame top-2 feature loadings from embedded tour config. */
+/** Per-frame top-2 feature correlations from embedded tour config. */
 export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
 
 /** Tour mode from embedded config: null (vanilla), "signed", or "discriminative". */
 export const tourModeAtom = atom<'signed' | 'discriminative' | null>(null);
+
+/** Tour description string from embedded config (shown in description sub-bar). */
+export const tourDescriptionAtom = atom<string | null>(null);
+
+/** Per-frame tooltip template from embedded config, with {dim1}, {dim2}, {relation} placeholders. */
+export const tourFrameDescriptionAtom = atom<string | null>(null);
 
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,

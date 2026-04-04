@@ -301,6 +301,7 @@ export const DtourViewer = ({
   useScatter(scatter);
 
   const isToolbarVisible = toolbarHeight > 0 && viewMode !== 'grand';
+  const effectiveToolbarHeight = isToolbarVisible ? toolbarHeight : 0;
 
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
@@ -374,7 +375,7 @@ export const DtourViewer = ({
         containerSize.width,
         containerSize.height,
         previewCount,
-        isToolbarVisible,
+        effectiveToolbarHeight,
         SELECTOR_PADDING,
         previewScale,
         coloredTracks.length,
@@ -384,7 +385,7 @@ export const DtourViewer = ({
       containerSize.width,
       containerSize.height,
       previewCount,
-      isToolbarVisible,
+      effectiveToolbarHeight,
       previewScale,
       coloredTracks.length,
       loadingsVisible,
@@ -638,7 +639,7 @@ export const DtourViewer = ({
               previewCanvases={previewCanvasesRef.current}
               containerWidth={containerSize.width}
               containerHeight={containerSize.height}
-              isToolbarVisible={isToolbarVisible}
+              toolbarHeight={effectiveToolbarHeight}
             />
           )}
 

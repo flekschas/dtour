@@ -59,6 +59,12 @@ def _encode_tour(tour: TourResult) -> dict[str, Any]:
     if tour.tour_mode is not None:
         result["tourMode"] = tour.tour_mode
 
+    if tour.tour_description is not None:
+        result["tourDescription"] = tour.tour_description
+
+    if tour.tour_frame_description is not None:
+        result["tourFrameDescription"] = tour.tour_frame_description
+
     if tour.feature_loadings is not None and tour.feature_names is not None:
         loadings = tour.feature_loadings  # (n_components, n_features)
         n_eigenvectors = loadings.shape[0]
