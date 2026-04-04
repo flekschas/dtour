@@ -34,8 +34,8 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Single Cell',
-    fileName: 'mair-2022-tumor-006-ozette-umap-4d.pq',
-    url: `${GCS_BASE}/mair-2022-tumor-006-ozette-umap-4d.pq`,
+    fileName: 'mair-2022-tumor-le-fisher.pq',
+    url: `${GCS_BASE}/mair-2022-tumor-le-fisher.pq`,
   },
   {
     type: 'generate',
