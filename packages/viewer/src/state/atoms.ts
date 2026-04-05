@@ -102,6 +102,9 @@ export const guidedSuspendedAtom = atom(false);
 /** Target mode after grand ease-out completes. null = not exiting. */
 export const grandExitTargetAtom = atom<'guided' | 'manual' | null>(null);
 
+/** True when the 3D camera is rotated away from front-on (manual mode only). */
+export const is3dRotatedAtom = atom(false);
+
 /**
  * Tracks the currently-displayed projection basis (p×2 column-major).
  * Updated by tour interpolation, manual axis dragging, and zen animation.

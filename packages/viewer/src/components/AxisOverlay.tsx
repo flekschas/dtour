@@ -30,6 +30,10 @@ type AxisOverlayProps = {
 export type AxisOverlayHandle = {
   /** Imperatively update axis positions without a React re-render. */
   setBasis: (basis: Float32Array) => void;
+  /** Set 3D rotation — rotates axis lines to match the camera rotation. */
+  setRotation3d: (residualPC: Float32Array, matrix: Float32Array) => void;
+  /** Clear 3D rotation — revert to standard 2D axis display. */
+  clearRotation3d: () => void;
 };
 
 /** Convert SVG pixel delta to NDC delta (inverse camera). */
@@ -59,14 +63,14 @@ type AxisElementRefs = {
 export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
   ({ scatter, width, height, readOnly }, ref) => {
     const metadata = useAtomValue(metadataAtom);
-    const panX = useAtomValue(cameraPanXAtom);
-    const panY = useAtomValue(cameraPanYAtom);
     const zoom = useAtomValue(cameraZoomAtom);
     const activeIndices = useAtomValue(activeIndicesAtom);
     const store = useStore();
     const setCurrentBasis = useSetAtom(currentBasisAtom);
 
     const basisRef = useRef<Float32Array | null>(null);
+    const residualPCRef = useRef<Float32Array | null>(null);
+    const rotationMatRef = useRef<Float32Array | null>(null);
     const [, forceRender] = useState(0);
     const draggingRef = useRef<number | null>(null);
 
@@ -101,7 +105,8 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       [],
     );
 
-    // Imperative setBasis — updates SVG attributes directly, no React re-render
+    // Imperative updateDom — updates SVG attributes directly, no React re-render.
+    // Applies 3D rotation when residualPCRef and rotationMatRef are set.
     const updateDom = useCallback((basis: Float32Array) => {
       basisRef.current = basis;
       const { width: w, height: h } = sizeRef.current;
@@ -109,10 +114,22 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       const cy = h / 2;
       const scale = Math.min(w, h) * 0.35;
       const d = dimsRef.current;
+      const rpc = residualPCRef.current;
+      const rot = rotationMatRef.current;
 
       for (const dim of activeIndicesRef.current) {
-        const bx = basis[dim]!;
-        const by = basis[d + dim]!;
+        let bx = basis[dim]!;
+        let by = basis[d + dim]!;
+
+        if (rpc && rot) {
+          const bz = rpc[dim]!;
+          // Column-major 3×3: rx = m0*bx + m3*by + m6*bz, ry = m1*bx + m4*by + m7*bz
+          const rx = rot[0]! * bx + rot[3]! * by + rot[6]! * bz;
+          const ry = rot[1]! * bx + rot[4]! * by + rot[7]! * bz;
+          bx = rx;
+          by = ry;
+        }
+
         const endX = cx + bx * scale;
         const endY = cy - by * scale;
         const refs = elementRefsMap.current.get(dim);
@@ -131,7 +148,23 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       }
     }, []);
 
-    useImperativeHandle(ref, () => ({ setBasis: updateDom }), [updateDom]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        setBasis: updateDom,
+        setRotation3d: (residualPC: Float32Array, matrix: Float32Array) => {
+          residualPCRef.current = residualPC;
+          rotationMatRef.current = matrix;
+          if (basisRef.current) updateDom(basisRef.current);
+        },
+        clearRotation3d: () => {
+          residualPCRef.current = null;
+          rotationMatRef.current = null;
+          if (basisRef.current) updateDom(basisRef.current);
+        },
+      }),
+      [updateDom],
+    );
 
     // Read-only mode: subscribe to currentBasisAtom and mirror into basisRef
     // on every change so the axes track the guided tour interpolation.
@@ -250,8 +283,19 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       >
         {activeIndices.map((d) => {
           // Basis row d gives (x, y) projection weights
-          const bx = basis[d]!;
-          const by = basis[dims + d]!;
+          let bx = basis[d]!;
+          let by = basis[dims + d]!;
+
+          // Apply 3D rotation when active
+          const rpc = residualPCRef.current;
+          const rot = rotationMatRef.current;
+          if (rpc && rot) {
+            const bz = rpc[d]!;
+            const rx = rot[0]! * bx + rot[3]! * by + rot[6]! * bz;
+            const ry = rot[1]! * bx + rot[4]! * by + rot[7]! * bz;
+            bx = rx;
+            by = ry;
+          }
 
           // Use scale to determine line endpoint from center
           const lineEndX = cx + bx * scale;
@@ -283,16 +327,18 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
                 stroke={color}
                 strokeWidth={1}
                 strokeOpacity={0.6}
+                strokeDasharray={readOnly ? '2,2' : '0'}
               />
               {/* Handle: draggable in interactive mode, decorative dot in read-only */}
               <circle
                 ref={setElementRef(d, 'circle')}
                 cx={lineEndX}
                 cy={lineEndY}
-                r={readOnly ? HANDLE_RADIUS * 0.6 : HANDLE_RADIUS}
-                fill={color}
-                stroke="var(--color-dtour-bg)"
+                r={HANDLE_RADIUS}
+                fill={readOnly ? 'var(--color-dtour-bg)' : color}
+                stroke={readOnly ? color : 'var(--color-dtour-bg)'}
                 strokeWidth={1}
+                strokeDasharray={readOnly ? '2,2' : '0'}
                 className={readOnly ? undefined : 'cursor-grab pointer-events-auto'}
                 onPointerDown={readOnly ? undefined : (e) => handlePointerDown(d, e)}
                 onKeyDown={

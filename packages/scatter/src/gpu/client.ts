@@ -29,7 +29,8 @@ export type ScatterStatus =
       numDims: number;
     }
   | { type: 'playbackTick'; position: number }
-  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number };
+  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number }
+  | { type: 'residualPC'; residualPC: Float32Array };
 
 export type ScatterInstance = {
   /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */
@@ -96,6 +97,12 @@ export type ScatterInstance = {
   stopPlayback: () => void;
   /** Set max rendered points. 0 = disabled (render all). Uses deterministic hash decimation. */
   setMaxPoints: (n: number) => void;
+  /** Enable 3D camera rotation mode. Computes residual PC for the 3rd projected axis. */
+  enable3d: () => void;
+  /** Disable 3D camera rotation mode. Reverts to standard 2D projection. */
+  disable3d: () => void;
+  /** Update the 3×3 camera rotation matrix (column-major, 9 floats). */
+  set3dRotation: (matrix: Float32Array) => void;
   /** Run a render benchmark. Pass numPoints for synthetic data, omit or 0 to use loaded data. */
   benchmark: (numPoints?: number) => Promise<{
     frameTimes: Float64Array;
@@ -329,6 +336,18 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'setMaxPoints', maxPoints: n });
   };
 
+  const enable3d = (): void => {
+    sendToGpu(gpuWorker, { type: 'enable3d' });
+  };
+
+  const disable3d = (): void => {
+    sendToGpu(gpuWorker, { type: 'disable3d' });
+  };
+
+  const set3dRotation = (matrix: Float32Array): void => {
+    sendToGpu(gpuWorker, { type: 'set3dRotation', matrix });
+  };
+
   const benchmark = (
     numPoints?: number,
   ): Promise<{ frameTimes: Float64Array; numPoints: number; avgMs: number; fps: number }> => {
@@ -389,6 +408,9 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     startPlayback,
     stopPlayback,
     setMaxPoints,
+    enable3d,
+    disable3d,
+    set3dRotation,
     benchmark,
     subscribe,
     destroy,

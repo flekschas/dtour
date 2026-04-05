@@ -35,6 +35,7 @@ struct Uniforms {
   color_min: f32,
   color_range: f32,
   color_num_stops: u32,      // LUT size
+  bias_z: f32,               // z-axis bias (3D mode only)
 }
 
 struct Camera {
@@ -49,6 +50,15 @@ struct Camera {
   // Zoom multiplier for the inset — scales content to fit in the visible
   // area below the toolbar (typically (H - toolbar) / H).
   inset_zoom: f32,
+  // 3D camera rotation: 0.0 = 2D mode (skip z projection), 1.0 = 3D mode
+  use_3d: f32,
+  // 3×3 rotation matrix (column-major, each column padded to vec4f for alignment)
+  rot_col0: vec3f,
+  _pad0: f32,
+  rot_col1: vec3f,
+  _pad1: f32,
+  rot_col2: vec3f,
+  _pad2: f32,
 }
 
 @group(0) @binding(0) var<uniform> uni: Uniforms;
@@ -137,6 +147,20 @@ fn vs_main(
     let raw = data[d * N + ii];
     x += raw * adj_basis[d];
     y += raw * adj_basis[p + d];
+  }
+
+  // 3D camera rotation: project z-axis, rotate, then discard z (orthographic).
+  if (camera.use_3d > 0.5) {
+    var z = uni.bias_z;
+    for (var d = 0u; d < p; d++) {
+      z += data[d * N + ii] * adj_basis[2u * p + d];
+    }
+    let pos3 = vec3f(x, y, z);
+    let rot = mat3x3f(camera.rot_col0, camera.rot_col1, camera.rot_col2);
+    let rotated = rot * pos3;
+    x = rotated.x;
+    y = rotated.y;
+    // z discarded — orthographic projection
   }
 
   // Apply camera: translate then scale, with aspect correction on x.

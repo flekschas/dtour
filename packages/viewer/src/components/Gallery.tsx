@@ -266,7 +266,7 @@ export const Gallery = ({
                             <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
                               <span
                                 className={cn(
-                                  'text-[10px] leading-none transition-colors duration-200 truncate px-1',
+                                  'text-[10px] transition-colors duration-200 truncate px-1',
                                   isActive || i === hoveredIndex
                                     ? 'text-dtour-bg'
                                     : 'text-dtour-highlight/70',
@@ -292,7 +292,7 @@ export const Gallery = ({
                             <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
                               <span
                                 className={cn(
-                                  'text-[10px] leading-none transition-colors duration-200 truncate px-1',
+                                  'text-[10px] transition-colors duration-200 truncate px-1',
                                   isActive || i === hoveredIndex
                                     ? 'text-dtour-bg'
                                     : 'text-dtour-highlight/70',

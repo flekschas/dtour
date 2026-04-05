@@ -65,6 +65,19 @@ export type MainToGpu =
     }
   | { type: 'stopPlayback' }
   | { type: 'setMaxPoints'; maxPoints: number }
+  | {
+      // Enable 3D camera rotation mode. Computes residual PC for the 3rd axis.
+      type: 'enable3d';
+    }
+  | {
+      // Disable 3D camera rotation mode. Reverts to standard 2D projection.
+      type: 'disable3d';
+    }
+  | {
+      // Update the 3×3 camera rotation matrix (column-major, 9 floats).
+      type: 'set3dRotation';
+      matrix: Float32Array;
+    }
   | { type: 'benchmark'; numPoints: number; numDims: number; numFrames: number }
   | { type: 'benchmarkExisting'; numFrames: number };
 
@@ -84,4 +97,5 @@ export type GpuToMain =
       type: 'playbackTick';
       position: number;
     }
-  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number };
+  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number }
+  | { type: 'residualPC'; residualPC: Float32Array };

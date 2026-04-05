@@ -34,10 +34,11 @@ export type PointPipeline = {
 //   offset 60: color_min             (f32)
 //   offset 64: color_range           (f32)
 //   offset 68: color_num_stops       (u32)
-//   offset 72-79: padding
+//   offset 72: bias_z                (f32) — z-axis bias (3D mode only)
+//   offset 76-79: padding
 const UNIFORM_SIZE = 80;
 
-// Camera layout (32 bytes — 7 fields + padding for uniform struct alignment):
+// Camera layout (80 bytes — 8 scalar fields + 3×3 rotation matrix padded to 3×vec4f):
 //   offset  0: pan_x           (f32)
 //   offset  4: pan_y           (f32)
 //   offset  8: zoom            (f32)
@@ -45,8 +46,11 @@ const UNIFORM_SIZE = 80;
 //   offset 16: viewport_height (f32)
 //   offset 20: inset_offset_y  (f32)
 //   offset 24: inset_zoom      (f32)
-//   offset 28-31: padding
-const CAMERA_SIZE = 32;
+//   offset 28: use_3d          (f32) — 0.0 = 2D, 1.0 = 3D rotation active
+//   offset 32: rot_col0        (vec3f + pad)
+//   offset 48: rot_col1        (vec3f + pad)
+//   offset 64: rot_col2        (vec3f + pad)
+const CAMERA_SIZE = 80;
 
 /** Resolved style with concrete numeric values, ready for GPU upload. */
 export type PointStyle = {
@@ -88,6 +92,10 @@ export type CameraState = {
   insetOffsetY: number;
   /** Zoom multiplier — scales content to fit visible area below toolbar. */
   insetZoom: number;
+  /** Whether 3D camera rotation is active. */
+  use3d: boolean;
+  /** 3×3 rotation matrix (column-major, 9 floats). null = identity. */
+  rotation: Float32Array | null;
 };
 
 const DEFAULT_STYLE: PointStyle = {
@@ -116,6 +124,8 @@ const DEFAULT_CAMERA: CameraState = {
   viewportHeight: 1,
   insetOffsetY: 0,
   insetZoom: 1,
+  use3d: false,
+  rotation: null,
 };
 
 const DEFAULT_HDR_FORMAT: GPUTextureFormat = 'rgba32float';
@@ -313,6 +323,7 @@ export const writeUniforms = (
   biasX = 0,
   biasY = 0,
   maxPoints = 0,
+  biasZ = 0,
 ): void => {
   uniformF32[0] = style.pointSize;
   uniformF32[1] = style.opacity;
@@ -332,7 +343,7 @@ export const writeUniforms = (
   uniformF32[15] = colorState.min;
   uniformF32[16] = colorState.range;
   uniformU32[17] = colorState.numStops;
-  uniformF32[18] = 0; // padding
+  uniformF32[18] = biasZ;
   uniformF32[19] = 0; // padding
   device.queue.writeBuffer(uniformBuffer, 0, uniformBuf);
 };
@@ -349,6 +360,24 @@ export const writeCamera = (
   cameraBuf[4] = camera.viewportHeight;
   cameraBuf[5] = camera.insetOffsetY;
   cameraBuf[6] = camera.insetZoom;
+  cameraBuf[7] = camera.use3d ? 1.0 : 0.0;
+  // 3×3 rotation matrix, column-major, each column padded to vec4f (16 bytes)
+  const rot = camera.rotation;
+  // col0 at offset 32 (index 8)
+  cameraBuf[8] = rot ? rot[0]! : 1.0;
+  cameraBuf[9] = rot ? rot[1]! : 0.0;
+  cameraBuf[10] = rot ? rot[2]! : 0.0;
+  cameraBuf[11] = 0; // pad
+  // col1 at offset 48 (index 12)
+  cameraBuf[12] = rot ? rot[3]! : 0.0;
+  cameraBuf[13] = rot ? rot[4]! : 1.0;
+  cameraBuf[14] = rot ? rot[5]! : 0.0;
+  cameraBuf[15] = 0; // pad
+  // col2 at offset 64 (index 16)
+  cameraBuf[16] = rot ? rot[6]! : 0.0;
+  cameraBuf[17] = rot ? rot[7]! : 0.0;
+  cameraBuf[18] = rot ? rot[8]! : 1.0;
+  cameraBuf[19] = 0; // pad
   device.queue.writeBuffer(cameraBuffer, 0, cameraBuf);
 };
 

@@ -3,6 +3,7 @@
 import type { DataToGpu } from '../data/messages.ts';
 import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
 import { type CanvasView, configureCanvas, renderPoints, tonemapToCanvas } from '../renderer.ts';
+import { computeResidualPC } from '../residual-pc.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
 import {
   type ColorPipelines,
@@ -94,6 +95,12 @@ type GpuState = {
   adjBasisBuffer: GPUBuffer | null;
   normMins: Float32Array | null;
   normRanges: Float32Array | null;
+  // 3D camera rotation mode
+  is3dActive: boolean;
+  rotation3d: Float32Array | null; // 9-element 3×3 column-major
+  residualPC: Float32Array | null; // p-element 3rd basis vector
+  // CPU-side copy of column-major data for residual PC computation
+  cpuData: Float32Array | null;
 };
 
 let state: GpuState | null = null;
@@ -252,18 +259,25 @@ let adjBasisWeights: Float32Array | null = null;
  * per-point normalization on GPU. Both yield: ((raw-min)/range - 0.5) * basis * VS.
  * If you change the math here, update compute-projection.wgsl to match.
  */
+/**
+ * Fold normalization into basis. When `cols` is 3, also computes z-axis weights.
+ * The `basis` layout for 3 columns: [x0..xp-1, y0..yp-1, z0..zp-1].
+ */
 const computeAdjustedBasis = (
   basis: Float32Array,
   mins: Float32Array,
   ranges: Float32Array,
   dims: number,
-): { weights: Float32Array; biasX: number; biasY: number } => {
-  if (!adjBasisWeights || adjBasisWeights.length !== dims * 2) {
-    adjBasisWeights = new Float32Array(dims * 2);
+  cols = 2,
+): { weights: Float32Array; biasX: number; biasY: number; biasZ: number } => {
+  const needed = dims * cols;
+  if (!adjBasisWeights || adjBasisWeights.length !== needed) {
+    adjBasisWeights = new Float32Array(needed);
   }
 
   let biasX = 0;
   let biasY = 0;
+  let biasZ = 0;
 
   for (let d = 0; d < dims; d++) {
     const range = Math.max(ranges[d]!, 1e-6);
@@ -277,9 +291,15 @@ const computeAdjustedBasis = (
     const normOffset = -mins[d]! / range - 0.5;
     biasX += normOffset * bx * VIEWPORT_SCALE;
     biasY += normOffset * by * VIEWPORT_SCALE;
+
+    if (cols === 3) {
+      const bz = basis[2 * dims + d]!;
+      adjBasisWeights[2 * dims + d] = bz * invRange;
+      biasZ += normOffset * bz * VIEWPORT_SCALE;
+    }
   }
 
-  return { weights: adjBasisWeights, biasX, biasY };
+  return { weights: adjBasisWeights, biasX, biasY, biasZ };
 };
 
 // ─── Worker-driven playback ───────────────────────────────────────────────
@@ -387,15 +407,39 @@ const renderView = (
 
   const { device, numPoints, numDims } = state;
 
+  // Build the effective basis: p×2 normally, p×3 when 3D is active
+  const is3d = state.is3dActive && state.residualPC;
+  const cols = is3d ? 3 : 2;
+  let effectiveBasis: Float32Array;
+  if (is3d) {
+    // Combine the p×2 basis with the residual PC as the 3rd column
+    effectiveBasis = new Float32Array(numDims * 3);
+    effectiveBasis.set(basis.subarray(0, numDims * 2));
+    effectiveBasis.set(state.residualPC!, numDims * 2);
+  } else {
+    effectiveBasis = basis;
+  }
+
   // Fold normalization into basis on CPU (trivial for typical dim counts)
-  const { weights, biasX, biasY } = computeAdjustedBasis(
-    basis,
+  const { weights, biasX, biasY, biasZ } = computeAdjustedBasis(
+    effectiveBasis,
     state.normMins,
     state.normRanges,
     numDims,
+    cols,
   );
 
-  // Upload adjusted basis weights
+  // Upload adjusted basis weights (ensure buffer is large enough)
+  const neededBytes = numDims * cols * 4;
+  if (state.adjBasisBuffer.size < neededBytes) {
+    state.adjBasisBuffer.destroy();
+    state.adjBasisBuffer = device.createBuffer({
+      label: 'adj-basis',
+      size: neededBytes,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    rebuildBindGroups();
+  }
   device.queue.writeBuffer(state.adjBasisBuffer, 0, weights as Float32Array<ArrayBuffer>);
 
   // Resolve per-view style (handles 'auto' → concrete values for this canvas size)
@@ -433,6 +477,7 @@ const renderView = (
     biasX,
     biasY,
     state.maxPoints,
+    biasZ,
   );
   writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
 
@@ -483,7 +528,17 @@ const renderOnePreview = (viewIndex: number, basis: Float32Array): void => {
   renderView(
     basis,
     viewIndex,
-    { panX: 0, panY: 0, zoom: 1, aspect: 1, viewportHeight: 1, insetOffsetY: 0, insetZoom: 1 },
+    {
+      panX: 0,
+      panY: 0,
+      zoom: 1,
+      aspect: 1,
+      viewportHeight: 1,
+      insetOffsetY: 0,
+      insetZoom: 1,
+      use3d: false,
+      rotation: null,
+    },
     state.renderBindGroup,
   );
   postMain({ type: 'rendered', viewIndex });
@@ -801,6 +856,11 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   state.styleFlags = { useSelectionMask: false };
   state.colorState = { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 };
   state.activeCatColumnName = null;
+  state.is3dActive = false;
+  state.rotation3d = null;
+  state.residualPC = null;
+  state.camera.use3d = false;
+  state.camera.rotation = null;
 
   const { projectionPipeline } = state;
 
@@ -808,13 +868,17 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   const res = createProjectionResources(device, projectionPipeline, rows, dims);
 
   // Upload each column contiguously into the concatenated data buffer
+  // Also retain a CPU-side copy for residual PC computation (3D mode)
+  const cpuData = new Float32Array(dims * rows);
   for (let d = 0; d < dims; d++) {
     device.queue.writeBuffer(
       res.dataBuffer,
       d * rows * 4,
       buffers[d]! as Float32Array<ArrayBuffer>,
     );
+    cpuData.set(buffers[d]!, d * rows);
   }
+  state.cpuData = cpuData;
 
   // Upload norm params: [min, range] pairs as vec2f array
   const normData = new Float32Array(dims * 2);
@@ -934,6 +998,8 @@ const handleMessage = (msg: MainToGpu): void => {
       viewportHeight: state.camera.viewportHeight,
       insetOffsetY: msg.insetOffsetY,
       insetZoom: msg.insetZoom,
+      use3d: state.camera.use3d,
+      rotation: state.camera.rotation,
     };
     renderMainView();
     return;
@@ -971,6 +1037,18 @@ const handleMessage = (msg: MainToGpu): void => {
   if (msg.type === 'setDirectBasis') {
     if (!state.projectionResources || !state.renderBindGroup) return;
     state.directBasis = msg.basis;
+    // Recompute residual PC when 3D mode is active and basis changes
+    if (state.is3dActive && state.cpuData && state.normMins && state.normRanges) {
+      state.residualPC = computeResidualPC(
+        msg.basis,
+        state.cpuData,
+        state.normMins,
+        state.normRanges,
+        state.numDims,
+        state.numPoints,
+      );
+      postMain({ type: 'residualPC', residualPC: new Float32Array(state.residualPC) });
+    }
     renderView(msg.basis, 0, state.camera, state.renderBindGroup);
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
@@ -1041,6 +1119,56 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
+    return;
+  }
+
+  if (msg.type === 'enable3d') {
+    if (!state.cpuData || !state.normMins || !state.normRanges) return;
+    // Get current basis (direct or interpolated)
+    const basis = state.directBasis ?? state.tour?.interpolatedBasis;
+    if (!basis) return;
+    state.is3dActive = true;
+    state.residualPC = computeResidualPC(
+      basis,
+      state.cpuData,
+      state.normMins,
+      state.normRanges,
+      state.numDims,
+      state.numPoints,
+    );
+    postMain({ type: 'residualPC', residualPC: new Float32Array(state.residualPC) });
+    state.camera.use3d = true;
+    // Resize adj basis buffer for 3 columns
+    if (state.adjBasisBuffer) {
+      const needed = state.numDims * 3 * 4;
+      if (state.adjBasisBuffer.size < needed) {
+        state.adjBasisBuffer.destroy();
+        state.adjBasisBuffer = state.device.createBuffer({
+          label: 'adj-basis',
+          size: needed,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        rebuildBindGroups();
+      }
+    }
+    renderMainView();
+    return;
+  }
+
+  if (msg.type === 'disable3d') {
+    state.is3dActive = false;
+    state.residualPC = null;
+    state.rotation3d = null;
+    state.camera.use3d = false;
+    state.camera.rotation = null;
+    renderMainView();
+    return;
+  }
+
+  if (msg.type === 'set3dRotation') {
+    state.rotation3d = msg.matrix;
+    state.camera.rotation = msg.matrix;
+    renderMainView();
     return;
   }
 
@@ -1287,6 +1415,8 @@ const handleBenchmark = async (
     viewportHeight: state.views[0]!.canvas.height,
     insetOffsetY: 0,
     insetZoom: 1,
+    use3d: false,
+    rotation: null,
   };
 
   // Warmup (5 frames)
@@ -1429,6 +1559,8 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
           viewportHeight: 1,
           insetOffsetY: 0,
           insetZoom: 1,
+          use3d: false,
+          rotation: null,
         },
         colorLutBuffer: null,
         colorState: { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 },
@@ -1446,6 +1578,10 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         adjBasisBuffer: null,
         normMins: null,
         normRanges: null,
+        is3dActive: false,
+        rotation3d: null,
+        residualPC: null,
+        cpuData: null,
       };
 
       msg.dataPort.onmessage = onDataMessage;

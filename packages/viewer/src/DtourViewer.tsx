@@ -16,11 +16,22 @@ import { CircularSlider } from './components/CircularSlider.tsx';
 import type { CircularSliderHandle } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
+import { RevertCameraButton } from './components/RevertCameraButton.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
+import {
+  IDENTITY_QUAT,
+  type Quat,
+  arcballQuat,
+  isIdentityQuat,
+  multiplyQuat,
+  projectToSphere,
+  quatToMat3,
+  slerp,
+} from './lib/arcball.ts';
 import { tourToVisual, visualToTour } from './lib/position-remap.ts';
 import { throttleAndDebounce } from './lib/throttle-debounce.ts';
 import { RadialChart } from './radial-chart/RadialChart.tsx';
@@ -39,6 +50,7 @@ import {
   frameLoadingsAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
+  is3dRotatedAtom,
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
@@ -306,7 +318,7 @@ export const DtourViewer = ({
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
   // We also track the current pixel offset for positioning overlays.
-  const [overlayOffsetY, setOverlayOffsetY] = useState(isToolbarVisible ? toolbarHeight / 2 : 0);
+  const [overlayOffsetY, setOverlayOffsetY] = useState(isToolbarVisible ? toolbarHeight : 0);
   const overlayOffsetRef = useRef(overlayOffsetY);
   overlayOffsetRef.current = overlayOffsetY;
   const insetAnimRef = useRef<number | null>(null);
@@ -319,7 +331,7 @@ export const DtourViewer = ({
     const t = toolbarHeight;
 
     // Current inset factor: derive from current overlayOffsetY via ref
-    const startT = t > 0 ? overlayOffsetRef.current / (t / 2) : 0;
+    const startT = t > 0 ? overlayOffsetRef.current / t : 0;
     if (Math.abs(startT - targetT) < 0.001) {
       // Already at target — just ensure shader is in sync
       const insetOffsetY = (-targetT * t) / h;
@@ -345,7 +357,7 @@ export const DtourViewer = ({
       scatter.setCamera({ insetOffsetY, insetZoom } as Parameters<typeof scatter.setCamera>[0]);
 
       // Overlay pixel offset
-      setOverlayOffsetY((currentT * t) / 2);
+      setOverlayOffsetY(currentT * t);
 
       if (progress < 1) {
         insetAnimRef.current = requestAnimationFrame(tick);
@@ -373,9 +385,9 @@ export const DtourViewer = ({
     () =>
       computeSelectorSize(
         containerSize.width,
-        containerSize.height,
+        containerSize.height - effectiveToolbarHeight,
         previewCount,
-        effectiveToolbarHeight,
+        0,
         SELECTOR_PADDING,
         previewScale,
         coloredTracks.length,
@@ -438,6 +450,9 @@ export const DtourViewer = ({
       onStatusRef.current?.(s);
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
+      }
+      if (s.type === 'residualPC') {
+        residualPCRef.current = s.residualPC;
       }
       if (s.type === 'playbackTick') {
         positionRef.current = s.position;
@@ -616,6 +631,163 @@ export const DtourViewer = ({
     return () => container.removeEventListener('wheel', handler);
   }, [store]);
 
+  // ─── 3D camera rotation (manual mode only) ──────────────────────────────
+  const setIs3dRotated = useSetAtom(is3dRotatedAtom);
+  const is3dRotated = useAtomValue(is3dRotatedAtom);
+  const quatRef = useRef<Quat>(IDENTITY_QUAT);
+  const is3dEnabledRef = useRef(false);
+  const revertAnimRef = useRef<number | null>(null);
+  const residualPCRef = useRef<Float32Array | null>(null);
+  const effectiveToolbarHeightRef = useRef(effectiveToolbarHeight);
+  effectiveToolbarHeightRef.current = effectiveToolbarHeight;
+
+  // Shift+drag arcball rotation
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let dragging = false;
+    let lastSphere: [number, number, number] | null = null;
+
+    const toNdc = (e: PointerEvent): [number, number] => {
+      const rect = container.getBoundingClientRect();
+      // Map relative to the visible content area (below toolbar)
+      const t = effectiveToolbarHeightRef.current;
+      const visibleH = rect.height - t;
+      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -(((e.clientY - rect.top - t) / visibleH) * 2 - 1);
+      return [x, y];
+    };
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      // Shift+drag to enter 3D; once active, plain drag also rotates
+      if (!e.shiftKey && !store.get(is3dRotatedAtom)) return;
+      if (store.get(viewModeAtom) !== 'manual') return;
+      if (!store.get(metadataAtom)) return; // data not loaded yet
+      // Let clicks on buttons (revert, toolbar, etc.) pass through
+      if ((e.target as Element).closest('button, a')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      container.setPointerCapture(e.pointerId);
+      const [nx, ny] = toNdc(e);
+      lastSphere = projectToSphere(nx, ny);
+
+      // Enable 3D on first rotation
+      if (!is3dEnabledRef.current) {
+        scatterRef.current?.enable3d();
+        is3dEnabledRef.current = true;
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (!dragging || !lastSphere) return;
+      e.preventDefault();
+      const [nx, ny] = toNdc(e);
+      const curSphere = projectToSphere(nx, ny);
+      const delta = arcballQuat(lastSphere, curSphere);
+      quatRef.current = multiplyQuat(delta, quatRef.current);
+      lastSphere = curSphere;
+
+      const mat = quatToMat3(quatRef.current);
+      scatterRef.current?.set3dRotation(mat);
+
+      if (residualPCRef.current) {
+        axisOverlayRef.current?.setRotation3d(residualPCRef.current, mat);
+      }
+
+      if (!store.get(is3dRotatedAtom)) {
+        store.set(is3dRotatedAtom, true);
+      }
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      lastSphere = null;
+      container.releasePointerCapture(e.pointerId);
+    };
+
+    container.addEventListener('pointerdown', onDown);
+    container.addEventListener('pointermove', onMove);
+    container.addEventListener('pointerup', onUp);
+    return () => {
+      container.removeEventListener('pointerdown', onDown);
+      container.removeEventListener('pointermove', onMove);
+      container.removeEventListener('pointerup', onUp);
+    };
+  }, [store]);
+
+  // Slerp revert animation
+  const revertCamera = useCallback(() => {
+    if (revertAnimRef.current !== null) cancelAnimationFrame(revertAnimRef.current);
+    const startQuat: Quat = [...quatRef.current];
+    if (isIdentityQuat(startQuat)) {
+      // Already at identity — just disable
+      scatterRef.current?.disable3d();
+      is3dEnabledRef.current = false;
+      quatRef.current = IDENTITY_QUAT;
+      residualPCRef.current = null;
+      axisOverlayRef.current?.clearRotation3d();
+      setIs3dRotated(false);
+      return;
+    }
+    const duration = 300;
+    const startTime = performance.now();
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      // Ease-out cubic
+      const eased = 1 - (1 - progress) ** 3;
+      const q = slerp(startQuat, IDENTITY_QUAT, eased);
+      quatRef.current = q;
+      const mat = quatToMat3(q);
+      scatterRef.current?.set3dRotation(mat);
+      if (residualPCRef.current) {
+        axisOverlayRef.current?.setRotation3d(residualPCRef.current, mat);
+      }
+      if (progress < 1) {
+        revertAnimRef.current = requestAnimationFrame(tick);
+      } else {
+        revertAnimRef.current = null;
+        quatRef.current = IDENTITY_QUAT;
+        scatterRef.current?.disable3d();
+        is3dEnabledRef.current = false;
+        residualPCRef.current = null;
+        axisOverlayRef.current?.clearRotation3d();
+        setIs3dRotated(false);
+      }
+    };
+    revertAnimRef.current = requestAnimationFrame(tick);
+  }, [setIs3dRotated]);
+
+  // Escape key to revert
+  useEffect(() => {
+    if (!is3dRotated) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        revertCamera();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [is3dRotated, revertCamera]);
+
+  // Reset 3D state when leaving manual mode
+  useEffect(() => {
+    if (viewMode === 'manual') return;
+    if (is3dEnabledRef.current) {
+      scatterRef.current?.disable3d();
+      is3dEnabledRef.current = false;
+      quatRef.current = IDENTITY_QUAT;
+      residualPCRef.current = null;
+      axisOverlayRef.current?.clearRotation3d();
+      setIs3dRotated(false);
+    }
+  }, [viewMode, setIs3dRotated]);
+
   const tickCount = views?.length ?? embeddedViews?.length ?? previewCount;
   const hasData = !!data && !!metadata;
 
@@ -625,11 +797,13 @@ export const DtourViewer = ({
     );
   }
 
+  const overlayHeight = containerSize.height - overlayOffsetY;
+
   return (
     <div ref={containerRef} className="w-full h-full relative bg-dtour-bg">
-      {/* Overlay wrapper — translateY matches the shader inset so overlays
-          stay visually centered in the area below the toolbar. */}
-      <div className="absolute inset-0" style={{ transform: `translateY(${overlayOffsetY}px)` }}>
+      {/* Overlay wrapper — positioned below the toolbar so overlays
+          are visually centered in the area below the toolbar. */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${overlayOffsetY}px` }}>
         {/* Preview gallery — only in guided mode */}
         {isGuidedMode &&
           hasData &&
@@ -638,21 +812,18 @@ export const DtourViewer = ({
             <Gallery
               previewCanvases={previewCanvasesRef.current}
               containerWidth={containerSize.width}
-              containerHeight={containerSize.height}
-              toolbarHeight={effectiveToolbarHeight}
+              containerHeight={overlayHeight}
+              toolbarHeight={0}
             />
           )}
 
-        {/* Lasso selection overlay — available in all modes, below circular selector */}
-        {hasData && containerSize.width > 0 && (
-          <LassoOverlay
-            scatter={scatter}
-            width={containerSize.width}
-            height={containerSize.height}
-          />
+        {/* Lasso selection overlay — available in all modes (disabled during 3D rotation) */}
+        {hasData && containerSize.width > 0 && !is3dRotated && (
+          <LassoOverlay scatter={scatter} width={containerSize.width} height={overlayHeight} />
         )}
 
-        {/* Axis overlay — interactive in manual mode, read-only in guided when enabled */}
+        {/* Axis overlay — interactive in manual mode (disabled during 3D rotation),
+            read-only in guided when enabled */}
         {(viewMode === 'manual' || (isGuidedMode && showAxes)) &&
           hasData &&
           containerSize.width > 0 && (
@@ -660,10 +831,13 @@ export const DtourViewer = ({
               ref={axisOverlayRef}
               scatter={scatter}
               width={containerSize.width}
-              height={containerSize.height}
-              readOnly={isGuidedMode}
+              height={overlayHeight}
+              readOnly={isGuidedMode || is3dRotated}
             />
           )}
+
+        {/* Revert camera button — shown when 3D camera is rotated in manual mode */}
+        {viewMode === 'manual' && <RevertCameraButton onRevert={revertCamera} />}
 
         {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
         {isGuidedMode && hasData && (

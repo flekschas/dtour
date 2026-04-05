@@ -211,6 +211,11 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToGpu(gpuWorker, { type: 'setMaxPoints', maxPoints: n });
   };
 
+  // 3D camera rotation — not supported in WebGL backend (no-ops)
+  const enable3d = (): void => {};
+  const disable3d = (): void => {};
+  const set3dRotation = (_matrix: Float32Array): void => {};
+
   const benchmark = (
     numPoints?: number,
   ): Promise<{ frameTimes: Float64Array; numPoints: number; avgMs: number; fps: number }> => {
@@ -271,6 +276,9 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     startPlayback,
     stopPlayback,
     setMaxPoints,
+    enable3d,
+    disable3d,
+    set3dRotation,
     benchmark,
     subscribe,
     destroy,
