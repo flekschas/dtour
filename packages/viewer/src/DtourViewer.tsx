@@ -451,8 +451,23 @@ export const DtourViewer = ({
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
       }
+      if (s.type === 'metadata') {
+        // Data reload: worker resets 3D state, so clear viewer-side refs too
+        if (is3dEnabledRef.current) {
+          is3dEnabledRef.current = false;
+          quatRef.current = IDENTITY_QUAT;
+          residualPCRef.current = null;
+          axisOverlayRef.current?.clearRotation3d();
+          store.set(is3dRotatedAtom, false);
+        }
+      }
       if (s.type === 'residualPC') {
         residualPCRef.current = s.residualPC;
+        // If already rotating, immediately update axis overlay so the first
+        // drag frame isn't missed while waiting for the next pointermove.
+        if (!isIdentityQuat(quatRef.current)) {
+          axisOverlayRef.current?.setRotation3d(s.residualPC, quatToMat3(quatRef.current));
+        }
       }
       if (s.type === 'playbackTick') {
         positionRef.current = s.position;
@@ -638,6 +653,8 @@ export const DtourViewer = ({
   const is3dEnabledRef = useRef(false);
   const revertAnimRef = useRef<number | null>(null);
   const residualPCRef = useRef<Float32Array | null>(null);
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
   const effectiveToolbarHeightRef = useRef(effectiveToolbarHeight);
   effectiveToolbarHeightRef.current = effectiveToolbarHeight;
 
@@ -665,6 +682,7 @@ export const DtourViewer = ({
       if (!e.shiftKey && !store.get(is3dRotatedAtom)) return;
       if (store.get(viewModeAtom) !== 'manual') return;
       if (!store.get(metadataAtom)) return; // data not loaded yet
+      if (backendRef.current !== 'webgpu') return; // 3D requires WebGPU
       // Let clicks on buttons (revert, toolbar, etc.) pass through
       if ((e.target as Element).closest('button, a')) return;
       e.preventDefault();
@@ -702,20 +720,28 @@ export const DtourViewer = ({
       }
     };
 
-    const onUp = (e: PointerEvent) => {
-      if (!dragging) return;
+    const endDrag = () => {
       dragging = false;
       lastSphere = null;
+    };
+
+    const onUp = (e: PointerEvent) => {
+      if (!dragging) return;
+      endDrag();
       container.releasePointerCapture(e.pointerId);
     };
 
     container.addEventListener('pointerdown', onDown);
     container.addEventListener('pointermove', onMove);
     container.addEventListener('pointerup', onUp);
+    container.addEventListener('pointercancel', endDrag);
+    container.addEventListener('lostpointercapture', endDrag);
     return () => {
       container.removeEventListener('pointerdown', onDown);
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerup', onUp);
+      container.removeEventListener('pointercancel', endDrag);
+      container.removeEventListener('lostpointercapture', endDrag);
     };
   }, [store]);
 
