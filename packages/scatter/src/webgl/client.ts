@@ -321,6 +321,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setMaxPoints,
     addPreviewCanvas,
     removePreviewCanvas,
+    resizePreview: () => {},
     enable3d,
     disable3d,
     set3dRotation,

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.0
+
+### scatter
+- fix: hardcoded preview canvas resolution -> now track layout size × DPR
+
 ## v0.2.0
 
 ### python

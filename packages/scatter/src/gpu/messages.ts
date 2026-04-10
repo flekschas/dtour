@@ -36,6 +36,7 @@ export type MainToGpu =
       insetZoom: number;
     }
   | { type: 'resize'; viewIndex: number; width: number; height: number; dpr?: number }
+  | { type: 'resizePreview'; id: number; width: number; height: number }
   | { type: 'render' }
   | {
       // Single basis for manual/zen modes — renders main view only, no arc-length.

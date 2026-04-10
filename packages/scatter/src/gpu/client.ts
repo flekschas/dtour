@@ -152,6 +152,8 @@ export type ScatterInstance = {
   addPreviewCanvas: (id: number, canvas: HTMLCanvasElement) => void;
   /** Remove a previously added preview canvas. */
   removePreviewCanvas: (id: number) => void;
+  /** Resize a preview canvas backing store (physical pixels). */
+  resizePreview: (id: number, width: number, height: number) => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
@@ -469,6 +471,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'removePreviewCanvas', id });
   };
 
+  const resizePreview = (id: number, width: number, height: number): void => {
+    sendToGpu(gpuWorker, { type: 'resizePreview', id, width, height });
+  };
+
   const destroy = (): void => {
     gpuWorker.terminate();
     dataWorker.terminate();
@@ -502,6 +508,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     getMetrics,
     addPreviewCanvas,
     removePreviewCanvas,
+    resizePreview,
     subscribe,
     destroy,
   };

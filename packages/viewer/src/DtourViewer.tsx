@@ -92,7 +92,7 @@ export type DtourViewerProps = {
   backend?: 'webgpu' | 'webgl' | undefined;
 };
 
-const PREVIEW_PHYSICAL_SIZE = 300; // Physical pixels per preview canvas
+const PREVIEW_INITIAL_SIZE = 2; // Placeholder; real size set by ResizeObserver in Gallery
 
 const INSET_ANIMATION_MS = 300;
 const SELECTOR_PADDING = 16;
@@ -502,8 +502,8 @@ export const DtourViewer = ({
     const previews: HTMLCanvasElement[] = [];
     for (let i = 0; i < previewCount; i++) {
       const c = document.createElement('canvas');
-      c.width = PREVIEW_PHYSICAL_SIZE;
-      c.height = PREVIEW_PHYSICAL_SIZE;
+      c.width = PREVIEW_INITIAL_SIZE;
+      c.height = PREVIEW_INITIAL_SIZE;
       c.style.width = '100%';
       c.style.height = '100%';
       c.style.display = 'block';
@@ -512,9 +512,28 @@ export const DtourViewer = ({
       scatter.addPreviewCanvas(i, c);
     }
     setPreviewCanvases(previews);
+
+    // Observe each preview canvas for CSS layout changes and resize
+    // the OffscreenCanvas backing store to match (DPR-aware).
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const curDpr = window.devicePixelRatio || 1;
+        const canvas = entry.target as HTMLCanvasElement;
+        const idx = previews.indexOf(canvas);
+        if (idx < 0) continue;
+        const { width, height } = entry.contentRect;
+        const pw = Math.round(width * curDpr);
+        const ph = Math.round(height * curDpr);
+        if (pw < 1 || ph < 1) continue;
+        scatter.resizePreview(idx, pw, ph);
+      }
+    });
+    for (const c of previews) ro.observe(c);
+
     scatter.render();
 
     return () => {
+      ro.disconnect();
       for (let i = 0; i < previews.length; i++) {
         scatter.removePreviewCanvas(i);
         previews[i]!.remove();

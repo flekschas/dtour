@@ -1180,6 +1180,18 @@ const handleMessage = (msg: MainToGpu): void => {
     return;
   }
 
+  if (msg.type === 'resizePreview') {
+    const entry = state.previewCanvases.get(msg.id);
+    if (!entry) return;
+    entry.canvas.width = msg.width;
+    entry.canvas.height = msg.height;
+    // Coalesce: multiple resizes arrive in a burst, re-render all once
+    if (state.tour && state.projectionResources) {
+      schedulePreviewRender();
+    }
+    return;
+  }
+
   if (msg.type === 'render') {
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
