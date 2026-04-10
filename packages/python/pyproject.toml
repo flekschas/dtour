@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dtour"
-version = "0.1.0"
+version = "0.2.0"
 description = "Guided tours through high-dimensional data — interactive WebGPU scatter in Jupyter"
 readme = "README.md"
 requires-python = ">=3.12"
