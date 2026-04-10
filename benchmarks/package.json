@@ -1,0 +1,13 @@
+{
+  "name": "benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "node bench.js"
+  },
+  "devDependencies": {
+    "@dtour/scatter": "workspace:*",
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^25.5.2"
+  }
+}

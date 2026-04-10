@@ -19,9 +19,19 @@ export const configureCanvas = (canvas: OffscreenCanvas, device: GPUDevice): Can
   return { canvas, context, format };
 };
 
+// Maximum instances per draw call. Keeps individual GPU submissions short
+// enough to avoid Chrome's GPU watchdog timeout (~2-8s depending on
+// platform). For 10M points, this produces 5 draws within a single render
+// pass — the blend state accumulates correctly across draws.
+const MAX_INSTANCES_PER_DRAW = 2_000_000;
+
 /**
  * Encode a render pass for numPoints instanced quads into a texture view.
  * The target is typically an HDR float texture for later tone mapping.
+ *
+ * Large point counts are split into multiple draw calls using firstInstance
+ * offsets so that @builtin(instance_index) covers [0, numPoints) across all
+ * draws — storage buffer indexing and decimation hashing are unaffected.
  */
 export const renderPoints = (
   encoder: GPUCommandEncoder,
@@ -45,7 +55,10 @@ export const renderPoints = (
   if (numPoints > 0) {
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
-    pass.draw(4, numPoints);
+    for (let offset = 0; offset < numPoints; offset += MAX_INSTANCES_PER_DRAW) {
+      const count = Math.min(MAX_INSTANCES_PER_DRAW, numPoints - offset);
+      pass.draw(4, count, 0, offset);
+    }
   }
   pass.end();
 };

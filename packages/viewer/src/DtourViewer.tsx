@@ -87,7 +87,8 @@ export type DtourViewerProps = {
   toolbarHeight?: number | undefined;
   /** Called when the scatter instance is created (or null on destroy). */
   onScatterReady?: ((scatter: ScatterInstance | null) => void) | undefined;
-  /** Rendering backend. Default 'webgpu'. */
+  /** Rendering backend. Read once on mount — changing after mount has no effect.
+   *  Default 'webgpu'. */
   backend?: 'webgpu' | 'webgl' | undefined;
 };
 
@@ -112,7 +113,7 @@ export const DtourViewer = ({
   onScatterReadyRef.current = onScatterReady;
   const [scatter, setScatter] = useState<ScatterInstance | null>(null);
   const scatterRef = useRef<ScatterInstance | null>(null);
-  const previewCanvasesRef = useRef<HTMLCanvasElement[]>([]);
+  const [previewCanvases, setPreviewCanvases] = useState<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
   const metadata = useAtomValue(metadataAtom);
   const embeddedConfig = useAtomValue(embeddedConfigAtom);
@@ -131,8 +132,6 @@ export const DtourViewer = ({
   const setActiveColumns = useSetAtom(activeColumnsAtom);
   const lastDataRef = useRef<ArrayBuffer | undefined>(undefined);
   const prevDimCountRef = useRef<number | null>(null);
-  const dataRef = useRef(data);
-  dataRef.current = data;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const sliderRef = useRef<CircularSliderHandle>(null);
@@ -404,8 +403,14 @@ export const DtourViewer = ({
     ],
   );
 
-  // Initialize scatter — create main + preview canvases imperatively
-  // (transferControlToOffscreen can only be called once per canvas).
+  // Effect A — Scatter lifecycle: create main canvas + scatter instance.
+  // Runs once on mount, cleans up on unmount. No dependencies — backend is
+  // a static construction prop, store and setCanvasSize are stable singletons.
+  // NOTE: This effect is NOT StrictMode-safe. transferControlToOffscreen()
+  // and ArrayBuffer transfers are one-shot ownership operations that cannot
+  // survive StrictMode's mount→cleanup→remount cycle. Consumers must either
+  // avoid StrictMode or accept a one-time dev-mode data copy.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally empty — all captured values are stable or refs
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -422,29 +427,18 @@ export const DtourViewer = ({
     mainCanvas.style.display = 'block';
     container.prepend(mainCanvas);
 
-    // Preview canvases — one per tour keyframe view
-    const previews: HTMLCanvasElement[] = [];
-    for (let i = 0; i < previewCount; i++) {
-      const c = document.createElement('canvas');
-      c.width = PREVIEW_PHYSICAL_SIZE;
-      c.height = PREVIEW_PHYSICAL_SIZE;
-      c.style.width = '100%';
-      c.style.height = '100%';
-      c.style.display = 'block';
-      c.style.borderRadius = '2px';
-      previews.push(c);
-    }
-    previewCanvasesRef.current = previews;
-
     const factory = backend === 'webgl' ? createScatterWebGL : createScatter;
     const instance = factory({
-      canvases: [mainCanvas, ...previews],
+      canvas: mainCanvas,
       zoom: store.get(cameraZoomAtom),
     });
     scatterRef.current = instance;
     setScatter(instance);
     onScatterReadyRef.current?.(instance);
-    (globalThis as Record<string, unknown>).scatter = instance;
+    // Expose scatter instance for dev tools and benchmark automation
+    if (import.meta.env.DEV || (globalThis as Record<string, unknown>).__dtourBenchmarkMode) {
+      (globalThis as Record<string, unknown>).scatter = instance;
+    }
 
     instance.subscribe((s: ScatterStatus) => {
       onStatusRef.current?.(s);
@@ -490,15 +484,6 @@ export const DtourViewer = ({
     });
     ro.observe(container);
 
-    // Re-send data to the new scatter instance (e.g. after previewCount change
-    // or HMR where the scatter is recreated but data hasn't changed).
-    if (dataRef.current) {
-      instance.loadData(dataRef.current.slice(0));
-      lastDataRef.current = dataRef.current;
-    } else {
-      lastDataRef.current = undefined;
-    }
-
     return () => {
       ro.disconnect();
       instance.destroy();
@@ -506,10 +491,37 @@ export const DtourViewer = ({
       setScatter(null);
       onScatterReadyRef.current?.(null);
       mainCanvas.remove();
-      for (const c of previews) c.remove();
-      previewCanvasesRef.current = [];
     };
-  }, [previewCount, setCanvasSize, store, backend]);
+  }, []);
+
+  // Effect B — Preview canvas lifecycle: add/remove preview canvases dynamically.
+  // Runs when scatter instance or previewCount changes.
+  useEffect(() => {
+    if (!scatter) return;
+
+    const previews: HTMLCanvasElement[] = [];
+    for (let i = 0; i < previewCount; i++) {
+      const c = document.createElement('canvas');
+      c.width = PREVIEW_PHYSICAL_SIZE;
+      c.height = PREVIEW_PHYSICAL_SIZE;
+      c.style.width = '100%';
+      c.style.height = '100%';
+      c.style.display = 'block';
+      c.style.borderRadius = '2px';
+      previews.push(c);
+      scatter.addPreviewCanvas(i, c);
+    }
+    setPreviewCanvases(previews);
+    scatter.render();
+
+    return () => {
+      for (let i = 0; i < previews.length; i++) {
+        scatter.removePreviewCanvas(i);
+        previews[i]!.remove();
+      }
+      setPreviewCanvases([]);
+    };
+  }, [scatter, previewCount]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {
@@ -524,8 +536,9 @@ export const DtourViewer = ({
   // Send data when it changes
   useEffect(() => {
     if (!data || !scatter || data === lastDataRef.current) return;
+    if (data.byteLength === 0) return; // already transferred (detached)
     lastDataRef.current = data;
-    scatter.loadData(data.slice(0));
+    scatter.loadData(data);
   }, [data, scatter]);
 
   // Trigger PCA computation when tourBy is 'pca' and data is loaded
@@ -831,17 +844,14 @@ export const DtourViewer = ({
           are visually centered in the area below the toolbar. */}
       <div className="absolute left-0 right-0 bottom-0" style={{ top: `${overlayOffsetY}px` }}>
         {/* Preview gallery — only in guided mode */}
-        {isGuidedMode &&
-          hasData &&
-          containerSize.width > 0 &&
-          previewCanvasesRef.current.length > 0 && (
-            <Gallery
-              previewCanvases={previewCanvasesRef.current}
-              containerWidth={containerSize.width}
-              containerHeight={overlayHeight}
-              toolbarHeight={0}
-            />
-          )}
+        {isGuidedMode && hasData && containerSize.width > 0 && previewCanvases.length > 0 && (
+          <Gallery
+            previewCanvases={previewCanvases}
+            containerWidth={containerSize.width}
+            containerHeight={overlayHeight}
+            toolbarHeight={0}
+          />
+        )}
 
         {/* Lasso selection overlay — available in all modes (disabled during 3D rotation) */}
         {hasData && containerSize.width > 0 && !is3dRotated && (

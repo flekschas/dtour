@@ -3,7 +3,6 @@
 import type { DataToGpu } from '../data/messages.ts';
 import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
 import { type CanvasView, configureCanvas, renderPoints, tonemapToCanvas } from '../renderer.ts';
-import { computeResidualPC } from '../residual-pc.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
 import {
   type ColorPipelines,
@@ -37,6 +36,11 @@ import {
   dispatchProjection,
   writeProjectionParams,
 } from './projection.ts';
+import {
+  type ResidualPcPipeline,
+  computeResidualPCGpu,
+  createResidualPcPipeline,
+} from './residual-pc-pipeline.ts';
 
 // ─── Mutable worker state ──────────────────────────────────────────────────
 
@@ -48,9 +52,19 @@ type TourState = {
   interpolatedBasis: Float32Array;
 };
 
+type PreviewEntry = {
+  canvas: OffscreenCanvas;
+  ctx2d: OffscreenCanvasRenderingContext2D;
+};
+
 type GpuState = {
   device: GPUDevice;
-  views: CanvasView[];
+  mainView: CanvasView;
+  // Internal preview rendering — one reusable WebGPU canvas for all previews
+  previewGpuCanvas: OffscreenCanvas | null;
+  previewGpuView: CanvasView | null;
+  // Dynamically added preview blit targets (2D context canvases)
+  previewCanvases: Map<number, PreviewEntry>;
   // Render pipeline
   pointPipeline: ReturnType<typeof createPointPipeline>;
   renderBindGroup: GPUBindGroup | null;
@@ -83,12 +97,15 @@ type GpuState = {
   backgroundColor: [number, number, number];
   // Device pixel ratio — used by auto-style for minimum visible point size
   dpr: number;
-  // HDR rendering — points render to float FBO, then tone-map to canvas
+  // HDR rendering — two explicit slots: main view + shared preview
   hdrFormat: GPUTextureFormat;
   tonemapPipeline: TonemapPipeline;
-  hdrTextures: (GPUTexture | null)[];
-  hdrTextureViews: (GPUTextureView | null)[];
-  tonemapBindGroups: (GPUBindGroup | null)[];
+  mainHdrTexture: GPUTexture | null;
+  mainHdrTextureView: GPUTextureView | null;
+  mainTonemapBindGroup: GPUBindGroup | null;
+  previewHdrTexture: GPUTexture | null;
+  previewHdrTextureView: GPUTextureView | null;
+  previewTonemapBindGroup: GPUBindGroup | null;
   // Vertex-shader decimation: 0 = disabled (render all)
   maxPoints: number;
   // Inline projection — adjusted basis buffer + per-dim norm params
@@ -99,8 +116,8 @@ type GpuState = {
   is3dActive: boolean;
   rotation3d: Float32Array | null; // 9-element 3×3 column-major
   residualPC: Float32Array | null; // p-element 3rd basis vector
-  // CPU-side copy of column-major data for residual PC computation
-  cpuData: Float32Array | null;
+  // Lazy-created on first enable3d call
+  residualPcPipeline: ResidualPcPipeline | null;
 };
 
 let state: GpuState | null = null;
@@ -157,31 +174,29 @@ const computeAutoStyle = (
 };
 
 /** Convert a CSS-pixel diameter to the NDC convention used by the shader. */
-const cssToNdc = (cssPx: number, viewIndex: number): number => {
-  const { views, dpr } = state!;
-  const physH = views[viewIndex]!.canvas.height;
-  return (cssPx * dpr) / physH;
+const cssToNdc = (cssPx: number, canvasHeight: number): number => {
+  return (cssPx * state!.dpr) / canvasHeight;
 };
 
-/** Resolve 'auto' point size/opacity for a specific view's canvas. */
-const resolveStyleForView = (viewIndex: number): PointStyle => {
-  const { style, numPoints, views, dpr } = state!;
+/** Resolve 'auto' point size/opacity for a given canvas. */
+const resolveStyleForCanvas = (canvas: OffscreenCanvas): PointStyle => {
+  const { style, numPoints, dpr } = state!;
 
   // Fast path: no 'auto' values — still need px→NDC conversion for pointSize
   if (style.pointSize !== 'auto' && style.opacity !== 'auto') {
     return {
-      pointSize: cssToNdc(style.pointSize, viewIndex),
+      pointSize: cssToNdc(style.pointSize, canvas.height),
       opacity: style.opacity,
       color: style.color,
     };
   }
 
   // Canvas dimensions are physical pixels; computeAutoStyle expects CSS pixels + dpr
-  const canvas = views[viewIndex]!.canvas;
   const auto = computeAutoStyle(numPoints, canvas.width / dpr, canvas.height / dpr, dpr);
 
   return {
-    pointSize: style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, viewIndex),
+    pointSize:
+      style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, canvas.height),
     opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
     color: style.color,
   };
@@ -189,28 +204,50 @@ const resolveStyleForView = (viewIndex: number): PointStyle => {
 
 // ─── HDR texture management ──────────────────────────────────────────────
 
-/** Ensure HDR texture exists and matches canvas size. */
-const ensureHdrTexture = (viewIndex: number): void => {
-  const { device, views, tonemapPipeline: tp, hdrTextures } = state!;
-  const canvas = views[viewIndex]!.canvas;
-  const w = canvas.width;
-  const h = canvas.height;
-
-  const existing = hdrTextures[viewIndex];
+/** Ensure main-view HDR texture exists and matches canvas size. */
+const ensureMainHdr = (): void => {
+  const { device, mainView, tonemapPipeline: tp } = state!;
+  const { width: w, height: h } = mainView.canvas;
+  const existing = state!.mainHdrTexture;
   if (existing && existing.width === w && existing.height === h) return;
 
   existing?.destroy();
   const hdrTex = device.createTexture({
-    label: `hdr-${viewIndex}`,
+    label: 'hdr-main',
     size: [w, h],
     format: state!.hdrFormat,
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
   const hdrView = hdrTex.createView();
-  state!.hdrTextures[viewIndex] = hdrTex;
-  state!.hdrTextureViews[viewIndex] = hdrView;
+  state!.mainHdrTexture = hdrTex;
+  state!.mainHdrTextureView = hdrView;
+  state!.mainTonemapBindGroup = createTonemapBindGroup(
+    device,
+    tp.bindGroupLayout,
+    hdrView,
+    tp.paramsBuffer,
+  );
+};
 
-  state!.tonemapBindGroups[viewIndex] = createTonemapBindGroup(
+/** Ensure preview HDR texture exists and matches internal preview canvas size. */
+const ensurePreviewHdr = (): void => {
+  if (!state!.previewGpuCanvas) return;
+  const { device, tonemapPipeline: tp } = state!;
+  const { width: w, height: h } = state!.previewGpuCanvas;
+  const existing = state!.previewHdrTexture;
+  if (existing && existing.width === w && existing.height === h) return;
+
+  existing?.destroy();
+  const hdrTex = device.createTexture({
+    label: 'hdr-preview',
+    size: [w, h],
+    format: state!.hdrFormat,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const hdrView = hdrTex.createView();
+  state!.previewHdrTexture = hdrTex;
+  state!.previewHdrTextureView = hdrView;
+  state!.previewTonemapBindGroup = createTonemapBindGroup(
     device,
     tp.bindGroupLayout,
     hdrView,
@@ -309,6 +346,10 @@ type PlaybackState = {
   direction: 1 | -1;
   prevTime: number | null;
   rafId: number;
+  /** Accumulates rAF-delta intervals — one entry per rAF tick where a frame was actually submitted. */
+  frameTimes: number[];
+  /** rAF timestamp of the last tick where a frame was actually submitted to the GPU. */
+  lastRenderedRafTime: number | null;
 };
 
 let playbackState: PlaybackState | null = null;
@@ -320,30 +361,44 @@ let gpuReady = true;
 /** When true, a render was skipped due to GPU backpressure and should be retried. */
 let renderPending = false;
 
-/** Submit a render if the GPU is ready; otherwise mark it pending for later. */
-const throttledRenderMainView = (): void => {
+/** Submit a render if the GPU is ready; otherwise mark it pending for later.
+ *  Returns true if a frame was actually submitted this call. */
+const throttledRenderMainView = (): boolean => {
   if (!gpuReady) {
     renderPending = true;
-    return;
+    return false;
   }
   gpuReady = false;
   renderPending = false;
   renderMainView();
-  state!.device.queue.onSubmittedWorkDone().then(() => {
-    gpuReady = true;
-    // If a render was deferred while the GPU was busy, do it now
-    if (renderPending && state) {
-      renderPending = false;
-      throttledRenderMainView();
-    }
-  });
+  state!.device.queue.onSubmittedWorkDone().then(
+    () => {
+      gpuReady = true;
+      // During playback, let the rAF loop drive rendering so that
+      // playbackTick sees gpuReady=true and can record frame times.
+      // Outside playback, handle deferred renders immediately.
+      if (renderPending && state && !playbackState) {
+        renderPending = false;
+        throttledRenderMainView();
+      }
+    },
+    () => {
+      // Device lost — unblock the backpressure gate so future attempts
+      // can detect the lost device rather than silently dropping frames.
+      gpuReady = true;
+      postMain({ type: 'error', message: 'WebGPU device lost during rendering' });
+    },
+  );
+  return true;
 };
 
 const playbackTick = (time: number): void => {
   if (!playbackState || !state?.tour) return;
 
-  if (playbackState.prevTime !== null) {
-    const dt = (time - playbackState.prevTime) / 1000;
+  const frameMs = playbackState.prevTime !== null ? time - playbackState.prevTime : undefined;
+
+  if (frameMs !== undefined) {
+    const dt = frameMs / 1000;
     // Full tour cycle = 20s at speed=1
     const delta = (dt * playbackState.speed * playbackState.direction) / 20;
     let next = state.tour.position + delta;
@@ -353,11 +408,19 @@ const playbackTick = (time: number): void => {
   playbackState.prevTime = time;
 
   state.directBasis = null;
-  throttledRenderMainView();
+  const didRender = throttledRenderMainView();
+
+  // Record rAF-delta frame time: bounded by display refresh rate, so heavy datasets show lower FPS.
+  if (didRender) {
+    if (playbackState.lastRenderedRafTime !== null) {
+      playbackState.frameTimes.push(time - playbackState.lastRenderedRafTime);
+    }
+    playbackState.lastRenderedRafTime = time;
+  }
 
   // Throttle position broadcasts to main thread for UI sync
   if (time - lastBroadcastTime >= BROADCAST_INTERVAL_MS) {
-    postMain({ type: 'playbackTick', position: state.tour.position });
+    postMain({ type: 'playbackTick', position: state.tour.position, frameMs });
     lastBroadcastTime = time;
   }
 
@@ -371,7 +434,14 @@ const startPlayback = (speed: number, direction: 1 | -1): void => {
     playbackState.direction = direction;
   } else {
     gpuReady = true;
-    playbackState = { speed, direction, prevTime: null, rafId: 0 };
+    playbackState = {
+      speed,
+      direction,
+      prevTime: null,
+      rafId: 0,
+      frameTimes: [],
+      lastRenderedRafTime: null,
+    };
     playbackState.rafId = requestAnimationFrame(playbackTick);
   }
 };
@@ -383,16 +453,23 @@ const stopPlayback = (): void => {
     if (state?.tour) {
       postMain({ type: 'playbackTick', position: state.tour.position });
     }
+    // Return all accumulated frame times for benchmark collection
+    const ft = Float64Array.from(playbackState.frameTimes);
+    postMain({ type: 'playbackStopped', frameTimes: ft }, [ft.buffer]);
     playbackState = null;
   }
 };
 
 // ─── Render helpers ───────────────────────────────────────────────────────
 
-/** Compute adjusted basis, upload uniforms, and render one view (no compute pass). */
+/** Compute adjusted basis, upload uniforms, and render to a target canvas.
+ *  The caller must call the appropriate ensureHdr function first and pass the
+ *  resulting HDR texture view, tonemap bind group, and target CanvasView. */
 const renderView = (
   basis: Float32Array,
-  viewIndex: number,
+  targetView: CanvasView,
+  hdrTextureView: GPUTextureView,
+  tonemapBindGroup: GPUBindGroup,
   camera: CameraState,
   renBindGroup: GPUBindGroup,
 ): void => {
@@ -443,7 +520,7 @@ const renderView = (
   device.queue.writeBuffer(state.adjBasisBuffer, 0, weights as Float32Array<ArrayBuffer>);
 
   // Resolve per-view style (handles 'auto' → concrete values for this canvas size)
-  const resolved = resolveStyleForView(viewIndex);
+  const resolved = resolveStyleForCanvas(targetView.canvas);
 
   // Select blend pipeline and tonemap mode based on coloring and background luminance.
   // Per-point colors → normal (premultiplied-over), uniform → additive (dark) or subtractive (light).
@@ -482,7 +559,7 @@ const renderView = (
   writeTonemapParams(device, state.tonemapPipeline.paramsBuffer, tonemapMode);
 
   // Write the caller-supplied camera (with aspect + viewport height from the target canvas)
-  const canvas = state.views[viewIndex]!.canvas;
+  const canvas = targetView.canvas;
   const aspect = canvas.width / canvas.height || 1;
   writeCamera(device, state.pointPipeline.cameraBuffer, {
     ...camera,
@@ -490,70 +567,85 @@ const renderView = (
     viewportHeight: canvas.height,
   });
 
-  // Ensure HDR texture matches canvas size (lazy create/resize)
-  ensureHdrTexture(viewIndex);
-
   // Two-pass in a single encoder: points → float FBO, then tone-map → canvas
   const encoder = device.createCommandEncoder({ label: 'render-frame' });
-  renderPoints(
-    encoder,
-    state.hdrTextureViews[viewIndex]!,
-    activePipeline,
-    renBindGroup,
-    numPoints,
-    bg,
-  );
-  tonemapToCanvas(
-    encoder,
-    state.views[viewIndex]!,
-    state.tonemapPipeline.pipeline,
-    state.tonemapBindGroups[viewIndex]!,
-  );
+  renderPoints(encoder, hdrTextureView, activePipeline, renBindGroup, numPoints, bg);
+  tonemapToCanvas(encoder, targetView, state.tonemapPipeline.pipeline, tonemapBindGroup);
   device.queue.submit([encoder.finish()]);
 };
 
-// ─── Deferred preview rendering ───────────────────────────────────────────
-// Preview rendering is coalesced via setTimeout(0) so rapid-fire state
-// updates (setBases, setStyle, render, …) only produce a single
-// getCurrentTexture + submit per preview canvas, avoiding expired-texture
-// issues that can silently drop frames on some WebGPU implementations.
+// ─── Preview rendering helpers ────────────────────────────────────────────
+
+/** Default preview size (physical pixels). Must match DtourViewer's PREVIEW_PHYSICAL_SIZE. */
+const PREVIEW_SIZE = 300;
+
+const previewCamera: CameraState = {
+  panX: 0,
+  panY: 0,
+  zoom: 1,
+  aspect: 1,
+  viewportHeight: 1,
+  insetOffsetY: 0,
+  insetZoom: 1,
+  use3d: false,
+  rotation: null,
+};
+
+/** Ensure the worker-internal preview GPU canvas exists. */
+const ensurePreviewGpuCanvas = (): void => {
+  if (!state || state.previewGpuCanvas) return;
+  state.previewGpuCanvas = new OffscreenCanvas(PREVIEW_SIZE, PREVIEW_SIZE);
+  state.previewGpuView = configureCanvas(state.previewGpuCanvas, state.device);
+};
 
 let previewRenderPending = false;
 
-/** Render a single preview view. No ephemeral buffers needed — inline
- *  projection reuses the shared adjBasisBuffer (written before each submit). */
-const renderOnePreview = (viewIndex: number, basis: Float32Array): void => {
+/** Render a single preview and blit to its 2D target canvas. */
+const renderOnePreview = (id: number, basis: Float32Array): void => {
   if (!state?.projectionResources || !state.renderBindGroup) return;
+
+  const entry = state.previewCanvases.get(id);
+  if (!entry) return;
+
+  ensurePreviewGpuCanvas();
+  ensurePreviewHdr();
+  if (!state.previewGpuView || !state.previewHdrTextureView || !state.previewTonemapBindGroup)
+    return;
+
+  // Resize internal GPU canvas to match target if needed
+  if (
+    state.previewGpuCanvas!.width !== entry.canvas.width ||
+    state.previewGpuCanvas!.height !== entry.canvas.height
+  ) {
+    state.previewGpuCanvas!.width = entry.canvas.width;
+    state.previewGpuCanvas!.height = entry.canvas.height;
+    ensurePreviewHdr(); // HDR texture size changed
+    if (!state.previewHdrTextureView || !state.previewTonemapBindGroup) return;
+  }
 
   renderView(
     basis,
-    viewIndex,
-    {
-      panX: 0,
-      panY: 0,
-      zoom: 1,
-      aspect: 1,
-      viewportHeight: 1,
-      insetOffsetY: 0,
-      insetZoom: 1,
-      use3d: false,
-      rotation: null,
-    },
+    state.previewGpuView,
+    state.previewHdrTextureView,
+    state.previewTonemapBindGroup,
+    previewCamera,
     state.renderBindGroup,
   );
-  postMain({ type: 'rendered', viewIndex });
+
+  // Blit: drawImage from the WebGPU canvas to the 2D target
+  entry.ctx2d.drawImage(state.previewGpuCanvas!, 0, 0);
+  postMain({ type: 'rendered', viewIndex: id });
 };
 
-/** Render all preview views synchronously.
- *  Each preview targets a different canvas, so no texture conflicts. */
+/** Render all preview views sequentially (each reuses the same internal GPU canvas). */
 const renderPreviewViews = (): void => {
   if (!state?.projectionResources || !state.tour) return;
+  const { tour, previewCanvases } = state;
 
-  const { views, tour } = state;
-  const count = Math.min(views.length - 1, tour.bases.length);
-
-  for (let pi = 0; pi < count; pi++) {
-    renderOnePreview(pi + 1, tour.bases[pi]!);
+  for (const [id] of previewCanvases) {
+    if (id < tour.bases.length) {
+      renderOnePreview(id, tour.bases[id]!);
+    }
   }
 };
 
@@ -578,8 +670,18 @@ const renderAllViews = (): void => {
 const renderMainView = (): void => {
   if (!state?.projectionResources || !state.renderBindGroup) return;
 
+  ensureMainHdr();
+  if (!state.mainHdrTextureView || !state.mainTonemapBindGroup) return;
+
   if (state.directBasis) {
-    renderView(state.directBasis, 0, state.camera, state.renderBindGroup);
+    renderView(
+      state.directBasis,
+      state.mainView,
+      state.mainHdrTextureView,
+      state.mainTonemapBindGroup,
+      state.camera,
+      state.renderBindGroup,
+    );
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
@@ -593,7 +695,14 @@ const renderMainView = (): void => {
     tour.dims,
     tour.position,
   );
-  renderView(tour.interpolatedBasis, 0, state.camera, state.renderBindGroup);
+  renderView(
+    tour.interpolatedBasis,
+    state.mainView,
+    state.mainHdrTextureView,
+    state.mainTonemapBindGroup,
+    state.camera,
+    state.renderBindGroup,
+  );
   postMain({ type: 'rendered', viewIndex: 0 });
 };
 
@@ -868,17 +977,13 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   const res = createProjectionResources(device, projectionPipeline, rows, dims);
 
   // Upload each column contiguously into the concatenated data buffer
-  // Also retain a CPU-side copy for residual PC computation (3D mode)
-  const cpuData = new Float32Array(dims * rows);
   for (let d = 0; d < dims; d++) {
     device.queue.writeBuffer(
       res.dataBuffer,
       d * rows * 4,
       buffers[d]! as Float32Array<ArrayBuffer>,
     );
-    cpuData.set(buffers[d]!, d * rows);
   }
-  state.cpuData = cpuData;
 
   // Upload norm params: [min, range] pairs as vec2f array
   const normData = new Float32Array(dims * 2);
@@ -925,7 +1030,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   } else {
     // Create default bases covering ALL preview views so none stay blank.
     // Each basis projects a consecutive pair of dimensions.
-    const count = Math.max(1, state.views.length - 1);
+    const count = Math.max(1, state.previewCanvases.size);
     const defaultBases: Float32Array[] = [];
     for (let k = 0; k < count; k++) {
       const basis = new Float32Array(dims * 2);
@@ -944,6 +1049,44 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     };
     renderAllViews();
   }
+};
+
+// ─── Residual PC helper ───────────────────────────────────────────────────────
+
+/**
+ * Dispatch the GPU residual-PC pipeline for the given basis and, when done,
+ * store the result on state, notify the main thread, and re-render.
+ * Fire-and-forget: the render hot path is never blocked.
+ */
+const triggerResidualPC = (s: GpuState, basis: Float32Array): void => {
+  if (!s.projectionResources) return;
+
+  if (!s.residualPcPipeline) {
+    s.residualPcPipeline = createResidualPcPipeline(s.device);
+  }
+
+  // Write the basis into the shared basisBuffer (same pattern as lasso)
+  s.device.queue.writeBuffer(
+    s.projectionResources.basisBuffer,
+    0,
+    basis as Float32Array<ArrayBuffer>,
+  );
+
+  computeResidualPCGpu(
+    s.device,
+    s.residualPcPipeline,
+    s.projectionResources.dataBuffer,
+    s.projectionResources.normParamsBuffer,
+    s.projectionResources.basisBuffer,
+    basis,
+    s.numPoints,
+    s.numDims,
+  ).then((residualPC) => {
+    if (!state || !state.is3dActive) return;
+    state.residualPC = residualPC;
+    postMain({ type: 'residualPC', residualPC: new Float32Array(residualPC) });
+    renderMainView();
+  });
 };
 
 // ─── Main thread messages ──────────────────────────────────────────────────
@@ -1001,7 +1144,7 @@ const handleMessage = (msg: MainToGpu): void => {
       use3d: state.camera.use3d,
       rotation: state.camera.rotation,
     };
-    renderMainView();
+    throttledRenderMainView();
     return;
   }
 
@@ -1009,21 +1152,31 @@ const handleMessage = (msg: MainToGpu): void => {
     if (msg.dpr !== undefined) {
       state.dpr = msg.dpr;
     }
-    const view = state.views[msg.viewIndex];
-    if (view) {
-      view.canvas.width = msg.width;
-      view.canvas.height = msg.height;
+    // Only the main view (viewIndex 0) is resizable via this message.
+    // Preview canvases are fixed-size; their dimensions are set at transfer time.
+    if (msg.viewIndex === 0) {
+      state.mainView.canvas.width = msg.width;
+      state.mainView.canvas.height = msg.height;
       if ((state.tour || state.directBasis) && state.projectionResources) {
-        if (msg.viewIndex === 0) {
-          renderMainView();
-        } else if (state.tour) {
-          const basisIndex = msg.viewIndex - 1;
-          if (basisIndex < state.tour.bases.length) {
-            renderOnePreview(msg.viewIndex, state.tour.bases[basisIndex]!);
-          }
-        }
+        renderMainView();
       }
     }
+    return;
+  }
+
+  if (msg.type === 'addPreviewCanvas') {
+    const ctx2d = msg.canvas.getContext('2d');
+    if (!ctx2d) return;
+    state.previewCanvases.set(msg.id, { canvas: msg.canvas, ctx2d });
+    // Render this preview immediately if we have data and tour
+    if (state.tour && state.projectionResources && msg.id < state.tour.bases.length) {
+      renderOnePreview(msg.id, state.tour.bases[msg.id]!);
+    }
+    return;
+  }
+
+  if (msg.type === 'removePreviewCanvas') {
+    state.previewCanvases.delete(msg.id);
     return;
   }
 
@@ -1037,20 +1190,15 @@ const handleMessage = (msg: MainToGpu): void => {
   if (msg.type === 'setDirectBasis') {
     if (!state.projectionResources || !state.renderBindGroup) return;
     state.directBasis = msg.basis;
+    // Render via backpressure — renderMainView() reads state.directBasis,
+    // so only the most recent basis is drawn. Without throttling, every
+    // pointermove would queue a full 10M-point render on the async GPU
+    // pipeline, causing the queue to back up and input to lag.
+    throttledRenderMainView();
     // Recompute residual PC when 3D mode is active and basis changes
-    if (state.is3dActive && state.cpuData && state.normMins && state.normRanges) {
-      state.residualPC = computeResidualPC(
-        msg.basis,
-        state.cpuData,
-        state.normMins,
-        state.normRanges,
-        state.numDims,
-        state.numPoints,
-      );
-      postMain({ type: 'residualPC', residualPC: new Float32Array(state.residualPC) });
+    if (state.is3dActive && state.projectionResources) {
+      triggerResidualPC(state, msg.basis);
     }
-    renderView(msg.basis, 0, state.camera, state.renderBindGroup);
-    postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
 
@@ -1123,20 +1271,10 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'enable3d') {
-    if (!state.cpuData || !state.normMins || !state.normRanges) return;
-    // Get current basis (direct or interpolated)
+    if (!state.projectionResources) return;
     const basis = state.directBasis ?? state.tour?.interpolatedBasis;
     if (!basis) return;
     state.is3dActive = true;
-    state.residualPC = computeResidualPC(
-      basis,
-      state.cpuData,
-      state.normMins,
-      state.normRanges,
-      state.numDims,
-      state.numPoints,
-    );
-    postMain({ type: 'residualPC', residualPC: new Float32Array(state.residualPC) });
     state.camera.use3d = true;
     // Resize adj basis buffer for 3 columns
     if (state.adjBasisBuffer) {
@@ -1151,7 +1289,9 @@ const handleMessage = (msg: MainToGpu): void => {
         rebuildBindGroups();
       }
     }
+    // Render in 2D immediately; re-render in 3D once residual PC arrives
     renderMainView();
+    triggerResidualPC(state, basis);
     return;
   }
 
@@ -1168,7 +1308,7 @@ const handleMessage = (msg: MainToGpu): void => {
   if (msg.type === 'set3dRotation') {
     state.rotation3d = msg.matrix;
     state.camera.rotation = msg.matrix;
-    renderMainView();
+    throttledRenderMainView();
     return;
   }
 
@@ -1267,7 +1407,7 @@ const handleMessage = (msg: MainToGpu): void => {
     // Inverted:
     //   proj_x = ndc_x * aspect / (zoom * iz) - panX
     //   proj_y = (ndc_y - insetOffsetY) / (zoom * iz) - panY
-    const canvas = state.views[0]!.canvas;
+    const canvas = state.mainView.canvas;
     const aspect = canvas.width / canvas.height || 1;
     const iz = camera.insetZoom;
     const zoomIz = camera.zoom * iz;
@@ -1329,131 +1469,88 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'benchmark') {
-    handleBenchmark(msg.numPoints, msg.numDims, msg.numFrames);
+    handleBenchmark(msg.numFrames);
     return;
   }
 
-  if (msg.type === 'benchmarkExisting') {
-    handleBenchmarkExisting(msg.numFrames);
+  if (msg.type === 'getMetrics') {
+    handleGetMetrics();
     return;
   }
+};
+
+// ─── Metrics ─────────────────────────────────────────────────────────────
+
+/** Compute estimated GPU memory usage from known buffer and texture sizes. */
+const computeGpuMemoryBytes = (): number => {
+  if (!state) return 0;
+  let bytes = 0;
+
+  // Projection resources (data, norm params, basis, projected)
+  if (state.projectionResources) {
+    const r = state.projectionResources;
+    bytes +=
+      r.dataBuffer.size + r.normParamsBuffer.size + r.basisBuffer.size + r.projectedBuffer.size;
+  }
+
+  // Adjusted basis buffer (inline projection)
+  if (state.adjBasisBuffer) bytes += state.adjBasisBuffer.size;
+
+  // Selection buffer (bit-packed)
+  if (state.selectionBuffer) bytes += state.selectionBuffer.size;
+
+  // Color LUT buffer
+  if (state.colorLutBuffer) bytes += state.colorLutBuffer.size;
+
+  // Categorical index buffers
+  for (const buf of state.categoricalBuffers.values()) bytes += buf.size;
+
+  // HDR textures (rgba32float = 16 bytes/pixel)
+  if (state.mainHdrTexture) bytes += state.mainHdrTexture.width * state.mainHdrTexture.height * 16;
+  if (state.previewHdrTexture)
+    bytes += state.previewHdrTexture.width * state.previewHdrTexture.height * 16;
+
+  // Pipeline static buffers (uniform, camera, defaults, tonemap params, projection params)
+  // These are small and fixed; include for completeness.
+  const pp = state.pointPipeline;
+  bytes += pp.uniformBuffer.size + pp.cameraBuffer.size;
+  bytes +=
+    pp.defaultColorLutBuffer.size +
+    pp.defaultSelectionBuffer.size +
+    pp.defaultCatIndicesBuffer.size;
+  bytes += state.projectionPipeline.paramsBuffer.size;
+  bytes += state.tonemapPipeline.paramsBuffer.size;
+
+  return bytes;
+};
+
+const handleGetMetrics = (): void => {
+  if (!state) return;
+
+  // WebGPU keeps data in GPU buffers, but tour bases + small arrays are JS-side.
+  let externalBytes = 0;
+  if (state.tour) {
+    for (const b of state.tour.bases) externalBytes += b.byteLength;
+    externalBytes += state.tour.interpolatedBasis.byteLength;
+  }
+
+  postMain({
+    type: 'metricsResult',
+    gpuMemoryBytes: computeGpuMemoryBytes(),
+    numPoints: state.numPoints,
+    numDims: state.numDims,
+    workerJsHeapBytes: externalBytes,
+  });
 };
 
 // ─── Benchmark ───────────────────────────────────────────────────────────
 
-const handleBenchmark = async (
-  numPoints: number,
-  numDims: number,
-  numFrames: number,
-): Promise<void> => {
-  if (!state) return;
-  const { device } = state;
-
-  // Generate random data columns
-  const buffers: Float32Array[] = [];
-  for (let d = 0; d < numDims; d++) {
-    const col = new Float32Array(numPoints);
-    for (let i = 0; i < numPoints; i++) col[i] = Math.random();
-    buffers.push(col);
-  }
-
-  // Clean up previous projection resources
-  if (state.adjBasisBuffer) {
-    state.adjBasisBuffer.destroy();
-    state.adjBasisBuffer = null;
-  }
-
-  // Create projection resources and upload data
-  const res = createProjectionResources(device, state.projectionPipeline, numPoints, numDims);
-  for (let d = 0; d < numDims; d++) {
-    device.queue.writeBuffer(
-      res.dataBuffer,
-      d * numPoints * 4,
-      buffers[d]! as Float32Array<ArrayBuffer>,
-    );
-  }
-
-  // Upload norm params: [min=0, range=1] pairs
-  const normData = new Float32Array(numDims * 2);
-  for (let d = 0; d < numDims; d++) {
-    normData[d * 2] = 0;
-    normData[d * 2 + 1] = 1;
-  }
-  device.queue.writeBuffer(res.normParamsBuffer, 0, normData);
-
-  writeProjectionParams(device, state.projectionPipeline.paramsBuffer, numPoints, numDims, 2.0);
-
-  state.adjBasisBuffer = device.createBuffer({
-    label: 'adj-basis-bench',
-    size: numDims * 2 * 4,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-
-  state.normMins = new Float32Array(numDims);
-  state.normRanges = new Float32Array(numDims).fill(1);
-  state.projectionResources = { ...res, bindGroup: null as unknown as GPUBindGroup };
-  state.numPoints = numPoints;
-  state.numDims = numDims;
-  state.styleFlags = { useSelectionMask: false };
-  state.colorState = { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 };
-  state.activeCatColumnName = null;
-  state.maxPoints = 0;
-
-  rebuildBindGroups();
-
-  if (!state.renderBindGroup) {
-    postMain({ type: 'error', message: 'Failed to build bind groups for benchmark' });
-    return;
-  }
-
-  const basis = new Float32Array(numDims * 2);
-  const camera: CameraState = {
-    panX: 0,
-    panY: 0,
-    zoom: 1,
-    aspect: 1,
-    viewportHeight: state.views[0]!.canvas.height,
-    insetOffsetY: 0,
-    insetZoom: 1,
-    use3d: false,
-    rotation: null,
-  };
-
-  // Warmup (5 frames)
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2;
-    basis[0] = Math.cos(angle);
-    basis[1] = Math.sin(angle);
-    basis[numDims] = -Math.sin(angle);
-    basis[numDims + 1] = Math.cos(angle);
-    renderView(basis, 0, camera, state.renderBindGroup);
-    await device.queue.onSubmittedWorkDone();
-  }
-
-  // Timed frames
-  const frameTimes = new Float64Array(numFrames);
-  for (let i = 0; i < numFrames; i++) {
-    const angle = (i / numFrames) * Math.PI * 2;
-    basis[0] = Math.cos(angle);
-    basis[1] = Math.sin(angle);
-    basis[numDims] = -Math.sin(angle);
-    basis[numDims + 1] = Math.cos(angle);
-
-    const t0 = performance.now();
-    renderView(basis, 0, camera, state.renderBindGroup);
-    await device.queue.onSubmittedWorkDone();
-    frameTimes[i] = performance.now() - t0;
-  }
-
-  postMain({ type: 'benchmarkResult', frameTimes, numPoints }, [frameTimes.buffer]);
-};
-
-const handleBenchmarkExisting = async (numFrames: number): Promise<void> => {
+const handleBenchmark = async (numFrames: number): Promise<void> => {
   if (!state || !state.tour || !state.renderBindGroup || state.numPoints === 0) {
     postMain({ type: 'error', message: 'No data/tour loaded for benchmark' });
     return;
   }
-  const { device, numPoints, tour } = state;
+  const { device, numPoints, numDims, tour } = state;
 
   // Save and restore tour position after benchmark
   const savedPosition = tour.position;
@@ -1469,7 +1566,15 @@ const handleBenchmarkExisting = async (numFrames: number): Promise<void> => {
       tour.dims,
       tour.position,
     );
-    renderView(tour.interpolatedBasis, 0, state.camera, state.renderBindGroup);
+    ensureMainHdr();
+    renderView(
+      tour.interpolatedBasis,
+      state.mainView,
+      state.mainHdrTextureView!,
+      state.mainTonemapBindGroup!,
+      state.camera,
+      state.renderBindGroup,
+    );
     await device.queue.onSubmittedWorkDone();
   }
 
@@ -1486,7 +1591,14 @@ const handleBenchmarkExisting = async (numFrames: number): Promise<void> => {
     );
 
     const t0 = performance.now();
-    renderView(tour.interpolatedBasis, 0, state.camera, state.renderBindGroup);
+    renderView(
+      tour.interpolatedBasis,
+      state.mainView,
+      state.mainHdrTextureView!,
+      state.mainTonemapBindGroup!,
+      state.camera,
+      state.renderBindGroup,
+    );
     await device.queue.onSubmittedWorkDone();
     frameTimes[i] = performance.now() - t0;
   }
@@ -1494,7 +1606,7 @@ const handleBenchmarkExisting = async (numFrames: number): Promise<void> => {
   // Restore original position
   tour.position = savedPosition;
 
-  postMain({ type: 'benchmarkResult', frameTimes, numPoints }, [frameTimes.buffer]);
+  postMain({ type: 'benchmarkResult', frameTimes, numPoints, numDims }, [frameTimes.buffer]);
 };
 
 /** Ray-casting point-in-polygon test. */
@@ -1527,7 +1639,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
     try {
       const { device } = await initDevice();
 
-      const views = msg.canvases.map((canvas) => configureCanvas(canvas, device));
+      const mainView = configureCanvas(msg.canvas, device);
       const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
 
       const hdrFormat: GPUTextureFormat = 'rgba32float';
@@ -1538,7 +1650,10 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
 
       state = {
         device,
-        views,
+        mainView,
+        previewGpuCanvas: null,
+        previewGpuView: null,
+        previewCanvases: new Map(),
         pointPipeline,
         renderBindGroup: null,
         projectionPipeline,
@@ -1571,9 +1686,12 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         dpr: msg.dpr,
         hdrFormat,
         tonemapPipeline,
-        hdrTextures: [],
-        hdrTextureViews: [],
-        tonemapBindGroups: [],
+        mainHdrTexture: null,
+        mainHdrTextureView: null,
+        mainTonemapBindGroup: null,
+        previewHdrTexture: null,
+        previewHdrTextureView: null,
+        previewTonemapBindGroup: null,
         maxPoints: 0,
         adjBasisBuffer: null,
         normMins: null,
@@ -1581,7 +1699,7 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         is3dActive: false,
         rotation3d: null,
         residualPC: null,
-        cpuData: null,
+        residualPcPipeline: null,
       };
 
       msg.dataPort.onmessage = onDataMessage;

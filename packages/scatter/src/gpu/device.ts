@@ -36,6 +36,12 @@ export const initDevice = async (): Promise<GpuContext> => {
   const device = await adapter.requestDevice({
     label: 'dtour-scatter',
     requiredFeatures: ['float32-blendable'],
+    requiredLimits: {
+      // Raise buffer limits to the adapter maximum so large datasets (>128 MB) work.
+      // Default spec values are only 128 MB / 256 MB; real hardware supports much more.
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+      maxBufferSize: adapter.limits.maxBufferSize,
+    },
   });
 
   device.lost.then((info) => {

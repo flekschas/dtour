@@ -18,17 +18,19 @@ type TourState = {
   interpolatedBasis: Float32Array;
 };
 
-type CanvasView = {
+type MainView = {
   canvas: OffscreenCanvas;
   gl: WebGL2RenderingContext;
-  /** Only view 0 has a real GL context. Preview canvases store their ref for sizing only. */
-  isMain: boolean;
-  /** 2D context for preview canvases (used for readPixels blit). Null for main canvas. */
-  ctx2d: OffscreenCanvasRenderingContext2D | null;
+};
+
+type PreviewEntry = {
+  canvas: OffscreenCanvas;
+  ctx2d: OffscreenCanvasRenderingContext2D;
 };
 
 type GLState = {
-  views: CanvasView[];
+  mainView: MainView;
+  previewCanvases: Map<number, PreviewEntry>;
   // Point program
   pointProgram: WebGLProgram;
   pointLocs: PointLocations;
@@ -234,28 +236,26 @@ const computeAutoStyle = (
   return { pointSize, opacity };
 };
 
-const cssToNdc = (cssPx: number, viewIndex: number): number => {
-  const { views, dpr } = state!;
-  const physH = views[viewIndex]!.canvas.height;
-  return (cssPx * dpr) / physH;
+const cssToNdc = (cssPx: number, canvasHeight: number): number => {
+  return (cssPx * state!.dpr) / canvasHeight;
 };
 
-const resolveStyleForView = (viewIndex: number): PointStyle => {
-  const { style, numPoints, views, dpr } = state!;
+const resolveStyleForCanvas = (canvasWidth: number, canvasHeight: number): PointStyle => {
+  const { style, numPoints, dpr } = state!;
 
   if (style.pointSize !== 'auto' && style.opacity !== 'auto') {
     return {
-      pointSize: cssToNdc(style.pointSize, viewIndex),
+      pointSize: cssToNdc(style.pointSize, canvasHeight),
       opacity: style.opacity,
       color: style.color,
     };
   }
 
-  const canvas = views[viewIndex]!.canvas;
-  const auto = computeAutoStyle(numPoints, canvas.width / dpr, canvas.height / dpr, dpr);
+  const auto = computeAutoStyle(numPoints, canvasWidth / dpr, canvasHeight / dpr, dpr);
 
   return {
-    pointSize: style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, viewIndex),
+    pointSize:
+      style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, canvasHeight),
     opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
     color: style.color,
   };
@@ -298,20 +298,18 @@ const computeAdjustedBasis = (
 
 // ─── HDR FBO management ──────────────────────────────────────────────────
 
-const ensureHdrFbo = (viewIndex: number): void => {
+/** Ensure an HDR FBO exists at the given slot index with the specified dimensions. */
+const ensureHdrFbo = (slotIndex: number, w: number, h: number): void => {
   if (!state) return;
-  const { views, hdrFbos, hdrTextures, hdrSizes } = state;
-  const gl = views[0]!.gl;
-  const canvas = views[viewIndex]!.canvas;
-  const w = canvas.width;
-  const h = canvas.height;
+  const { hdrFbos, hdrTextures, hdrSizes } = state;
+  const gl = state.mainView.gl;
 
-  const existing = hdrSizes[viewIndex];
+  const existing = hdrSizes[slotIndex];
   if (existing && existing[0] === w && existing[1] === h) return;
 
   // Clean up old
-  if (hdrFbos[viewIndex]) gl.deleteFramebuffer(hdrFbos[viewIndex]);
-  if (hdrTextures[viewIndex]) gl.deleteTexture(hdrTextures[viewIndex]);
+  if (hdrFbos[slotIndex]) gl.deleteFramebuffer(hdrFbos[slotIndex]);
+  if (hdrTextures[slotIndex]) gl.deleteTexture(hdrTextures[slotIndex]);
 
   // Create float texture
   const tex = gl.createTexture()!;
@@ -329,9 +327,9 @@ const ensureHdrFbo = (viewIndex: number): void => {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
 
-  state.hdrFbos[viewIndex] = fbo;
-  state.hdrTextures[viewIndex] = tex;
-  state.hdrSizes[viewIndex] = [w, h];
+  state.hdrFbos[slotIndex] = fbo;
+  state.hdrTextures[slotIndex] = tex;
+  state.hdrSizes[slotIndex] = [w, h];
 };
 
 // ─── Blit FBO for preview readback ────────────────────────────────────────
@@ -341,7 +339,7 @@ const ensureBlitFbo = (w: number, h: number): void => {
   const existing = state.blitSize;
   if (existing && existing[0] === w && existing[1] === h) return;
 
-  const gl = state.views[0]!.gl;
+  const gl = state.mainView.gl;
 
   if (state.blitFbo) gl.deleteFramebuffer(state.blitFbo);
   if (state.blitTexture) gl.deleteTexture(state.blitTexture);
@@ -370,6 +368,10 @@ type PlaybackState = {
   direction: 1 | -1;
   prevTime: number | null;
   rafId: number;
+  /** Accumulates rAF-delta intervals — one entry per rAF tick where a frame was actually submitted. */
+  frameTimes: number[];
+  /** rAF timestamp of the last tick where a frame was actually submitted to the GPU. */
+  lastRenderedRafTime: number | null;
 };
 
 let playbackState: PlaybackState | null = null;
@@ -384,7 +386,7 @@ let deferredRenderTimer: ReturnType<typeof setTimeout> | null = null;
 /** Check if the GPU is done with the previous frame. */
 const isGpuReady = (): boolean => {
   if (!gpuFence || !state) return true;
-  const gl = state.views[0]!.gl;
+  const gl = state.mainView.gl;
   const status = gl.clientWaitSync(gpuFence, 0, 0);
   if (status !== gl.TIMEOUT_EXPIRED) {
     gl.deleteSync(gpuFence);
@@ -394,32 +396,39 @@ const isGpuReady = (): boolean => {
   return false;
 };
 
-/** Submit a render if the GPU is ready; otherwise mark it pending for later. */
-const throttledRenderMainView = (): void => {
+/** Submit a render if the GPU is ready; otherwise mark it pending for later.
+ *  Returns true if a frame was actually submitted this call. */
+const throttledRenderMainView = (): boolean => {
   if (!isGpuReady()) {
     renderPending = true;
-    // Poll for GPU completion to flush the deferred render
+    // Poll for GPU completion to flush the deferred render.
+    // During playback, let the rAF loop drive rendering so that
+    // playbackTick sees isGpuReady()=true and can record frame times.
     if (!deferredRenderTimer) {
       deferredRenderTimer = setTimeout(function poll() {
         deferredRenderTimer = null;
-        if (renderPending && state) throttledRenderMainView();
+        if (renderPending && state && !playbackState) throttledRenderMainView();
       }, 2);
     }
-    return;
+    return false;
   }
   renderPending = false;
   renderMainView();
   if (state) {
-    const gl = state.views[0]!.gl;
+    const gl = state.mainView.gl;
     gpuFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
   }
+  return true;
 };
 
 const playbackTick = (time: number): void => {
   if (!playbackState || !state?.tour) return;
 
-  if (playbackState.prevTime !== null) {
-    const dt = (time - playbackState.prevTime) / 1000;
+  const frameMs = playbackState.prevTime !== null ? time - playbackState.prevTime : undefined;
+
+  if (frameMs !== undefined) {
+    const dt = frameMs / 1000;
     const delta = (dt * playbackState.speed * playbackState.direction) / 20;
     let next = state.tour.position + delta;
     next = next - Math.floor(next);
@@ -428,10 +437,18 @@ const playbackTick = (time: number): void => {
   playbackState.prevTime = time;
 
   state.directBasis = null;
-  throttledRenderMainView();
+  const didRender = throttledRenderMainView();
+
+  // Record rAF-delta frame time: bounded by display refresh rate, so heavy datasets show lower FPS.
+  if (didRender) {
+    if (playbackState.lastRenderedRafTime !== null) {
+      playbackState.frameTimes.push(time - playbackState.lastRenderedRafTime);
+    }
+    playbackState.lastRenderedRafTime = time;
+  }
 
   if (time - lastBroadcastTime >= BROADCAST_INTERVAL_MS) {
-    postMain({ type: 'playbackTick', position: state.tour.position });
+    postMain({ type: 'playbackTick', position: state.tour.position, frameMs });
     lastBroadcastTime = time;
   }
 
@@ -445,7 +462,14 @@ const startPlayback = (speed: number, direction: 1 | -1): void => {
   } else {
     gpuFence = null;
     renderPending = false;
-    playbackState = { speed, direction, prevTime: null, rafId: 0 };
+    playbackState = {
+      speed,
+      direction,
+      prevTime: null,
+      rafId: 0,
+      frameTimes: [],
+      lastRenderedRafTime: null,
+    };
     playbackState.rafId = requestAnimationFrame(playbackTick);
   }
 };
@@ -456,6 +480,9 @@ const stopPlayback = (): void => {
     if (state?.tour) {
       postMain({ type: 'playbackTick', position: state.tour.position });
     }
+    // Return all accumulated frame times for benchmark collection
+    const ft = Float64Array.from(playbackState.frameTimes);
+    postMain({ type: 'playbackStopped', frameTimes: ft }, [ft.buffer]);
     playbackState = null;
   }
 };
@@ -464,16 +491,16 @@ const stopPlayback = (): void => {
 
 const renderView = (
   basis: Float32Array,
-  viewIndex: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  hdrSlot: number,
   camera: CameraState,
   tonemapTarget?: WebGLFramebuffer,
 ): void => {
   if (!state || !state.dataTexture || !state.normMins || !state.normRanges) return;
 
-  const { views, numPoints, numDims, pointProgram, pointLocs, tonemapProgram, tonemapLocs } = state;
-  // Always use view 0's GL context (WebGL contexts are per-canvas).
-  const gl = views[0]!.gl;
-  const canvas = views[viewIndex]!.canvas;
+  const { numPoints, numDims, pointProgram, pointLocs, tonemapProgram, tonemapLocs } = state;
+  const gl = state.mainView.gl;
 
   const { weights, biasX, biasY } = computeAdjustedBasis(
     basis,
@@ -482,7 +509,7 @@ const renderView = (
     numDims,
   );
 
-  const resolved = resolveStyleForView(viewIndex);
+  const resolved = resolveStyleForCanvas(canvasWidth, canvasHeight);
 
   // Select blend mode + tonemap mode
   const bg = state.backgroundColor;
@@ -499,14 +526,14 @@ const renderView = (
     tonemapMode = 0;
   }
 
-  const aspect = canvas.width / canvas.height || 1;
+  const aspect = canvasWidth / canvasHeight || 1;
 
   // Ensure HDR FBO
-  ensureHdrFbo(viewIndex);
+  ensureHdrFbo(hdrSlot, canvasWidth, canvasHeight);
 
   // ── Pass 1: Render points to HDR FBO ──
-  gl.bindFramebuffer(gl.FRAMEBUFFER, state.hdrFbos[viewIndex]!);
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, state.hdrFbos[hdrSlot]!);
+  gl.viewport(0, 0, canvasWidth, canvasHeight);
   gl.clearColor(bg[0], bg[1], bg[2], 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -572,7 +599,7 @@ const renderView = (
     gl.uniform2f(pointLocs.u_pan, camera.panX, camera.panY);
     gl.uniform1f(pointLocs.u_zoom, camera.zoom);
     gl.uniform1f(pointLocs.u_aspect, aspect);
-    gl.uniform1f(pointLocs.u_viewportHeight, canvas.height);
+    gl.uniform1f(pointLocs.u_viewportHeight, canvasHeight);
     gl.uniform1f(pointLocs.u_insetOffsetY, camera.insetOffsetY);
     gl.uniform1f(pointLocs.u_insetZoom, camera.insetZoom);
     gl.uniform1i(pointLocs.u_numPoints, numPoints);
@@ -592,13 +619,13 @@ const renderView = (
 
   // ── Pass 2: Tonemap to canvas (or blit FBO for previews) ──
   gl.bindFramebuffer(gl.FRAMEBUFFER, tonemapTarget ?? null);
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.viewport(0, 0, canvasWidth, canvasHeight);
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.useProgram(tonemapProgram);
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, state.hdrTextures[viewIndex]!);
+  gl.bindTexture(gl.TEXTURE_2D, state.hdrTextures[hdrSlot]!);
   gl.uniform1i(tonemapLocs.u_hdrTexture, 0);
   gl.uniform1f(tonemapLocs.u_mode, tonemapMode);
 
@@ -609,74 +636,81 @@ const renderView = (
 
 let previewRenderPending = false;
 
-const renderOnePreview = (viewIndex: number, basis: Float32Array): void => {
+// Reusable buffers for preview readback — avoids per-preview heap allocations
+let previewPixelBuf: Uint8Array | null = null;
+let previewFlipTemp: Uint8Array | null = null;
+
+const renderOnePreview = (id: number, basis: Float32Array): void => {
   if (!state?.dataTexture) return;
 
-  const view = state.views[viewIndex];
-  if (!view) {
-    postMain({ type: 'rendered', viewIndex });
+  const entry = state.previewCanvases.get(id);
+  if (!entry) {
+    postMain({ type: 'rendered', viewIndex: id });
     return;
   }
 
-  const w = view.canvas.width;
-  const h = view.canvas.height;
+  const w = entry.canvas.width;
+  const h = entry.canvas.height;
   if (w === 0 || h === 0) {
-    postMain({ type: 'rendered', viewIndex });
+    postMain({ type: 'rendered', viewIndex: id });
     return;
   }
 
-  // Lazily get 2D context on the preview OffscreenCanvas (no GL context was created on it)
-  if (!view.ctx2d) {
-    view.ctx2d = view.canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
-    if (!view.ctx2d) {
-      postMain({ type: 'rendered', viewIndex });
-      return;
-    }
-  }
-
-  const gl = state.views[0]!.gl;
+  const gl = state.mainView.gl;
 
   // Ensure RGBA8 blit FBO for readback
   ensureBlitFbo(w, h);
 
-  // Render points → HDR FBO, tonemap → blit FBO (not to canvas)
+  // Render points → HDR FBO (slot 1, reused for all previews), tonemap → blit FBO
   renderView(
     basis,
-    viewIndex,
+    w,
+    h,
+    1, // preview HDR slot
     { panX: 0, panY: 0, zoom: 1, aspect: 1, viewportHeight: h, insetOffsetY: 0, insetZoom: 1 },
     state.blitFbo!,
   );
 
-  // Read pixels from blit FBO
+  // Read pixels from blit FBO (reuse buffers across previews)
+  const pixelBytes = w * h * 4;
+  const rowSize = w * 4;
+  if (!previewPixelBuf || previewPixelBuf.length < pixelBytes) {
+    previewPixelBuf = new Uint8Array(pixelBytes);
+  }
+  if (!previewFlipTemp || previewFlipTemp.length < rowSize) {
+    previewFlipTemp = new Uint8Array(rowSize);
+  }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, state.blitFbo!);
-  const pixels = new Uint8Array(w * h * 4);
-  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, previewPixelBuf);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   // Flip vertically (GL bottom-up → Canvas top-down)
-  const rowSize = w * 4;
-  const temp = new Uint8Array(rowSize);
   for (let row = 0; row < h >> 1; row++) {
     const topOff = row * rowSize;
     const botOff = (h - 1 - row) * rowSize;
-    temp.set(pixels.subarray(topOff, topOff + rowSize));
-    pixels.copyWithin(topOff, botOff, botOff + rowSize);
-    pixels.set(temp, botOff);
+    previewFlipTemp.set(previewPixelBuf.subarray(topOff, topOff + rowSize));
+    previewPixelBuf.copyWithin(topOff, botOff, botOff + rowSize);
+    previewPixelBuf.set(previewFlipTemp, botOff);
   }
 
   // Blit to preview canvas via 2D context
-  const imageData = new ImageData(new Uint8ClampedArray(pixels.buffer), w, h);
-  view.ctx2d.putImageData(imageData, 0, 0);
+  const imageData = new ImageData(
+    new Uint8ClampedArray(previewPixelBuf.buffer as ArrayBuffer, 0, pixelBytes),
+    w,
+    h,
+  );
+  entry.ctx2d.putImageData(imageData, 0, 0);
 
-  postMain({ type: 'rendered', viewIndex });
+  postMain({ type: 'rendered', viewIndex: id });
 };
 
 const renderPreviewViews = (): void => {
   if (!state?.dataTexture || !state.tour) return;
-  const { views, tour } = state;
-  const count = Math.min(views.length - 1, tour.bases.length);
-  for (let pi = 0; pi < count; pi++) {
-    renderOnePreview(pi + 1, tour.bases[pi]!);
+  const { tour } = state;
+  for (const [id] of state.previewCanvases) {
+    if (id >= tour.bases.length) continue;
+    renderOnePreview(id, tour.bases[id]!);
   }
 };
 
@@ -697,9 +731,10 @@ const renderAllViews = (): void => {
 
 const renderMainView = (): void => {
   if (!state?.dataTexture) return;
+  const { canvas } = state.mainView;
 
   if (state.directBasis) {
-    renderView(state.directBasis, 0, state.camera);
+    renderView(state.directBasis, canvas.width, canvas.height, 0, state.camera);
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
@@ -713,7 +748,7 @@ const renderMainView = (): void => {
     tour.dims,
     tour.position,
   );
-  renderView(tour.interpolatedBasis, 0, state.camera);
+  renderView(tour.interpolatedBasis, canvas.width, canvas.height, 0, state.camera);
   postMain({ type: 'rendered', viewIndex: 0 });
 };
 
@@ -740,7 +775,7 @@ let currentDataVersion = 0;
 
 const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (!state) return;
-  const gl = state.views[0]!.gl;
+  const gl = state.mainView.gl;
 
   // ── Continuous color (LUT upload) ──
   if (event.data.type === 'setColorContinuous') {
@@ -919,7 +954,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (state.tour && state.tour.dims === dims) {
     renderAllViews();
   } else {
-    const count = Math.max(1, state.views.length - 1);
+    const count = Math.max(1, state.previewCanvases.size);
     const defaultBases: Float32Array[] = [];
     for (let k = 0; k < count; k++) {
       const basis = new Float32Array(dims * 2);
@@ -1078,7 +1113,7 @@ const handleLassoSelect = (polygon: Float32Array): void => {
   );
 
   // Transform polygon from NDC to projection space
-  const canvas = state.views[0]!.canvas;
+  const canvas = state.mainView.canvas;
   const aspect = canvas.width / canvas.height || 1;
   const iz = camera.insetZoom;
   const zoomIz = camera.zoom * iz;
@@ -1104,113 +1139,77 @@ const handleLassoSelect = (polygon: Float32Array): void => {
     }
   }
 
-  const gl = state.views[0]!.gl;
+  const gl = state.mainView.gl;
   uploadSelectionMask(gl, mask);
   applySelectionUpdate();
 };
 
-// ─── Benchmark ───────────────────────────────────────────────────────────
+// ─── Metrics ─────────────────────────────────────────────────────────────
 
-const handleBenchmark = (numPoints: number, numDims: number, numFrames: number): void => {
-  if (!state) return;
-  const gl = state.views[0]!.gl;
+/** Compute estimated GPU memory usage from known texture sizes. */
+const computeGpuMemoryBytes = (): number => {
+  if (!state) return 0;
+  let bytes = 0;
 
-  // Generate random data columns
-  const buffers: Float32Array[] = [];
-  for (let d = 0; d < numDims; d++) {
-    const col = new Float32Array(numPoints);
-    for (let i = 0; i < numPoints; i++) col[i] = Math.random();
-    buffers.push(col);
+  // Data texture (R32F = 4 bytes/pixel)
+  if (state.dataTexture) {
+    const tileRows = Math.ceil(state.numPoints / state.texWidth);
+    bytes += state.texWidth * state.numDims * tileRows * 4;
   }
 
-  // Upload as tiled R32F texture
-  if (state.dataTexture) gl.deleteTexture(state.dataTexture);
-  const maxTexSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-  const texWidth = Math.min(numPoints, maxTexSize);
-  const tileRows = Math.ceil(numPoints / texWidth);
-  state.texWidth = texWidth;
-  state.numPoints = numPoints;
-  state.numDims = numDims;
-  state.normMins = new Float32Array(numDims);
-  state.normRanges = new Float32Array(numDims).fill(1);
-  state.styleFlags = { useSelectionMask: false };
-  state.colorMode = 0;
-
-  const texHeight = numDims * tileRows;
-  const texData = new Float32Array(texWidth * texHeight);
-  for (let d = 0; d < numDims; d++) {
-    const col = buffers[d]!;
-    const baseRow = d * tileRows;
-    for (let i = 0; i < numPoints; i++) {
-      const tx = i % texWidth;
-      const ty = baseRow + Math.floor(i / texWidth);
-      texData[ty * texWidth + tx] = col[i]!;
-    }
-  }
-  const tex = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, texWidth, texHeight, 0, gl.RED, gl.FLOAT, texData);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.bindTexture(gl.TEXTURE_2D, null);
-  state.dataTexture = tex;
-
-  // Rotating basis
-  const basis = new Float32Array(numDims * 2);
-  const camera: CameraState = {
-    panX: 0,
-    panY: 0,
-    zoom: 1,
-    aspect: 1,
-    viewportHeight: state.views[0]!.canvas.height,
-    insetOffsetY: 0,
-    insetZoom: 1,
-  };
-
-  // Use readPixels as a GPU sync fence (gl.finish() is unreliable on OffscreenCanvas in workers)
-  const syncPixel = new Uint8Array(4);
-  const gpuSync = (): void => {
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, syncPixel);
-  };
-
-  // Warmup (5 frames, not measured)
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2;
-    basis[0] = Math.cos(angle);
-    basis[1] = Math.sin(angle);
-    basis[numDims] = -Math.sin(angle);
-    basis[numDims + 1] = Math.cos(angle);
-    renderView(basis, 0, camera);
-    gpuSync();
+  // HDR textures (RGBA32F = 16 bytes/pixel)
+  for (let i = 0; i < state.hdrSizes.length; i++) {
+    const size = state.hdrSizes[i];
+    if (size) bytes += size[0] * size[1] * 16;
   }
 
-  // Timed frames
-  const frameTimes = new Float64Array(numFrames);
-  for (let i = 0; i < numFrames; i++) {
-    const angle = (i / numFrames) * Math.PI * 2;
-    basis[0] = Math.cos(angle);
-    basis[1] = Math.sin(angle);
-    basis[numDims] = -Math.sin(angle);
-    basis[numDims + 1] = Math.cos(angle);
+  // Blit texture (RGBA8 = 4 bytes/pixel)
+  if (state.blitSize) bytes += state.blitSize[0] * state.blitSize[1] * 4;
 
-    const t0 = performance.now();
-    renderView(basis, 0, camera);
-    gpuSync();
-    frameTimes[i] = performance.now() - t0;
-  }
+  // Color LUT texture (R32UI = 4 bytes per stop)
+  if (state.colorLutTexture) bytes += state.colorNumStops * 4;
 
-  postMain({ type: 'benchmarkResult', frameTimes, numPoints }, [frameTimes.buffer]);
+  // Categorical index textures (R32UI, tiled)
+  for (const buf of state.categoricalBuffers.values()) bytes += buf.byteLength;
+
+  // Selection texture (R32UI, ceil(N/32))
+  if (state.selectionTexture) bytes += Math.ceil(state.numPoints / 32) * 4;
+
+  return bytes;
 };
 
-const handleBenchmarkExisting = (numFrames: number): void => {
+const handleGetMetrics = (): void => {
+  if (!state) return;
+
+  // ArrayBuffer backing stores live outside V8 heap — sum them explicitly.
+  let externalBytes = 0;
+  for (const buf of state.dataBuffers) externalBytes += buf.byteLength;
+  for (const buf of state.categoricalBuffers.values()) externalBytes += buf.byteLength;
+  if (state.normMins) externalBytes += state.normMins.byteLength;
+  if (state.normRanges) externalBytes += state.normRanges.byteLength;
+  if (state.tour) {
+    for (const b of state.tour.bases) externalBytes += b.byteLength;
+    externalBytes += state.tour.interpolatedBasis.byteLength;
+  }
+
+  postMain({
+    type: 'metricsResult',
+    gpuMemoryBytes: computeGpuMemoryBytes(),
+    numPoints: state.numPoints,
+    numDims: state.numDims,
+    workerJsHeapBytes: externalBytes,
+  });
+};
+
+// ─── Benchmark ───────────────────────────────────────────────────────────
+
+const handleBenchmark = (numFrames: number): void => {
   if (!state || !state.tour || !state.dataTexture || state.numPoints === 0) {
     postMain({ type: 'error', message: 'No data/tour loaded for benchmark' });
     return;
   }
-  const gl = state.views[0]!.gl;
-  const { numPoints, tour } = state;
+  const gl = state.mainView.gl;
+  const { numPoints, numDims, tour } = state;
 
   // Save and restore tour position after benchmark
   const savedPosition = tour.position;
@@ -1231,7 +1230,13 @@ const handleBenchmarkExisting = (numFrames: number): void => {
       tour.dims,
       tour.position,
     );
-    renderView(tour.interpolatedBasis, 0, state.camera);
+    renderView(
+      tour.interpolatedBasis,
+      state.mainView.canvas.width,
+      state.mainView.canvas.height,
+      0,
+      state.camera,
+    );
     gpuSync();
   }
 
@@ -1248,7 +1253,13 @@ const handleBenchmarkExisting = (numFrames: number): void => {
     );
 
     const t0 = performance.now();
-    renderView(tour.interpolatedBasis, 0, state.camera);
+    renderView(
+      tour.interpolatedBasis,
+      state.mainView.canvas.width,
+      state.mainView.canvas.height,
+      0,
+      state.camera,
+    );
     gpuSync();
     frameTimes[i] = performance.now() - t0;
   }
@@ -1256,7 +1267,7 @@ const handleBenchmarkExisting = (numFrames: number): void => {
   // Restore original position
   tour.position = savedPosition;
 
-  postMain({ type: 'benchmarkResult', frameTimes, numPoints }, [frameTimes.buffer]);
+  postMain({ type: 'benchmarkResult', frameTimes, numPoints, numDims }, [frameTimes.buffer]);
 };
 
 // ─── Main thread messages ──────────────────────────────────────────────────
@@ -1280,6 +1291,22 @@ const handleMessage = (msg: MainToGpu): void => {
     if (state.dataTexture) {
       renderAllViews();
     }
+    return;
+  }
+
+  if (msg.type === 'addPreviewCanvas') {
+    const ctx2d = msg.canvas.getContext('2d');
+    if (!ctx2d) return;
+    state.previewCanvases.set(msg.id, { canvas: msg.canvas, ctx2d });
+    // Render immediately if data + tour exist
+    if (state.dataTexture && state.tour && msg.id < state.tour.bases.length) {
+      renderOnePreview(msg.id, state.tour.bases[msg.id]!);
+    }
+    return;
+  }
+
+  if (msg.type === 'removePreviewCanvas') {
+    state.previewCanvases.delete(msg.id);
     return;
   }
 
@@ -1317,19 +1344,11 @@ const handleMessage = (msg: MainToGpu): void => {
     if (msg.dpr !== undefined) {
       state.dpr = msg.dpr;
     }
-    const view = state.views[msg.viewIndex];
-    if (view) {
-      view.canvas.width = msg.width;
-      view.canvas.height = msg.height;
+    if (msg.viewIndex === 0) {
+      state.mainView.canvas.width = msg.width;
+      state.mainView.canvas.height = msg.height;
       if ((state.tour || state.directBasis) && state.dataTexture) {
-        if (msg.viewIndex === 0) {
-          renderMainView();
-        } else if (state.tour) {
-          const basisIndex = msg.viewIndex - 1;
-          if (basisIndex < state.tour.bases.length) {
-            renderOnePreview(msg.viewIndex, state.tour.bases[basisIndex]!);
-          }
-        }
+        renderMainView();
       }
     }
     return;
@@ -1345,14 +1364,20 @@ const handleMessage = (msg: MainToGpu): void => {
   if (msg.type === 'setDirectBasis') {
     if (!state.dataTexture) return;
     state.directBasis = msg.basis;
-    renderView(msg.basis, 0, state.camera);
+    renderView(
+      msg.basis,
+      state.mainView.canvas.width,
+      state.mainView.canvas.height,
+      0,
+      state.camera,
+    );
     postMain({ type: 'rendered', viewIndex: 0 });
     return;
   }
 
   if (msg.type === 'clearColors') {
     if (state.colorLutTexture) {
-      state.views[0]!.gl.deleteTexture(state.colorLutTexture);
+      state.mainView.gl.deleteTexture(state.colorLutTexture);
       state.colorLutTexture = null;
     }
     state.colorMode = 0;
@@ -1384,7 +1409,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setSelectionMask') {
-    const gl = state.views[0]!.gl;
+    const gl = state.mainView.gl;
     uploadSelectionMask(gl, msg.mask);
     state.styleFlags.useSelectionMask = true;
     if ((state.tour || state.directBasis) && state.dataTexture) {
@@ -1395,7 +1420,7 @@ const handleMessage = (msg: MainToGpu): void => {
 
   if (msg.type === 'clearSelectionMask') {
     if (state.selectionTexture) {
-      state.views[0]!.gl.deleteTexture(state.selectionTexture);
+      state.mainView.gl.deleteTexture(state.selectionTexture);
       state.selectionTexture = null;
     }
     state.styleFlags.useSelectionMask = false;
@@ -1428,12 +1453,12 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'benchmark') {
-    handleBenchmark(msg.numPoints, msg.numDims, msg.numFrames);
+    handleBenchmark(msg.numFrames);
     return;
   }
 
-  if (msg.type === 'benchmarkExisting') {
-    handleBenchmarkExisting(msg.numFrames);
+  if (msg.type === 'getMetrics') {
+    handleGetMetrics();
     return;
   }
 };
@@ -1445,11 +1470,7 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
 
   if (msg.type === 'init') {
     try {
-      // Only the main canvas (index 0) gets a real WebGL2 context.
-      // Preview canvases reuse the main GL context for rendering — they
-      // render to view 0's FBO then blit via transferToImageBitmap.
-      // For now, previews are rendered on the main context and copied.
-      const mainCanvas = msg.canvases[0]!;
+      const mainCanvas = msg.canvas;
       const mainGl = mainCanvas.getContext('webgl2', {
         alpha: true,
         premultipliedAlpha: true,
@@ -1464,15 +1485,7 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
       }
       mainGl.getExtension('OES_texture_float_linear');
 
-      const views: CanvasView[] = msg.canvases.map((canvas, i) => ({
-        canvas,
-        gl: mainGl,
-        isMain: i === 0,
-        ctx2d: null,
-      }));
-
-      // Use the first GL context to compile shaders
-      const gl = views[0]!.gl;
+      const gl = mainGl;
 
       const pointProgram = linkProgram(gl, pointVert, pointFrag);
       const pointLocs: PointLocations = {
@@ -1512,7 +1525,8 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
       };
 
       state = {
-        views,
+        mainView: { canvas: mainCanvas, gl: mainGl },
+        previewCanvases: new Map(),
         pointProgram,
         pointLocs,
         tonemapProgram,

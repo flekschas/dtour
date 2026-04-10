@@ -23,14 +23,10 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  */
 export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => {
   const {
-    canvases,
+    canvas,
     zoom: initialZoom = 1,
     dpr = typeof self !== 'undefined' && 'devicePixelRatio' in self ? self.devicePixelRatio : 1,
   } = options;
-
-  if (canvases.length === 0) {
-    throw new Error('createScatterWebGL requires at least one canvas');
-  }
 
   const gpuWorker = new WebGLWorkerFactory();
   const dataWorker = new DataWorkerFactory();
@@ -46,7 +42,25 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
   };
 
   gpuWorker.onmessage = (event: MessageEvent<GpuToMain>): void => {
-    emit(event.data);
+    const msg = event.data;
+    if (msg.type === 'benchmarkResult') {
+      const ft = msg.frameTimes;
+      const avg = ft.reduce((a: number, b: number) => a + b, 0) / ft.length;
+      const sorted = Float64Array.from(ft).sort();
+      emit({
+        ...msg,
+        stats: {
+          avgMs: avg,
+          fps: 1000 / avg,
+          p50Ms: sorted[Math.floor(ft.length * 0.5)]!,
+          p95Ms: sorted[Math.floor(ft.length * 0.95)]!,
+          minMs: sorted[0]!,
+          maxMs: sorted[ft.length - 1]!,
+        },
+      });
+      return;
+    }
+    emit(msg as ScatterStatus);
   };
 
   gpuWorker.onerror = (err): void => {
@@ -65,13 +79,13 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     emit({ type: 'error', message: err.message });
   };
 
-  const offscreens = canvases.map((c) => c.transferControlToOffscreen());
+  const offscreen = canvas.transferControlToOffscreen();
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
   sendToGpu(
     gpuWorker,
-    { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom, dpr },
-    [...offscreens, channel.port2],
+    { type: 'init', canvas: offscreen, dataPort: channel.port2, zoom: initialZoom, dpr },
+    [offscreen, channel.port2],
   );
 
   let currentStyle: {
@@ -211,37 +225,66 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToGpu(gpuWorker, { type: 'setMaxPoints', maxPoints: n });
   };
 
+  const addPreviewCanvas = (id: number, c: HTMLCanvasElement): void => {
+    const off = c.transferControlToOffscreen();
+    sendToGpu(gpuWorker, { type: 'addPreviewCanvas', id, canvas: off }, [off]);
+  };
+
+  const removePreviewCanvas = (id: number): void => {
+    sendToGpu(gpuWorker, { type: 'removePreviewCanvas', id });
+  };
+
   // 3D camera rotation — not supported in WebGL backend (no-ops)
   const enable3d = (): void => {};
   const disable3d = (): void => {};
   const set3dRotation = (_matrix: Float32Array): void => {};
 
-  const benchmark = (
-    numPoints?: number,
-  ): Promise<{ frameTimes: Float64Array; numPoints: number; avgMs: number; fps: number }> => {
-    return new Promise((resolve) => {
+  const benchmark = (numFrames = 120) => {
+    return new Promise<{
+      frameTimes: Float64Array;
+      numPoints: number;
+      numDims: number;
+      stats: {
+        avgMs: number;
+        fps: number;
+        p50Ms: number;
+        p95Ms: number;
+        minMs: number;
+        maxMs: number;
+      };
+    }>((resolve) => {
       const unsub = subscribe((s: ScatterStatus) => {
         if (s.type !== 'benchmarkResult') return;
         unsub();
-        const ft = s.frameTimes;
-        const avg = ft.reduce((a: number, b: number) => a + b, 0) / ft.length;
-        const sorted = Float64Array.from(ft).sort();
-        const p50 = sorted[Math.floor(ft.length * 0.5)]!;
-        const p95 = sorted[Math.floor(ft.length * 0.95)]!;
-        const min = sorted[0]!;
-        const max = sorted[ft.length - 1]!;
-        console.log(
-          `Benchmark: ${s.numPoints.toLocaleString()} points\n` +
-            `  ${ft.length} frames, avg ${avg.toFixed(1)}ms (${(1000 / avg).toFixed(0)} fps)\n` +
-            `  min ${min.toFixed(1)}ms, p50 ${p50.toFixed(1)}ms, p95 ${p95.toFixed(1)}ms, max ${max.toFixed(1)}ms`,
-        );
-        resolve({ frameTimes: ft, numPoints: s.numPoints, avgMs: avg, fps: 1000 / avg });
+        resolve(s);
       });
-      if (numPoints) {
-        sendToGpu(gpuWorker, { type: 'benchmark', numPoints, numDims: 4, numFrames: 120 });
-      } else {
-        sendToGpu(gpuWorker, { type: 'benchmarkExisting', numFrames: 120 });
-      }
+      sendToGpu(gpuWorker, { type: 'benchmark', numFrames });
+    });
+  };
+
+  const getMetrics = () => {
+    return new Promise<{
+      gpuMemoryBytes: number;
+      numPoints: number;
+      numDims: number;
+      jsHeapUsedBytes: number | null;
+      workerJsHeapUsedBytes: number | null;
+    }>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'metricsResult') return;
+        unsub();
+        const mainHeapSize =
+          typeof performance !== 'undefined' && 'memory' in performance
+            ? (performance as unknown as { memory: { usedJSHeapSize: number } }).memory
+                .usedJSHeapSize
+            : undefined;
+        const jsHeapUsedBytes = Number.isFinite(mainHeapSize) ? (mainHeapSize as number) : null;
+        const workerJsHeapUsedBytes = Number.isFinite(s.workerJsHeapBytes as number)
+          ? s.workerJsHeapBytes
+          : null;
+        resolve({ ...s, jsHeapUsedBytes, workerJsHeapUsedBytes });
+      });
+      sendToGpu(gpuWorker, { type: 'getMetrics' });
     });
   };
 
@@ -276,10 +319,13 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     startPlayback,
     stopPlayback,
     setMaxPoints,
+    addPreviewCanvas,
+    removePreviewCanvas,
     enable3d,
     disable3d,
     set3dRotation,
     benchmark,
+    getMetrics,
     subscribe,
     destroy,
   };

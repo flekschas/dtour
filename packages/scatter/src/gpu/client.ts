@@ -9,8 +9,8 @@ import type { Metadata } from '../data/types.ts';
 import type { GpuToMain, MainToGpu } from './messages.ts';
 
 export type ScatterOptions = {
-  /** All canvases to render into. Index 0 = main view, 1+ = previews. */
-  canvases: HTMLCanvasElement[];
+  /** The main canvas to render into. */
+  canvas: HTMLCanvasElement;
   /** Initial camera zoom level. Default 1. */
   zoom?: number;
   /** Device pixel ratio. Default `window.devicePixelRatio ?? 1`. */
@@ -28,8 +28,29 @@ export type ScatterStatus =
       eigenvalues: Float32Array;
       numDims: number;
     }
-  | { type: 'playbackTick'; position: number }
-  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number }
+  | { type: 'playbackTick'; position: number; frameMs?: number }
+  | { type: 'playbackStopped'; frameTimes: Float64Array }
+  | {
+      type: 'benchmarkResult';
+      frameTimes: Float64Array;
+      numPoints: number;
+      numDims: number;
+      stats: {
+        avgMs: number;
+        fps: number;
+        p50Ms: number;
+        p95Ms: number;
+        minMs: number;
+        maxMs: number;
+      };
+    }
+  | {
+      type: 'metricsResult';
+      gpuMemoryBytes: number;
+      numPoints: number;
+      numDims: number;
+      workerJsHeapBytes: number | null;
+    }
   | { type: 'residualPC'; residualPC: Float32Array };
 
 export type ScatterInstance = {
@@ -103,17 +124,51 @@ export type ScatterInstance = {
   disable3d: () => void;
   /** Update the 3×3 camera rotation matrix (column-major, 9 floats). */
   set3dRotation: (matrix: Float32Array) => void;
-  /** Run a render benchmark. Pass numPoints for synthetic data, omit or 0 to use loaded data. */
-  benchmark: (numPoints?: number) => Promise<{
+  /** Run a render benchmark on loaded data. Sweeps through the full tour, timing each frame. */
+  benchmark: (numFrames?: number) => Promise<{
     frameTimes: Float64Array;
     numPoints: number;
-    avgMs: number;
-    fps: number;
+    numDims: number;
+    stats: {
+      avgMs: number;
+      fps: number;
+      p50Ms: number;
+      p95Ms: number;
+      minMs: number;
+      maxMs: number;
+    };
   }>;
+  /** Get a point-in-time snapshot of GPU memory, dataset dimensions, and JS heap usage. */
+  getMetrics: () => Promise<{
+    gpuMemoryBytes: number;
+    numPoints: number;
+    numDims: number;
+    /** Main-thread JS heap (V8 heap of the calling context). */
+    jsHeapUsedBytes: number | null;
+    /** GPU-worker JS heap (V8 heap of the render worker). */
+    workerJsHeapUsedBytes: number | null;
+  }>;
+  /** Add a preview canvas. Ownership is transferred; the worker blits rendered previews to its 2D context. */
+  addPreviewCanvas: (id: number, canvas: HTMLCanvasElement) => void;
+  /** Remove a previously added preview canvas. */
+  removePreviewCanvas: (id: number) => void;
   /** Subscribe to status events from both workers. Returns an unsubscribe function. */
   subscribe: (handler: (status: ScatterStatus) => void) => () => void;
   /** Terminate both workers and release resources. */
   destroy: () => void;
+};
+
+const computeStats = (ft: Float64Array) => {
+  const avg = ft.reduce((a: number, b: number) => a + b, 0) / ft.length;
+  const sorted = Float64Array.from(ft).sort();
+  return {
+    avgMs: avg,
+    fps: 1000 / avg,
+    p50Ms: sorted[Math.floor(ft.length * 0.5)]!,
+    p95Ms: sorted[Math.floor(ft.length * 0.95)]!,
+    minMs: sorted[0]!,
+    maxMs: sorted[ft.length - 1]!,
+  };
 };
 
 const sendToGpu = (worker: Worker, msg: MainToGpu, transfers?: Transferable[]): void => {
@@ -143,14 +198,10 @@ const sendToData = (worker: Worker, msg: MainToData, transfers?: Transferable[])
  */
 export const createScatter = (options: ScatterOptions): ScatterInstance => {
   const {
-    canvases,
+    canvas,
     zoom: initialZoom = 1,
     dpr = typeof self !== 'undefined' && 'devicePixelRatio' in self ? self.devicePixelRatio : 1,
   } = options;
-
-  if (canvases.length === 0) {
-    throw new Error('createScatter requires at least one canvas');
-  }
 
   const gpuWorker = new GpuWorkerFactory();
   const dataWorker = new DataWorkerFactory();
@@ -167,7 +218,14 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   };
 
   gpuWorker.onmessage = (event: MessageEvent<GpuToMain>): void => {
-    emit(event.data);
+    const msg = event.data;
+    // Enrich benchmark results with computed stats before emitting
+    if (msg.type === 'benchmarkResult') {
+      const ft = msg.frameTimes;
+      emit({ ...msg, stats: computeStats(ft) });
+      return;
+    }
+    emit(msg as ScatterStatus);
   };
 
   gpuWorker.onerror = (err): void => {
@@ -186,14 +244,14 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     emit({ type: 'error', message: err.message });
   };
 
-  // Transfer OffscreenCanvas control to GPU worker
-  const offscreens = canvases.map((c) => c.transferControlToOffscreen());
+  // Transfer OffscreenCanvas control to GPU worker (main canvas only)
+  const offscreen = canvas.transferControlToOffscreen();
 
   sendToData(dataWorker, { type: 'init', gpuPort: channel.port1 }, [channel.port1]);
   sendToGpu(
     gpuWorker,
-    { type: 'init', canvases: offscreens, dataPort: channel.port2, zoom: initialZoom, dpr },
-    [...offscreens, channel.port2],
+    { type: 'init', canvas: offscreen, dataPort: channel.port2, zoom: initialZoom, dpr },
+    [offscreen, channel.port2],
   );
 
   // Track current style/camera for merging partial updates
@@ -348,38 +406,67 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'set3dRotation', matrix });
   };
 
-  const benchmark = (
-    numPoints?: number,
-  ): Promise<{ frameTimes: Float64Array; numPoints: number; avgMs: number; fps: number }> => {
-    return new Promise((resolve) => {
+  const benchmark = (numFrames = 120) => {
+    return new Promise<{
+      frameTimes: Float64Array;
+      numPoints: number;
+      numDims: number;
+      stats: {
+        avgMs: number;
+        fps: number;
+        p50Ms: number;
+        p95Ms: number;
+        minMs: number;
+        maxMs: number;
+      };
+    }>((resolve) => {
       const unsub = subscribe((s: ScatterStatus) => {
         if (s.type !== 'benchmarkResult') return;
         unsub();
-        const ft = s.frameTimes;
-        const avg = ft.reduce((a: number, b: number) => a + b, 0) / ft.length;
-        const sorted = Float64Array.from(ft).sort();
-        const p50 = sorted[Math.floor(ft.length * 0.5)]!;
-        const p95 = sorted[Math.floor(ft.length * 0.95)]!;
-        const min = sorted[0]!;
-        const max = sorted[ft.length - 1]!;
-        console.log(
-          `Benchmark: ${s.numPoints.toLocaleString()} points\n` +
-            `  ${ft.length} frames, avg ${avg.toFixed(1)}ms (${(1000 / avg).toFixed(0)} fps)\n` +
-            `  min ${min.toFixed(1)}ms, p50 ${p50.toFixed(1)}ms, p95 ${p95.toFixed(1)}ms, max ${max.toFixed(1)}ms`,
-        );
-        resolve({ frameTimes: ft, numPoints: s.numPoints, avgMs: avg, fps: 1000 / avg });
+        resolve(s);
       });
-      if (numPoints) {
-        sendToGpu(gpuWorker, { type: 'benchmark', numPoints, numDims: 4, numFrames: 120 });
-      } else {
-        sendToGpu(gpuWorker, { type: 'benchmarkExisting', numFrames: 120 });
-      }
+      sendToGpu(gpuWorker, { type: 'benchmark', numFrames });
+    });
+  };
+
+  const getMetrics = () => {
+    return new Promise<{
+      gpuMemoryBytes: number;
+      numPoints: number;
+      numDims: number;
+      jsHeapUsedBytes: number | null;
+      workerJsHeapUsedBytes: number | null;
+    }>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'metricsResult') return;
+        unsub();
+        const mainHeapSize =
+          typeof performance !== 'undefined' && 'memory' in performance
+            ? (performance as unknown as { memory: { usedJSHeapSize: number } }).memory
+                .usedJSHeapSize
+            : undefined;
+        const jsHeapUsedBytes = Number.isFinite(mainHeapSize) ? (mainHeapSize as number) : null;
+        const workerJsHeapUsedBytes = Number.isFinite(s.workerJsHeapBytes as number)
+          ? s.workerJsHeapBytes
+          : null;
+        resolve({ ...s, jsHeapUsedBytes, workerJsHeapUsedBytes });
+      });
+      sendToGpu(gpuWorker, { type: 'getMetrics' });
     });
   };
 
   const subscribe = (handler: (status: ScatterStatus) => void): (() => void) => {
     subscribers.add(handler);
     return () => subscribers.delete(handler);
+  };
+
+  const addPreviewCanvas = (id: number, canvas: HTMLCanvasElement): void => {
+    const offscreen = canvas.transferControlToOffscreen();
+    sendToGpu(gpuWorker, { type: 'addPreviewCanvas', id, canvas: offscreen }, [offscreen]);
+  };
+
+  const removePreviewCanvas = (id: number): void => {
+    sendToGpu(gpuWorker, { type: 'removePreviewCanvas', id });
   };
 
   const destroy = (): void => {
@@ -412,6 +499,9 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     disable3d,
     set3dRotation,
     benchmark,
+    getMetrics,
+    addPreviewCanvas,
+    removePreviewCanvas,
     subscribe,
     destroy,
   };

@@ -44,6 +44,13 @@ const EXAMPLES: ExampleDataset[] = [
   },
 ];
 
+const DATASET_SLUGS: Record<string, number> = {
+  'fashion-mnist': 0,
+  'news-headlines': 1,
+  'single-cell': 2,
+  lorenz: 3,
+};
+
 const THEME_STORAGE_KEY = 'dtour-theme-mode';
 const SPEC_STORAGE_PREFIX = 'dtour-spec:';
 
@@ -73,6 +80,18 @@ function savePersistedSpec(fileName: string, spec: Required<DtourSpec>): void {
   } catch {}
 }
 
+// URL parameters for benchmark automation
+const urlParams = new URLSearchParams(globalThis.location?.search ?? '');
+const benchmarkMode = urlParams.has('benchmark');
+const datasetSlug = urlParams.get('dataset');
+const rendererParam = urlParams.get('renderer') === 'webgl' ? 'webgl' : 'webgpu';
+const pointsParam = Number(urlParams.get('points')) || null;
+
+// In benchmark mode, expose flag so DtourViewer conditionally sets window.scatter
+if (benchmarkMode) {
+  (globalThis as Record<string, unknown>).__dtourBenchmarkMode = true;
+}
+
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
   const [fileName, setFileName] = useState<string | undefined>(undefined);
@@ -81,7 +100,9 @@ const App = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const prefersReducedMotion = useReducedMotion();
-  const [logoPhase, setLogoPhase] = useState<LogoPhase>(prefersReducedMotion ? 'done' : 'drawing');
+  const [logoPhase, setLogoPhase] = useState<LogoPhase>(
+    prefersReducedMotion || benchmarkMode ? 'done' : 'drawing',
+  );
   const pendingDataRef = useRef<ArrayBuffer | null>(null);
   const pendingNameRef = useRef<string | null>(null);
   const drawCompleteRef = useRef(false);
@@ -193,18 +214,25 @@ const App = () => {
               reject(new Error(e.message));
               worker.terminate();
             };
-            worker.postMessage(null);
+            worker.postMessage(pointsParam);
           });
         }
 
         if (id !== loadIdRef.current) return;
 
+        // When generating lorenz with a custom point count, use a distinct filename
+        // so the spec cache doesn't collide between sizes.
+        const effectiveName =
+          example.type === 'generate' && pointsParam
+            ? `lorenz-stenflo-${pointsParam}.arrow`
+            : example.fileName;
+
         if (logoPhase === 'done') {
-          setFileName(example.fileName);
+          setFileName(effectiveName);
           setData(buffer);
         } else {
           pendingDataRef.current = buffer;
-          pendingNameRef.current = example.fileName;
+          pendingNameRef.current = effectiveName;
           if (drawCompleteRef.current) {
             setLogoPhase('moving');
           }
@@ -220,6 +248,34 @@ const App = () => {
     },
     [loading, logoPhase],
   );
+
+  // Auto-load dataset from URL parameter (for benchmark automation)
+  const loadExampleRef = useRef(loadExample);
+  loadExampleRef.current = loadExample;
+  useEffect(() => {
+    if (!datasetSlug) return;
+    const index = DATASET_SLUGS[datasetSlug];
+    if (index === undefined) {
+      console.warn(
+        `Unknown dataset slug: "${datasetSlug}". Valid: ${Object.keys(DATASET_SLUGS).join(', ')}`,
+      );
+      return;
+    }
+    loadExampleRef.current(EXAMPLES[index]!);
+  }, []);
+
+  // Expose readiness signal for Playwright.
+  // We wait for the first 'rendered' event (not just 'metadata'), because bases
+  // are installed in a later React effect and benchmark() requires state.tour.
+  const metadataReceivedRef = useRef(false);
+  const handleStatus = useCallback((status: { type: string }) => {
+    if (status.type === 'metadata') {
+      metadataReceivedRef.current = true;
+    }
+    if (status.type === 'rendered' && metadataReceivedRef.current) {
+      (globalThis as Record<string, unknown>).__dtourReady = true;
+    }
+  }, []);
 
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
@@ -284,8 +340,9 @@ const App = () => {
         onLoadData={handleLoadData}
         onLogoClick={() => setHomeOpen(true)}
         onSpecChange={handleSpecChange}
+        onStatus={handleStatus}
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
-        backend="webgpu"
+        backend={rendererParam}
       />
       {!data && logoPhase !== 'moving' && logoPhase !== 'moved' && (
         <motion.div

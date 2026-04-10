@@ -53,12 +53,13 @@ function rk4Step(state: State, dt: number): State {
   ];
 }
 
-const numPoints = 1_000_000;
+const DEFAULT_NUM_POINTS = 1_000_000;
 const dt = 0.005;
 const transient = 2000;
 const subsample = 5;
 
-self.onmessage = () => {
+self.onmessage = (e: MessageEvent<number | null>) => {
+  const numPoints = e.data && Number.isFinite(e.data) && e.data > 0 ? e.data : DEFAULT_NUM_POINTS;
   let state: State = [1, 1, 1, 1];
 
   // Discard transient

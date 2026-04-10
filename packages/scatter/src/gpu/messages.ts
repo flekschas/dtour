@@ -2,11 +2,13 @@
 export type MainToGpu =
   | {
       type: 'init';
-      canvases: OffscreenCanvas[];
+      canvas: OffscreenCanvas;
       dataPort: MessagePort;
       zoom: number;
       dpr: number;
     }
+  | { type: 'addPreviewCanvas'; id: number; canvas: OffscreenCanvas }
+  | { type: 'removePreviewCanvas'; id: number }
   | {
       // Array of p×2 column-major basis matrices, one per view.
       // Column-major: [x0, x1, ..., xp-1, y0, y1, ..., yp-1]
@@ -78,8 +80,8 @@ export type MainToGpu =
       type: 'set3dRotation';
       matrix: Float32Array;
     }
-  | { type: 'benchmark'; numPoints: number; numDims: number; numFrames: number }
-  | { type: 'benchmarkExisting'; numFrames: number };
+  | { type: 'benchmark'; numFrames: number }
+  | { type: 'getMetrics' };
 
 // GPU Worker → Main thread
 export type GpuToMain =
@@ -96,6 +98,17 @@ export type GpuToMain =
       // Periodic position update during worker-driven playback (~30fps).
       type: 'playbackTick';
       position: number;
+      /** Milliseconds since the previous frame (rAF delta). */
+      frameMs?: number;
     }
-  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number }
+  | { type: 'playbackStopped'; frameTimes: Float64Array }
+  | { type: 'benchmarkResult'; frameTimes: Float64Array; numPoints: number; numDims: number }
+  | {
+      type: 'metricsResult';
+      gpuMemoryBytes: number;
+      numPoints: number;
+      numDims: number;
+      /** JS heap measured from inside the GPU worker (its own V8 context). */
+      workerJsHeapBytes: number | null;
+    }
   | { type: 'residualPC'; residualPC: Float32Array };

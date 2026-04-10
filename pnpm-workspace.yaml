@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'benchmarks'
 
 onlyBuiltDependencies:
   - '@rolldown/binding-darwin-arm64'

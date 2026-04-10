@@ -10,6 +10,7 @@
     "lint:py": "uvx ruff check --config packages/python/pyproject.toml packages/python/",
     "lint": "pnpm run lint:js && pnpm run lint:py",
     "format": "biome check --write . && uvx ruff check --fix --config packages/python/pyproject.toml packages/python/ && uvx ruff format --config packages/python/pyproject.toml packages/python/",
+    "bench": "pnpm --filter benchmarks bench",
     "prepare": "lefthook install"
   },
   "devDependencies": {
