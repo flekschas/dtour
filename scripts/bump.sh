@@ -20,9 +20,10 @@ esac
 next="${major}.${minor}.${patch}"
 echo "Bumping $current → $next"
 
-# Bump JS packages (npm handles package.json)
-cd packages/scatter && npm version "$next" --no-git-tag-version && cd ../..
-cd packages/viewer  && npm version "$next" --no-git-tag-version && cd ../..
+# Bump JS packages (inline sed to avoid npm version reformatting JSON)
+for pkg in packages/scatter/package.json packages/viewer/package.json; do
+  sed -i '' "s/\"version\": \".*\"/\"version\": \"$next\"/" "$pkg"
+done
 
 # Bump Python package (sed the version line in pyproject.toml)
 sed -i '' "s/^version = \".*\"/version = \"$next\"/" packages/python/pyproject.toml
