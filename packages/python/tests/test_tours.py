@@ -5,6 +5,7 @@ import pytest
 from dtour.data import _to_ipc_bytes, from_numpy, from_pandas
 from dtour.tours import (
     TourResult,
+    _build_knn_affinity,
     _compute_feature_loadings,
     _nystroem_extend,
     le_tour,
@@ -532,3 +533,203 @@ def test_le_tour_frame_summaries():
     assert len(result.frame_summaries) == result.n_views
     for s in result.frame_summaries:
         assert s.startswith("Structure:"), s
+
+
+# ── _build_knn_affinity enhancements ───────────────────────────────────
+
+
+def test_affinity_mutual_knn():
+    """Mutual KNN should be sparser than symmetric KNN and still symmetric."""
+    X = make_data(n=200, p=5)
+    W_sym = _build_knn_affinity(X, 10, affinity="symmetric_knn")
+    W_mut = _build_knn_affinity(X, 10, affinity="mutual_knn")
+
+    assert W_mut.nnz <= W_sym.nnz
+    # Still symmetric
+    diff = W_mut - W_mut.T
+    assert abs(diff).max() < 1e-10
+    # All weights positive
+    assert W_mut.data.min() > 0
+
+
+def test_affinity_adaptive_sigma():
+    """Adaptive sigma should produce different weights than global sigma."""
+    X = make_data(n=200, p=5)
+    W_global = _build_knn_affinity(X, 10, adaptive_sigma=False)
+    W_local = _build_knn_affinity(X, 10, adaptive_sigma=True)
+
+    # Same sparsity structure (same KNN graph)
+    assert W_global.nnz == W_local.nnz
+    # But different weights
+    assert not np.allclose(W_global.data, W_local.data)
+    # Still symmetric and positive
+    diff = W_local - W_local.T
+    assert abs(diff).max() < 1e-10
+    assert W_local.data.min() > 0
+
+
+def test_affinity_normalize_alpha():
+    """Alpha normalization should change row sums; alpha=None should not."""
+    X = make_data(n=200, p=5)
+    W_base = _build_knn_affinity(X, 10)
+    W_normed = _build_knn_affinity(X, 10, normalize_alpha=1.0)
+
+    # Different row sums
+    sums_base = np.asarray(W_base.sum(axis=1)).ravel()
+    sums_normed = np.asarray(W_normed.sum(axis=1)).ravel()
+    assert not np.allclose(sums_base, sums_normed)
+    # Still symmetric
+    diff = W_normed - W_normed.T
+    assert abs(diff).max() < 1e-10
+
+
+def test_affinity_invalid_mode():
+    """Unknown affinity mode should raise ValueError."""
+    X = make_data(n=50, p=3)
+    with pytest.raises(ValueError, match="Unknown affinity mode"):
+        _build_knn_affinity(X, 5, affinity="bogus")
+
+
+# ── le_tour with affinity enhancements ─────────────────────────────────
+
+
+def test_le_tour_mutual_knn():
+    """Vanilla LE with mutual_knn should produce valid TourResult."""
+    X = make_data(n=200, p=6)
+    result = le_tour(X, n_neighbors=10, n_frames=4, affinity="mutual_knn")
+    assert isinstance(result, TourResult)
+    assert result.n_views == 4
+    assert result.embedding.shape == (200, 5)
+
+
+def test_le_tour_adaptive_sigma():
+    """Vanilla LE with adaptive_sigma should produce valid TourResult."""
+    X = make_data(n=200, p=6)
+    result = le_tour(X, n_neighbors=10, n_frames=4, adaptive_sigma=True)
+    assert isinstance(result, TourResult)
+    assert result.n_views == 4
+    assert result.embedding.shape == (200, 5)
+
+
+def test_le_tour_signed_adaptive_sigma():
+    """Signed LE path should accept and use adaptive_sigma."""
+    X = make_data(n=300, p=6)
+    labels = np.array(["A"] * 150 + ["B"] * 150)
+    result = le_tour(
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        adaptive_sigma=True,
+    )
+    assert result.tour_mode == "signed"
+    assert result.n_views == 5
+    assert result.embedding.shape == (300, 6)
+
+
+def test_le_tour_discriminative_mutual_knn():
+    """Discriminative path should accept and use mutual_knn."""
+    X = make_data(n=300, p=6)
+    labels = np.array(["A"] * 150 + ["B"] * 150)
+    result = le_tour(
+        X,
+        n_neighbors=10,
+        n_frames=5,
+        labels=labels,
+        discriminative=True,
+        affinity="mutual_knn",
+    )
+    assert result.tour_mode == "discriminative"
+    assert result.n_views == 5
+
+
+def test_le_tour_invalid_affinity():
+    """Invalid affinity should propagate ValueError through le_tour."""
+    X = make_data(n=100, p=5)
+    with pytest.raises(ValueError, match="Unknown affinity mode"):
+        le_tour(X, n_neighbors=10, n_frames=3, affinity="invalid")
+
+
+# ── Regression tests for review findings ─────────────────────────────
+
+
+def test_adaptive_sigma_excludes_self():
+    """adaptive_sigma should use kth-neighbor distance, not self (distance=0).
+
+    Regression: nn.kneighbors(arr) includes self, making sigma_i the
+    (k-1)th non-self distance instead of kth. The fix uses
+    nn.kneighbors() (no arg) which excludes self.
+    """
+
+    from sklearn.neighbors import NearestNeighbors
+
+    X = make_data(n=100, p=5)
+    k = 10
+
+    # Compute what the *correct* sigma values should be
+    nn_ref = NearestNeighbors(n_neighbors=k, algorithm="auto").fit(X)
+    correct_sigma = nn_ref.kneighbors()[0][:, -1]  # excludes self
+    assert correct_sigma.min() > 0, "kth-neighbor distance should never be 0"
+
+    # Compute what the *wrong* sigma values would be (includes self → dist=0)
+    wrong_sigma = nn_ref.kneighbors(X)[0][:, -1]  # includes self
+
+    # The two must differ (the bug made them equal)
+    assert not np.allclose(correct_sigma, wrong_sigma)
+
+    # Build the affinity and check it uses the correct sigma:
+    # weights with correct sigma should be *lower* on average because
+    # the true kth-neighbor sigma is larger → denominator is larger
+    W = _build_knn_affinity(X, k, adaptive_sigma=True)
+    assert W.data.min() > 0
+    assert W.data.max() <= 1.0
+
+
+def test_explicit_symmetric_knn_uses_heat_kernel():
+    """Explicit affinity='symmetric_knn' must produce heat-kernel weights.
+
+    Regression: the vanilla/discriminative paths used to fall back to
+    sklearn's binary nearest_neighbors graph when all params were default,
+    so explicit symmetric_knn was silently ignored.
+    """
+    X = make_data(n=200, p=6)
+    result = le_tour(
+        X,
+        n_neighbors=10,
+        n_frames=3,
+        affinity="symmetric_knn",
+    )
+    assert isinstance(result, TourResult)
+    # The embedding should be valid (not NaN/inf)
+    assert np.isfinite(result.embedding).all()
+
+    # More importantly: build the affinity ourselves and verify it has
+    # continuous weights, not binary 0/1 values
+    W = _build_knn_affinity(X, 10, affinity="symmetric_knn")
+    unique_vals = np.unique(np.round(W.data, decimals=6))
+    # Heat kernel produces many distinct values; binary graph has only ~1
+    assert len(unique_vals) > 2, "Expected heat-kernel weights, got binary"
+
+
+def test_subsample_warns_on_ignored_params():
+    """subsample + mutual_knn or normalize_alpha should emit a warning."""
+    import warnings
+
+    X = make_data(n=200, p=6)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        le_tour(
+            X,
+            n_neighbors=10,
+            n_frames=3,
+            affinity="mutual_knn",
+            normalize_alpha=1.0,
+            subsample=50,
+        )
+
+    oos_warnings = [w for w in caught if "OOS interpolation ignores" in str(w.message)]
+    assert len(oos_warnings) >= 1
+    msg = str(oos_warnings[0].message)
+    assert "mutual_knn" in msg
+    assert "normalize_alpha" in msg

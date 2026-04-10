@@ -334,12 +334,22 @@ def _nystroem_extend(
     embedding_train: np.ndarray,
     arr_oos: np.ndarray,
     n_neighbors: int,
+    *,
+    adaptive_sigma: bool = False,
 ) -> np.ndarray:
     """Project out-of-sample points into an existing spectral embedding.
 
     Uses kNN-weighted interpolation: for each OOS point, find its nearest
     neighbors in the training set and compute a distance-weighted average
     of their embedding coordinates.
+
+    Args:
+        arr_train: Training feature matrix.
+        embedding_train: Training embedding coordinates.
+        arr_oos: Out-of-sample feature matrix.
+        n_neighbors: Number of nearest neighbors for interpolation.
+        adaptive_sigma: When ``True``, use per-point local bandwidth
+            (K-th neighbor distance) instead of global median.
     """
     from sklearn.neighbors import NearestNeighbors
 
@@ -347,10 +357,14 @@ def _nystroem_extend(
     nn.fit(arr_train)
     distances, indices = nn.kneighbors(arr_oos)
 
-    # Heat-kernel weights: exp(-d^2 / sigma^2), sigma = median distance
-    # (matches the kernel used by _build_knn_affinity)
-    sigma = np.median(distances) + 1e-10
-    weights = np.exp(-(distances**2) / (sigma**2))
+    if adaptive_sigma:
+        # Per-OOS-point sigma: distance to K-th neighbor in training set
+        sigma_oos = distances[:, -1:] + 1e-10  # (m, 1)
+        weights = np.exp(-(distances**2) / (sigma_oos**2))
+    else:
+        sigma = np.median(distances) + 1e-10
+        weights = np.exp(-(distances**2) / (sigma**2))
+
     weights /= weights.sum(axis=1, keepdims=True)
 
     # Weighted average of neighbor embeddings
@@ -412,23 +426,81 @@ def _stratified_subsample(
 def _build_knn_affinity(
     arr: np.ndarray,
     n_neighbors: int,
+    *,
+    affinity: str = "symmetric_knn",
+    adaptive_sigma: bool = False,
+    normalize_alpha: float | None = None,
 ):
     """Build a symmetric kNN affinity matrix with heat-kernel weights.
 
-    Uses ``sklearn.neighbors.kneighbors_graph`` to find k-nearest neighbors,
-    symmetrises the graph, and applies a heat kernel with bandwidth set to
-    the median non-zero distance.
+    Uses ``sklearn.neighbors.NearestNeighbors`` to find k-nearest neighbors,
+    symmetrises the graph, and applies a heat kernel.
 
-    Returns a sparse CSR affinity matrix.
+    Args:
+        arr: Feature matrix, shape ``(n_samples, n_features)``.
+        n_neighbors: Number of nearest neighbors.
+        affinity: ``"symmetric_knn"`` (union, default) or ``"mutual_knn"``
+            (intersection — only keeps edges where both points are in each
+            other's k-nearest neighbors).
+        adaptive_sigma: When ``True``, use Zelnik-Manor & Perona (2004)
+            local scaling: ``sigma_i = dist(x_i, x_i^{(k)})``, giving
+            ``W_ij = exp(-d_ij^2 / (sigma_i * sigma_j))``.  When ``False``
+            (default), use a global ``sigma = median(distances)``.
+        normalize_alpha: Coifman-Lafon (2006) density normalisation.
+            ``None`` (default) skips normalisation.  ``1.0`` approximates
+            the Laplace-Beltrami operator (removes sampling-density bias).
+            ``0.5`` gives the Fokker-Planck operator.
+
+    Returns:
+        Sparse CSR affinity matrix.
     """
-    from sklearn.neighbors import kneighbors_graph
+    import warnings
 
-    G = kneighbors_graph(arr, n_neighbors=n_neighbors, mode="distance", include_self=False)
-    # Symmetrise: take the union of kNN relationships
-    G = 0.5 * (G + G.T)
-    # Heat kernel: W_ij = exp(-d^2 / sigma^2), sigma = median nonzero distance
-    sigma = np.median(G.data) + 1e-10
-    G.data = np.exp(-(G.data**2) / (sigma**2))
+    from scipy import sparse
+    from sklearn.neighbors import NearestNeighbors
+
+    nn = NearestNeighbors(n_neighbors=n_neighbors, algorithm="auto")
+    nn.fit(arr)
+    G = nn.kneighbors_graph(mode="distance")
+
+    # ── Symmetrisation ────────────────────────────────────────────────
+    if affinity == "symmetric_knn":
+        G = 0.5 * (G + G.T)
+    elif affinity == "mutual_knn":
+        G_bool = G.astype(bool)
+        mutual = G_bool.multiply(G_bool.T)
+        G = G.multiply(mutual)
+        G = 0.5 * (G + G.T)
+        # Warn if any node lost all edges
+        degree = np.diff(G.indptr)
+        n_isolated = int((degree == 0).sum())
+        if n_isolated > 0:
+            warnings.warn(
+                f"mutual_knn produced {n_isolated} isolated node(s). "
+                f"Consider increasing n_neighbors (currently {n_neighbors}).",
+                stacklevel=2,
+            )
+    else:
+        msg = f"Unknown affinity mode: {affinity!r}. Use 'symmetric_knn' or 'mutual_knn'."
+        raise ValueError(msg)
+
+    # ── Heat kernel ───────────────────────────────────────────────────
+    if adaptive_sigma:
+        sigma_per_point = nn.kneighbors()[0][:, -1] + 1e-10
+        rows, cols = G.nonzero()
+        G.data = np.exp(-(G.data**2) / (sigma_per_point[rows] * sigma_per_point[cols]))
+    else:
+        sigma = np.median(G.data) + 1e-10
+        G.data = np.exp(-(G.data**2) / (sigma**2))
+
+    # ── Coifman-Lafon density normalisation ─────────────────────────
+    if normalize_alpha is not None and normalize_alpha != 0.0:
+        d = np.asarray(G.sum(axis=1)).ravel()
+        d_inv_alpha = np.power(np.maximum(d, 1e-10), -normalize_alpha)
+        D_inv_alpha = sparse.diags(d_inv_alpha)
+        G = D_inv_alpha @ G @ D_inv_alpha
+        G = 0.5 * (G + G.T)  # ensure numerical symmetry
+
     return G
 
 
@@ -508,6 +580,10 @@ def _signed_laplacian_embed(
     n_neighbors: int,
     alpha: float = 1.0,
     random_state: int | None = None,
+    *,
+    affinity: str = "symmetric_knn",
+    adaptive_sigma: bool = False,
+    normalize_alpha: float | None = None,
 ) -> np.ndarray:
     """Compute eigenvectors of the true signed graph Laplacian.
 
@@ -530,13 +606,22 @@ def _signed_laplacian_embed(
         alpha: Repulsion strength.  ``0`` recovers same-label-only LE,
             ``1`` gives balanced attraction/repulsion.
         random_state: Seed for the eigensolver.
+        affinity: Passed to :func:`_build_knn_affinity`.
+        adaptive_sigma: Passed to :func:`_build_knn_affinity`.
+        normalize_alpha: Passed to :func:`_build_knn_affinity`.
 
     Returns:
         Embedding matrix, shape ``(n_samples, n_components)``, float32.
     """
     from scipy import sparse
 
-    W = _build_knn_affinity(arr, n_neighbors)
+    W = _build_knn_affinity(
+        arr,
+        n_neighbors,
+        affinity=affinity,
+        adaptive_sigma=adaptive_sigma,
+        normalize_alpha=normalize_alpha,
+    )
     W_same, W_cross = _split_affinity_by_labels(W, labels)
 
     # Signed affinity: positive for same-label, negative for cross-label
@@ -569,6 +654,10 @@ def _spectral_fisher_embed(
     n_components: int,
     n_neighbors: int,
     random_state: int | None = None,
+    *,
+    affinity: str = "symmetric_knn",
+    adaptive_sigma: bool = False,
+    normalize_alpha: float | None = None,
 ) -> np.ndarray:
     """Compute Fisher-discriminant embedding by LDA on LE eigenvectors.
 
@@ -576,7 +665,7 @@ def _spectral_fisher_embed(
     well-scaled thanks to sklearn's degree normalisation), then solves
     a small Fisher LDA problem in the embedding space::
 
-        S_b · v = λ · S_w · v
+        S_b · v = lambda · S_w · v
 
     where ``S_b`` and ``S_w`` are the between-class and within-class
     scatter matrices of the spectral embedding.  The largest eigenvalues
@@ -593,6 +682,9 @@ def _spectral_fisher_embed(
         n_components: Number of eigenvectors to compute.
         n_neighbors: kNN graph parameter.
         random_state: Seed for the eigensolver.
+        affinity: Passed to :func:`_build_knn_affinity`.
+        adaptive_sigma: Passed to :func:`_build_knn_affinity`.
+        normalize_alpha: Passed to :func:`_build_knn_affinity`.
 
     Returns:
         Embedding matrix, shape ``(n_samples, n_components)``, float32.
@@ -600,15 +692,26 @@ def _spectral_fisher_embed(
     from scipy.linalg import eigh
     from sklearn.manifold import SpectralEmbedding
 
-    # Step 1: Standard LE embedding (well-normalised by sklearn)
-    se = SpectralEmbedding(
-        n_components=n_components,
-        n_neighbors=n_neighbors,
-        affinity="nearest_neighbors",
-        eigen_solver="amg",
-        **({"random_state": random_state} if random_state is not None else {}),
+    # Step 1: Standard LE embedding via our own affinity builder
+    # Always route through _build_knn_affinity so that affinity mode,
+    # adaptive_sigma, and normalize_alpha are consistently honoured.
+    W = _build_knn_affinity(
+        arr,
+        n_neighbors,
+        affinity=affinity,
+        adaptive_sigma=adaptive_sigma,
+        normalize_alpha=normalize_alpha,
     )
-    emb = se.fit_transform(arr)  # (n, n_components)
+
+    se_kwargs: dict = {
+        "n_components": n_components,
+        "eigen_solver": "amg",
+        "affinity": "precomputed",
+        **({"random_state": random_state} if random_state is not None else {}),
+    }
+
+    se = SpectralEmbedding(**se_kwargs)
+    emb = se.fit_transform(W)
 
     # Step 2: Fisher LDA in the embedding space
     unique_labels = np.unique(labels)
@@ -771,6 +874,10 @@ def le_tour(
     labels: np.ndarray | None = None,
     discriminative: bool = False,
     alpha: float = 1.0,
+    *,
+    affinity: str = "symmetric_knn",
+    adaptive_sigma: bool = False,
+    normalize_alpha: float | None = None,
 ) -> TourResult:
     """Compute a Laplacian Eigenmaps tour.
 
@@ -779,7 +886,7 @@ def le_tour(
     eigenmaps), then builds a cumulative tour through the eigenvector space.
 
     Each view progressively incorporates one more eigenvector through a
-    fixed circular projection (global → local accumulation).  Eigenvectors
+    fixed circular projection (global -> local accumulation).  Eigenvectors
     are variance-normalised so each contributes equally.
 
     Each eigenvector is correlated (Pearson *r*) with the original features
@@ -826,6 +933,13 @@ def le_tour(
             ``0`` recovers same-label-only LE, ``1`` (default) gives
             balanced attraction/repulsion.  Ignored when *discriminative*
             is ``True``.
+        affinity: ``"symmetric_knn"`` (union, default) or ``"mutual_knn"``
+            (intersection -- stricter, sparser graph).
+        adaptive_sigma: When ``True``, use Zelnik-Manor & Perona (2004)
+            local scaling instead of global median bandwidth.
+        normalize_alpha: Coifman-Lafon (2006) density normalisation
+            exponent.  ``None`` (default) skips normalisation.  ``1.0``
+            approximates the Laplace-Beltrami operator.
 
     Returns:
         A :class:`TourResult` with basis matrices, embedding,
@@ -867,6 +981,21 @@ def le_tour(
         labels_arr = np.asarray(labels)
 
         if subsample is not None and n_samples > subsample:
+            # OOS interpolation ignores mutual_knn and normalize_alpha — warn.
+            if affinity == "mutual_knn" or normalize_alpha is not None:
+                import warnings
+
+                ignored = []
+                if affinity == "mutual_knn":
+                    ignored.append(f"affinity={affinity!r}")
+                if normalize_alpha is not None:
+                    ignored.append(f"normalize_alpha={normalize_alpha!r}")
+                warnings.warn(
+                    f"subsample OOS interpolation ignores {', '.join(ignored)}; "
+                    f"these settings are applied to the training subset only.",
+                    stacklevel=2,
+                )
+
             idx_train = _stratified_subsample(labels_arr, subsample, rng)
             arr_train = arr[idx_train]
             labels_train = labels_arr[idx_train]
@@ -878,6 +1007,9 @@ def le_tour(
                     n_components,
                     n_neighbors,
                     random_state=random_state,
+                    affinity=affinity,
+                    adaptive_sigma=adaptive_sigma,
+                    normalize_alpha=normalize_alpha,
                 )
             else:
                 embedding_train = _signed_laplacian_embed(
@@ -887,6 +1019,9 @@ def le_tour(
                     n_neighbors,
                     alpha=alpha,
                     random_state=random_state,
+                    affinity=affinity,
+                    adaptive_sigma=adaptive_sigma,
+                    normalize_alpha=normalize_alpha,
                 )
 
             mask_oos = np.ones(n_samples, dtype=bool)
@@ -898,6 +1033,7 @@ def le_tour(
                 embedding_train,
                 arr_oos,
                 n_neighbors,
+                adaptive_sigma=adaptive_sigma,
             )
 
             embedding = np.empty((n_samples, n_components), dtype=np.float32)
@@ -911,6 +1047,9 @@ def le_tour(
                     n_components,
                     n_neighbors,
                     random_state=random_state,
+                    affinity=affinity,
+                    adaptive_sigma=adaptive_sigma,
+                    normalize_alpha=normalize_alpha,
                 )
             else:
                 embedding = _signed_laplacian_embed(
@@ -920,6 +1059,9 @@ def le_tour(
                     n_neighbors,
                     alpha=alpha,
                     random_state=random_state,
+                    affinity=affinity,
+                    adaptive_sigma=adaptive_sigma,
+                    normalize_alpha=normalize_alpha,
                 )
 
         views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
@@ -950,33 +1092,66 @@ def le_tour(
         return result
 
     # ── Standard path (vanilla LE, no labels) ─────────────────────────
-    kwargs: dict = {
+    # Always route through _build_knn_affinity so that affinity mode,
+    # adaptive_sigma, and normalize_alpha are consistently honoured.
+    se_kwargs_base: dict = {
         "n_components": n_components,
-        "n_neighbors": n_neighbors,
-        "affinity": "nearest_neighbors",
         "eigen_solver": "amg",
+        "affinity": "precomputed",
         **({"random_state": random_state} if random_state is not None else {}),
         **(se_kwargs or {}),
     }
 
+    def _vanilla_embed(data: np.ndarray) -> np.ndarray:
+        W = _build_knn_affinity(
+            data,
+            n_neighbors,
+            affinity=affinity,
+            adaptive_sigma=adaptive_sigma,
+            normalize_alpha=normalize_alpha,
+        )
+        return SpectralEmbedding(**se_kwargs_base).fit_transform(W)
+
     if subsample is not None and n_samples > subsample:
+        # OOS interpolation is a kNN-weighted average — mutual_knn and
+        # normalize_alpha don't have meaningful OOS equivalents, so warn.
+        if affinity == "mutual_knn" or normalize_alpha is not None:
+            import warnings
+
+            ignored = []
+            if affinity == "mutual_knn":
+                ignored.append(f"affinity={affinity!r}")
+            if normalize_alpha is not None:
+                ignored.append(f"normalize_alpha={normalize_alpha!r}")
+            warnings.warn(
+                f"subsample OOS interpolation ignores {', '.join(ignored)}; "
+                f"these settings are applied to the training subset only.",
+                stacklevel=2,
+            )
+
         idx_train = rng.choice(n_samples, size=subsample, replace=False)
         idx_train.sort()
         arr_train = arr[idx_train]
 
-        embedding_train = SpectralEmbedding(**kwargs).fit_transform(arr_train)
+        embedding_train = _vanilla_embed(arr_train)
 
         mask_oos = np.ones(n_samples, dtype=bool)
         mask_oos[idx_train] = False
         arr_oos = arr[mask_oos]
 
-        embedding_oos = _nystroem_extend(arr_train, embedding_train, arr_oos, n_neighbors)
+        embedding_oos = _nystroem_extend(
+            arr_train,
+            embedding_train,
+            arr_oos,
+            n_neighbors,
+            adaptive_sigma=adaptive_sigma,
+        )
 
         embedding = np.empty((n_samples, n_components), dtype=np.float32)
         embedding[idx_train] = embedding_train
         embedding[mask_oos] = embedding_oos
     else:
-        embedding = SpectralEmbedding(**kwargs).fit_transform(arr)
+        embedding = _vanilla_embed(arr)
 
     views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
     loadings, r2 = _compute_feature_loadings(arr, embedding)
