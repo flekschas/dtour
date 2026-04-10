@@ -11,6 +11,7 @@
     "lint": "pnpm run lint:js && pnpm run lint:py",
     "format": "biome check --write . && uvx ruff check --fix --config packages/python/pyproject.toml packages/python/ && uvx ruff format --config packages/python/pyproject.toml packages/python/",
     "bench": "pnpm --filter benchmarks bench",
+    "bump": "bash scripts/bump.sh",
     "prepare": "lefthook install"
   },
   "devDependencies": {
