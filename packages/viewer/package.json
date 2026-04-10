@@ -10,6 +10,11 @@
     },
     "./dist/viewer.css": "./dist/viewer.css"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flekschas/dtour",
+    "directory": "packages/viewer"
+  },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
     "dev": "vite build --watch"

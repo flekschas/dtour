@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flekschas/dtour",
+    "directory": "packages/scatter"
+  },
   "files": ["dist"],
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
