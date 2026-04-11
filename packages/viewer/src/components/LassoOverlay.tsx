@@ -2,14 +2,7 @@ import type { ScatterInstance } from '@dtour/scatter';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLongPressIndicator } from '../hooks/useLongPressIndicator.ts';
-import {
-  cameraPanXAtom,
-  cameraPanYAtom,
-  cameraZoomAtom,
-  guidedSuspendedAtom,
-  legendSelectionAtom,
-  viewModeAtom,
-} from '../state/atoms.ts';
+import { guidedSuspendedAtom, legendSelectionAtom, viewModeAtom } from '../state/atoms.ts';
 
 type LassoOverlayProps = {
   scatter: ScatterInstance | null;
@@ -22,26 +15,16 @@ const MIN_MOVE_PX = 5;
 const MIN_POINT_DISTANCE = 5;
 const THROTTLE_MS = 10;
 
-/** Convert CSS coords to NDC accounting for camera. */
-const cssToNdc = (
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  panX: number,
-  panY: number,
-  zoom: number,
-): [number, number] => {
-  const aspect = width / height || 1;
-  const ndcX = (((x / width) * 2 - 1) * aspect) / zoom - panX;
-  const ndcY = -((y / height) * 2 - 1) / zoom - panY;
+/** Convert CSS coords to clip-space NDC [-1,1].
+ *  The GPU worker inverts the full camera transform (zoom, pan, inset)
+ *  to go from clip-space to projection-space, so we only do pixel→NDC here. */
+const cssToNdc = (x: number, y: number, width: number, height: number): [number, number] => {
+  const ndcX = (x / width) * 2 - 1;
+  const ndcY = -((y / height) * 2 - 1);
   return [ndcX, ndcY];
 };
 
 export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
-  const panX = useAtomValue(cameraPanXAtom);
-  const panY = useAtomValue(cameraPanYAtom);
-  const zoom = useAtomValue(cameraZoomAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const setViewMode = useSetAtom(viewModeAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
@@ -68,6 +51,8 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (lassoMode || e.button !== 0) return;
+      // Prevent native drag-start (e.g. image/element drag in Marimo widgets)
+      e.preventDefault();
       startPos.current = [e.clientX, e.clientY];
 
       showIndicator(e.clientX, e.clientY);
@@ -153,7 +138,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     // Convert CSS path to NDC polygon and send to GPU worker
     const polygon = new Float32Array(path.length * 2);
     for (let i = 0; i < path.length; i++) {
-      const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height, panX, panY, zoom);
+      const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height);
       polygon[i * 2] = ndcX;
       polygon[i * 2 + 1] = ndcY;
     }
@@ -163,19 +148,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
 
     setLassoMode(false);
     setPath([]);
-  }, [
-    lassoMode,
-    path,
-    scatter,
-    width,
-    height,
-    panX,
-    panY,
-    zoom,
-    clearLongPress,
-    hideIndicator,
-    setLegendSelection,
-  ]);
+  }, [lassoMode, path, scatter, width, height, clearLongPress, hideIndicator, setLegendSelection]);
 
   // Double-click or Escape clears selection
   const handleDoubleClick = useCallback(() => {
