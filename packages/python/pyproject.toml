@@ -16,13 +16,18 @@ dependencies = [
   "marimo>=0.21.1",
   "matplotlib>=3.10.8",
   "numpy>=2.4.2",
+  "openTSNE>=1.0",
   "pyamg>=5.3",
   "scikit-learn>=1.8.0",
   "umap-learn>=0.5",
 ]
 
 [project.optional-dependencies]
+pymde = [
+  "pymde>=0.1.0",
+]
 dev = [
+  "pymde>=0.1.0",
   "matplotlib>=3.9",
   "polars>=1.38.1",
   "pytest>=9.0.2",

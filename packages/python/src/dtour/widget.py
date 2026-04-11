@@ -52,7 +52,7 @@ class Widget(anywidget.AnyWidget):
     # at runtime — no separate _css file needed.
 
     # ── DtourSpec fields (flat traitlets, snake_case) ────────────────────
-    tour_by = t.Enum(["dimensions", "pca"], default_value="dimensions").tag(sync=True)
+    tour_by = t.Enum(["dimensions", "pca", "parameter"], default_value="dimensions").tag(sync=True)
     tour_position = t.Float(0.0).tag(sync=True)
     tour_playing = t.Bool(False).tag(sync=True)
     tour_speed = t.Float(1.0).tag(sync=True)
@@ -122,8 +122,10 @@ class Widget(anywidget.AnyWidget):
     @t.validate("tour_by")
     def _validate_tour_by(self, proposal: t.Bunch) -> str:
         value = proposal["value"]
-        if value not in ("dimensions", "pca"):
-            raise t.TraitError(f"tour_by must be 'dimensions' or 'pca'; got {value!r}")
+        if value not in ("dimensions", "pca", "parameter"):
+            raise t.TraitError(
+                f"tour_by must be 'dimensions', 'pca', or 'parameter'; got {value!r}"
+            )
         return value
 
     @t.validate("view_mode")
@@ -155,6 +157,7 @@ class Widget(anywidget.AnyWidget):
         self._data_buf: bytes | None = None
         self._views_buf: bytes | None = None
         self._metrics_buf: bytes | None = None
+        self._tour: TourResult | None = None
         self._n_dims: int = 0
         self.on_msg(self._handle_custom_msg)
         if data is not None:
@@ -177,7 +180,43 @@ class Widget(anywidget.AnyWidget):
         """Set tour views from a :class:`~dtour.tours.TourResult`."""
         self._views_buf = tour.views_raw
         self._n_dims = tour.n_dims
-        self.send({"type": "views", "n_dims": self._n_dims}, buffers=[self._views_buf])
+
+        msg: dict = {"type": "views", "n_dims": self._n_dims}
+
+        if tour.tour_mode is not None:
+            msg["tour_mode"] = tour.tour_mode
+        if tour.tour_description is not None:
+            msg["tour_description"] = tour.tour_description
+        if tour.tour_frame_description is not None:
+            msg["tour_frame_description"] = tour.tour_frame_description
+        if tour.frame_summaries is not None:
+            msg["frame_summaries"] = tour.frame_summaries
+
+        # Encode frame loadings (top-2 per frame) if available
+        if tour.feature_loadings is not None and tour.feature_names is not None:
+            loadings = tour.feature_loadings
+            n_eigenvectors = loadings.shape[0]
+            frame_loadings = []
+            for i in range(tour.n_views):
+                ev_idx = min(i + 1, n_eigenvectors - 1)
+                row = loadings[ev_idx]
+                top_k = abs(row).argsort()[::-1][:2]
+                pairs = [
+                    [tour.feature_names[j].rstrip("_"), round(float(row[j]), 6)] for j in top_k
+                ]
+                frame_loadings.append(pairs)
+            msg["frame_loadings"] = frame_loadings
+
+        self.send(msg, buffers=[self._views_buf])
+
+        # Auto-switch tour_by to match the tour type
+        if tour.tour_mode == "parameter":
+            self.tour_by = "parameter"
+        elif self.tour_by == "parameter":
+            self.tour_by = "dimensions"
+
+        # Cache the full TourResult for save_spec_to_parquet
+        self._tour = tour
 
     def set_metrics(self, metric_result: MetricResult) -> None:
         """Send quality metrics to the JS frontend for radial chart display."""
@@ -286,8 +325,10 @@ class Widget(anywidget.AnyWidget):
             if simple_cm:
                 kwargs["color_map"] = simple_cm
 
-        # Embed tour views if available
-        if self._views_buf is not None and self._n_dims > 0:
+        # Embed tour if available (use cached TourResult to preserve metadata)
+        if hasattr(self, "_tour") and self._tour is not None:
+            kwargs["tour"] = self._tour
+        elif self._views_buf is not None and self._n_dims > 0:
             from .tours import TourResult
 
             floats = np.frombuffer(self._views_buf, dtype=np.float32)

@@ -852,12 +852,29 @@ _TOUR_DESCRIPTIONS: dict[str | None, str] = {
         "Label contrasts from strongest to subtlest."
         " Each frame adds a new between-label difference."
     ),
+    "parameter": "Attraction-repulsion spectrum from global structure to local clusters.",
 }
 
 _TOUR_FRAME_DESCRIPTIONS: dict[str | None, str] = {
     None: "Top new correlates for finer neighborhoods: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
     "signed": "Top new correlates for finer label patterns: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
     "discriminative": "Top new correlates for subtler label contrasts: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
+    "parameter": "Embedding at exaggeration rho={rho}",
+}
+
+_RHO_LANDMARKS: dict[float, str] = {
+    100: "LE-like",
+    30: "FA2-like",
+    4: "UMAP-like",
+    1: "t-SNE",
+    0.5: "over-repulsed",
+}
+
+_DEFAULT_RHOS: dict[int, list[float]] = {
+    2: [100, 1],
+    3: [100, 4, 1],
+    4: [100, 30, 4, 1],
+    5: [100, 30, 4, 1, 0.5],
 }
 
 
@@ -1177,5 +1194,276 @@ def le_tour(
     result.frame_summaries = frame_summaries
     result.tour_description = _TOUR_DESCRIPTIONS[None]
     result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS[None]
+
+    return result
+
+
+# ── Parameter tour (attraction-repulsion spectrum) ──────────────────────
+
+
+def _procrustes_align(target: np.ndarray, source: np.ndarray) -> np.ndarray:
+    """Align *source* 2D embedding to *target* via Procrustes (rotation/reflection).
+
+    Centers both, finds optimal 2x2 rotation/reflection via SVD,
+    then re-centers to match *target*.
+    """
+    mu_t = target.mean(0)
+    mu_s = source.mean(0)
+    t_c = target - mu_t
+    s_c = source - mu_s
+    U, _, Vt = np.linalg.svd(t_c.T @ s_c)
+    R = U @ Vt
+    return (s_c @ R.T) + mu_t
+
+
+def _spectrum_tsne(
+    arr: np.ndarray,
+    rhos: list[float],
+    n_neighbors: int,
+    init_coords: np.ndarray | str,
+    random_state: int | None,
+) -> list[np.ndarray]:
+    """Compute sequentially-initialized t-SNE embeddings at each rho."""
+    from openTSNE import TSNE
+
+    embeddings: list[np.ndarray] = []
+    current_init = init_coords
+    for rho in rhos:
+        tsne = TSNE(
+            n_components=2,
+            perplexity=n_neighbors,
+            exaggeration=rho,
+            initialization=current_init,
+            random_state=random_state,
+        )
+        emb = np.asarray(tsne.fit(arr), dtype=np.float32)
+        embeddings.append(emb)
+        current_init = emb.astype(np.float64)
+    return embeddings
+
+
+def _spectrum_pymde(
+    arr: np.ndarray,
+    rhos: list[float],
+    n_neighbors: int,
+    init_coords: np.ndarray | str,
+    regularization: float,
+    random_state: int | None,
+) -> list[np.ndarray]:
+    """Compute PyMDE embeddings with optional spring regularization.
+
+    For each rho, ``repulsive_fraction`` is set to ``1/rho`` so that higher
+    rho means stronger relative attraction (matching the t-SNE exaggeration
+    semantics).  When *regularization* > 0, a spring penalty anchors each
+    point to its position in the previous frame.
+    """
+    import pymde
+    import torch
+
+    if random_state is not None:
+        torch.manual_seed(random_state)
+
+    data = torch.tensor(arr, dtype=torch.float32)
+
+    # Resolve initial coordinates — pymde needs a tensor, not a string
+    if isinstance(init_coords, str):
+        # init="pca": compute PCA(2) ourselves since pymde doesn't accept "pca"
+        from sklearn.decomposition import PCA
+
+        pca_init = PCA(n_components=2).fit_transform(arr).astype(np.float32)
+        first_init = torch.tensor(pca_init, dtype=torch.float32)
+    else:
+        first_init = torch.tensor(init_coords, dtype=torch.float32)
+
+    embeddings: list[np.ndarray] = []
+    prev_emb: torch.Tensor | None = None
+
+    for rho in rhos:
+        # Higher rho = more attraction. Map to pymde's repulsive_fraction:
+        # rho=100 -> repulsive_fraction ~0.01 (almost no repulsion)
+        # rho=1   -> repulsive_fraction=1.0 (balanced)
+        # rho=0.5 -> repulsive_fraction=2.0 (strong repulsion)
+        repulsive_frac = 1.0 / rho
+
+        mde = pymde.preserve_neighbors(
+            data,
+            embedding_dim=2,
+            n_neighbors=n_neighbors,
+            repulsive_fraction=repulsive_frac,
+        )
+
+        # Spring regularization: penalize deviation from previous frame
+        if regularization > 0 and prev_emb is not None:
+            anchor = prev_emb.clone().detach()
+            lam = regularization
+            _orig_ad = mde.average_distortion
+
+            def _make_reg(orig, anc, strength, m):
+                def _reg_ad(X=None):
+                    base = orig(X)
+                    emb_x = X if X is not None else m.X
+                    return base + strength * torch.mean((emb_x - anc) ** 2)
+
+                return _reg_ad
+
+            mde.average_distortion = _make_reg(_orig_ad, anchor, lam, mde)
+
+        # Initialize from previous embedding (sequential) or from init_coords
+        if prev_emb is not None:
+            x_init = prev_emb.clone()
+        elif isinstance(first_init, torch.Tensor):
+            x_init = first_init.clone()
+        else:
+            x_init = None  # let pymde pick (quadratic init)
+
+        emb_t = mde.embed(X=x_init)
+        emb_np = emb_t.detach().numpy().astype(np.float32)
+        embeddings.append(emb_np)
+        prev_emb = emb_t.detach()
+
+    return embeddings
+
+
+def spectrum_tour(
+    X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
+    n_frames: int = 4,
+    rhos: list[float] | None = None,
+    n_neighbors: int = 15,
+    init: str = "le",
+    method: str = "tsne",
+    regularization: float = 0.0,
+    feature_names: list[str] | None = None,
+    random_state: int | None = None,
+) -> TourResult:
+    """Compute an attraction-repulsion spectrum tour.
+
+    Produces a sequence of 2D embeddings at different t-SNE exaggeration
+    values (rho), Procrustes-aligned and stacked so the existing tour
+    interpolation smoothly morphs between them.
+
+    This recreates the spectrum from Bohm, Berens & Kobak (JMLR 2022):
+    high rho (pure attraction, LE-like) through to low rho (strong
+    repulsion, t-SNE or beyond).
+
+    Args:
+        X: Input data, shape ``(n_samples, n_features)``.
+        n_frames: Number of frames (i.e. rho values).  Ignored when
+            *rhos* is provided explicitly.
+        rhos: Exaggeration values, from high (attraction) to low
+            (repulsion).  When ``None``, sensible defaults are chosen
+            based on *n_frames*.
+        n_neighbors: Neighborhood size for the kNN graph.  Used as
+            the perplexity for openTSNE and for LE initialization.
+        init: Initialization strategy: ``"le"`` (Laplacian Eigenmaps,
+            default) or ``"pca"``.
+        method: Embedding engine.  ``"tsne"`` (default) uses openTSNE
+            with sequential initialization.  ``"pymde"`` uses PyMDE
+            with optional spring regularization.
+        regularization: Spring penalty strength for ``method="pymde"``.
+            ``0`` means no regularization (points move freely).
+            Higher values penalize deviation from the previous frame.
+            Typical range: ``0.1`` -- ``10.0``.  Ignored for ``"tsne"``.
+        feature_names: Original feature column names.
+        random_state: Random seed for reproducibility.
+
+    Returns:
+        A :class:`TourResult` with ``tour_mode="parameter"``.
+        The embedding is an ``n x (2K)`` matrix of stacked aligned
+        2D embeddings.  Basis matrices select each pair.
+    """
+    from sklearn.manifold import SpectralEmbedding
+
+    if feature_names is None:
+        feature_names = _extract_feature_names(X)
+
+    arr = _to_float32(X)
+
+    # ── Resolve rho values ────────────────────────────────────────────
+    if rhos is not None:
+        rhos = list(rhos)
+        n_frames = len(rhos)
+    elif n_frames in _DEFAULT_RHOS:
+        rhos = _DEFAULT_RHOS[n_frames]
+    else:
+        rhos = np.logspace(2, 0, n_frames).tolist()
+
+    if n_frames < 2:
+        msg = "spectrum_tour requires at least 2 frames."
+        raise ValueError(msg)
+
+    if any(r <= 0 for r in rhos):
+        msg = f"All rho values must be positive; got {rhos}"
+        raise ValueError(msg)
+
+    # ── Initialization ────────────────────────────────────────────────
+    if init == "le":
+        init_coords = SpectralEmbedding(
+            n_components=2,
+            n_neighbors=n_neighbors,
+            affinity="nearest_neighbors",
+            eigen_solver="amg",
+            **({"random_state": random_state} if random_state is not None else {}),
+        ).fit_transform(arr)
+        # openTSNE expects float64
+        init_coords = init_coords.astype(np.float64)
+    elif init == "pca":
+        init_coords = "pca"
+    else:
+        msg = f"init must be 'le' or 'pca'; got {init!r}"
+        raise ValueError(msg)
+
+    # ── Compute embeddings at each rho (sequentially initialized) ───────
+    if method == "tsne":
+        embeddings = _spectrum_tsne(arr, rhos, n_neighbors, init_coords, random_state)
+    elif method == "pymde":
+        embeddings = _spectrum_pymde(
+            arr,
+            rhos,
+            n_neighbors,
+            init_coords,
+            regularization,
+            random_state,
+        )
+    else:
+        msg = f"method must be 'tsne' or 'pymde'; got {method!r}"
+        raise ValueError(msg)
+
+    # ── Lightweight Procrustes to fix residual sign flips ─────────────
+    aligned = [embeddings[0]]
+    for i in range(1, len(embeddings)):
+        aligned.append(_procrustes_align(aligned[i - 1], embeddings[i]).astype(np.float32))
+
+    # ── Stack into n x (2K) and build basis matrices ──────────────────
+    stacked = np.hstack(aligned)  # (n, 2K)
+    n_dims = 2 * n_frames
+
+    views: list[np.ndarray] = []
+    for i in range(n_frames):
+        basis = np.zeros((n_dims, 2), dtype=np.float32)
+        basis[2 * i, 0] = 1.0
+        basis[2 * i + 1, 1] = 1.0
+        views.append(basis)
+
+    # ── Frame summaries ───────────────────────────────────────────────
+    frame_summaries: list[str] = []
+    for rho in rhos:
+        label = _RHO_LANDMARKS.get(rho)
+        if label:
+            frame_summaries.append(f"rho={rho:g} ({label})")
+        else:
+            frame_summaries.append(f"rho={rho:g}")
+
+    # ── Build result ──────────────────────────────────────────────────
+    result = TourResult(
+        views=views,
+        n_views=n_frames,
+        n_dims=n_dims,
+    )
+    result.embedding = stacked
+    result.feature_names = feature_names
+    result.frame_summaries = frame_summaries
+    result.tour_mode = "parameter"
+    result.tour_description = _TOUR_DESCRIPTIONS["parameter"]
+    result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS["parameter"]
 
     return result

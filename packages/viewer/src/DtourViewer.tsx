@@ -119,7 +119,7 @@ export const DtourViewer = ({
   const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
-  const viewMode = useAtomValue(viewModeAtom);
+  const [viewMode, setViewMode] = useAtom(viewModeAtom);
   const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
@@ -559,6 +559,13 @@ export const DtourViewer = ({
     lastDataRef.current = data;
     scatter.loadData(data);
   }, [data, scatter]);
+
+  // Force guided mode when tourBy is 'parameter' (no manual/grand for parameter tours)
+  useEffect(() => {
+    if (tourBy === 'parameter' && viewMode !== 'guided') {
+      setViewMode('guided');
+    }
+  }, [tourBy, viewMode, setViewMode]);
 
   // Trigger PCA computation when tourBy is 'pca' and data is loaded
   useEffect(() => {

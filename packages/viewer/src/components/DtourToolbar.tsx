@@ -60,6 +60,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu.tsx';
 import { Slider } from './ui/slider.tsx';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 
 type ViewMode = 'guided' | 'manual' | 'grand';
 
@@ -226,7 +227,19 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />
               <span className="ml-1 text-xs">Guided{viewMode === 'guided' ? ':' : ''}</span>
             </Button>
-            {viewMode === 'guided' && (
+            {viewMode === 'guided' && tourBy === 'parameter' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-dtour-highlight cursor-default px-1">Params</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Parameter tours show 2D embeddings at varying parameter settings
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {viewMode === 'guided' && tourBy !== 'parameter' && (
               <>
                 <Button
                   variant="ghost"
@@ -251,34 +264,35 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </>
             )}
           </div>
-          {/* Manual + Grand buttons */}
-          {MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
-            ({ mode, label, icon: Icon }) => (
-              <Button
-                key={mode}
-                variant="ghost"
-                size="sm"
-                className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-                onClick={() => {
-                  if (viewMode === 'grand') {
-                    if (mode === 'grand') {
-                      setGrandExitTarget(null);
-                      return;
+          {/* Manual + Grand buttons (hidden for parameter tours) */}
+          {tourBy !== 'parameter' &&
+            MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
+              ({ mode, label, icon: Icon }) => (
+                <Button
+                  key={mode}
+                  variant="ghost"
+                  size="sm"
+                  className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                  onClick={() => {
+                    if (viewMode === 'grand') {
+                      if (mode === 'grand') {
+                        setGrandExitTarget(null);
+                        return;
+                      }
+                      setGrandExitTarget(mode);
+                    } else {
+                      if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
+                      if (mode === 'grand') setGrandExitTarget(null);
+                      setViewMode(mode);
                     }
-                    setGrandExitTarget(mode);
-                  } else {
-                    if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
-                    if (mode === 'grand') setGrandExitTarget(null);
-                    setViewMode(mode);
-                  }
-                }}
-                title={label}
-              >
-                <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
-                <span className="ml-1 text-xs">{label}</span>
-              </Button>
-            ),
-          )}
+                  }}
+                  title={label}
+                >
+                  <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
+                  <span className="ml-1 text-xs">{label}</span>
+                </Button>
+              ),
+            )}
         </div>
       </div>
 

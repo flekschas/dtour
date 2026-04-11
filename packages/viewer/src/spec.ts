@@ -6,7 +6,7 @@ import { z } from 'zod';
  * The Zod schema is the single source of truth; the TS type is inferred.
  */
 export const dtourSpecSchema = z.object({
-  tourBy: z.enum(['dimensions', 'pca']).optional(),
+  tourBy: z.enum(['dimensions', 'pca', 'parameter']).optional(),
   tourPosition: z.number().min(0).max(1).optional(),
   tourPlaying: z.boolean().optional(),
   tourSpeed: z.number().min(0.1).max(5).optional(),
@@ -43,8 +43,10 @@ export type EmbeddedConfig = {
     nDims: number;
     nViews: number;
     views: Float32Array[];
-    tourMode?: 'signed' | 'discriminative' | null;
+    tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
     frameLoadings?: FrameLoading[][];
+    /** Per-frame text summaries (e.g. "rho=100 (LE-like)"). */
+    frameSummaries?: string[];
     /** Human-readable description of the tour (shown in description sub-bar). */
     tourDescription?: string;
     /** Template for per-frame tooltip, with {dim1}, {dim2}, {relation} placeholders. */
@@ -119,7 +121,11 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
           tour = { nDims, nViews, views };
 
           // Parse tourMode
-          if (t.tourMode === 'signed' || t.tourMode === 'discriminative') {
+          if (
+            t.tourMode === 'signed' ||
+            t.tourMode === 'discriminative' ||
+            t.tourMode === 'parameter'
+          ) {
             tour.tourMode = t.tourMode;
           }
 
@@ -129,6 +135,14 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
           }
           if (typeof t.tourFrameDescription === 'string') {
             tour.tourFrameDescription = t.tourFrameDescription;
+          }
+
+          // Parse frameSummaries: array of strings, one per view
+          if (Array.isArray(t.frameSummaries)) {
+            const fs = t.frameSummaries as unknown[];
+            if (fs.every((s) => typeof s === 'string')) {
+              tour.frameSummaries = fs as string[];
+            }
           }
 
           // Parse frameLoadings: array of [[name, coeff], [name, coeff]] per view

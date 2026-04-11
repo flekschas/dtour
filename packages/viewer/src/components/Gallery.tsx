@@ -9,6 +9,7 @@ import {
   arcLengthsAtom,
   currentKeyframeAtom,
   frameLoadingsAtom,
+  frameSummariesAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   previewCentersAtom,
@@ -65,6 +66,8 @@ export const Gallery = ({
   const { animateTo } = useAnimatePosition();
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const frameSummaries = useAtomValue(frameSummariesAtom);
 
   // Whether loading pills are actually visible (data available + user toggle on)
   const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
@@ -183,6 +186,10 @@ export const Gallery = ({
         const loadingPairs: FrameLoading[] | null =
           loadingsVisible && frameLoadings && i < frameLoadings.length ? frameLoadings[i]! : null;
         const hasLoadingPills = loadingPairs !== null && loadingPairs.length >= 2;
+        const frameSummary =
+          !hasLoadingPills && frameSummaries && i < frameSummaries.length
+            ? frameSummaries[i]
+            : null;
 
         return (
           <div
@@ -208,7 +215,11 @@ export const Gallery = ({
                 onKeyDown={undefined}
                 className={cn(
                   'overflow-hidden border border-dtour-border transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
-                  hasLoadingPills ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
+                  hasLoadingPills || frameSummary
+                    ? isBottomEdge
+                      ? 'rounded-b'
+                      : 'rounded-t'
+                    : 'rounded',
                   visible ? 'block cursor-pointer' : 'hidden',
                 )}
                 style={{
@@ -315,6 +326,36 @@ export const Gallery = ({
                     </TooltipProvider>
                   );
                 })()}
+              {/* Frame summary label (shown when no loading pills) */}
+              {visible && frameSummary && (
+                <div
+                  className={cn(
+                    'flex items-center justify-center select-none',
+                    isBottomEdge ? 'rounded-t-sm border-b-0' : 'rounded-b-sm border-t-0',
+                    'border border-dtour-border',
+                  )}
+                  style={{
+                    width: sizes[i],
+                    height: LOADING_BAR_HEIGHT,
+                    borderColor: getBorderColor(i),
+                    backgroundColor:
+                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
+                        ? 'var(--color-dtour-highlight)'
+                        : 'var(--color-dtour-border)',
+                  }}
+                >
+                  <span
+                    className={cn(
+                      'text-[10px] truncate px-1 transition-colors duration-200',
+                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
+                        ? 'text-dtour-bg'
+                        : 'text-dtour-highlight/70',
+                    )}
+                  >
+                    {frameSummary}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         );

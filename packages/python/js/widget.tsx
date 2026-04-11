@@ -1,8 +1,16 @@
 import { createRender, useModel } from '@anywidget/react';
 import { Dtour } from '@dtour/viewer';
-import type { DtourHandle, DtourSpec, RadialTrackConfig } from '@dtour/viewer';
+import type { DtourHandle, DtourSpec, FrameLoading, RadialTrackConfig } from '@dtour/viewer';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+type TourMeta = {
+  tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
+  tourDescription?: string | null;
+  tourFrameDescription?: string | null;
+  frameSummaries?: string[] | null;
+  frameLoadings?: FrameLoading[][] | null;
+};
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
 
@@ -91,6 +99,7 @@ function Widget() {
   const [data, setData] = useState<ArrayBuffer | undefined>();
   const [views, setViews] = useState<Float32Array[] | undefined>();
   const [metrics, setMetrics] = useState<ArrayBuffer | undefined>();
+  const [tourMeta, setTourMeta] = useState<TourMeta>({});
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
   const suppressRef = useRef(false);
   const dtourApiRef = useRef<DtourHandle | null>(null);
@@ -121,12 +130,19 @@ function Widget() {
   // Custom messages → data / views / metrics (binary buffers from Python)
   useEffect(() => {
     // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
-    function onMsg(msg: { type: string; n_dims?: number }, buffers: any[]) {
+    function onMsg(msg: Record<string, any>, buffers: any[]) {
       console.log('[dtour] onMsg', msg.type, 'buffers:', buffers.length);
       if (msg.type === 'data' && buffers[0]) {
         setData(toArrayBuffer(buffers[0]));
       } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
         setViews(parseViews(buffers[0], msg.n_dims));
+        setTourMeta({
+          tourMode: msg.tour_mode ?? null,
+          tourDescription: msg.tour_description ?? null,
+          tourFrameDescription: msg.tour_frame_description ?? null,
+          frameSummaries: msg.frame_summaries ?? null,
+          frameLoadings: msg.frame_loadings ?? null,
+        });
       } else if (msg.type === 'metrics' && buffers[0]) {
         const ab = toArrayBuffer(buffers[0]);
         console.log('[dtour] metrics received, byteLength:', ab.byteLength);
@@ -238,6 +254,11 @@ function Widget() {
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}
         colorMap={colorMap}
+        tourMode={tourMeta.tourMode}
+        tourDescription={tourMeta.tourDescription}
+        tourFrameDescription={tourMeta.tourFrameDescription}
+        frameSummaries={tourMeta.frameSummaries}
+        frameLoadings={tourMeta.frameLoadings}
         spec={spec}
         onSpecChange={handleSpecChange}
         onSelectionChange={handleSelectionChange}

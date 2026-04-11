@@ -7,7 +7,7 @@ import type { EmbeddedConfig, FrameLoading } from '../spec.ts';
 // ---------------------------------------------------------------------------
 
 /** Controls how tour keyframes are derived: raw dimension pairs or PCA eigenvectors. */
-export const tourByAtom = atom<'dimensions' | 'pca'>('dimensions');
+export const tourByAtom = atom<'dimensions' | 'pca' | 'parameter'>('dimensions');
 
 export const tourPositionAtom = atom(0);
 export const tourPlayingAtom = atom(false);
@@ -185,8 +185,11 @@ export const showTourDescriptionAtom = atom(false);
 /** Per-frame top-2 feature correlations from embedded tour config. */
 export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
 
-/** Tour mode from embedded config: null (vanilla), "signed", or "discriminative". */
-export const tourModeAtom = atom<'signed' | 'discriminative' | null>(null);
+/** Tour mode: null (vanilla), "signed", "discriminative", or "parameter". */
+export const tourModeAtom = atom<'signed' | 'discriminative' | 'parameter' | null>(null);
+
+/** Per-frame text summaries (e.g. "rho=100 (LE-like)"). Shown below previews. */
+export const frameSummariesAtom = atom<string[] | null>(null);
 
 /** Tour description string from embedded config (shown in description sub-bar). */
 export const tourDescriptionAtom = atom<string | null>(null);

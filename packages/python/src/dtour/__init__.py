@@ -3,7 +3,7 @@
 from .metrics import MetricResult, compute_metrics
 from .palettes import build_color_map
 from .spec import add_spec_to_parquet, build_dtour_metadata, read_spec_from_parquet
-from .tours import TourResult, le_tour, little_tour, umap_little_tour
+from .tours import TourResult, le_tour, little_tour, spectrum_tour, umap_little_tour
 from .widget import Widget
 
 __all__ = [
@@ -17,5 +17,6 @@ __all__ = [
     "le_tour",
     "little_tour",
     "read_spec_from_parquet",
+    "spectrum_tour",
     "umap_little_tour",
 ]

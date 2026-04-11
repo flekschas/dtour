@@ -9,12 +9,13 @@ import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import { PortalContainerContext } from './portal-container.tsx';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
-import type { DtourSpec } from './spec.ts';
+import type { DtourSpec, FrameLoading } from './spec.ts';
 import {
   backgroundColorAtom,
   colorMapAtom,
   embeddedConfigAtom,
   frameLoadingsAtom,
+  frameSummariesAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
@@ -71,6 +72,16 @@ export type DtourProps = {
   onReady?: (api: DtourHandle) => void;
   /** Rendering backend. Default 'webgpu'. */
   backend?: 'webgpu' | 'webgl';
+  /** Tour mode identifier. Overrides embedded config when provided. */
+  tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
+  /** Human-readable tour description shown in the description sub-bar. */
+  tourDescription?: string | null;
+  /** Per-frame tooltip template with {dim1}, {dim2}, {relation} placeholders. */
+  tourFrameDescription?: string | null;
+  /** Per-frame text summaries shown below preview thumbnails. */
+  frameSummaries?: string[] | null;
+  /** Per-frame top-2 feature correlations. Overrides embedded config. */
+  frameLoadings?: FrameLoading[][] | null;
 };
 
 export const Dtour = ({
@@ -90,6 +101,11 @@ export const Dtour = ({
   portalContainer,
   onReady,
   backend,
+  tourMode,
+  tourDescription,
+  tourFrameDescription,
+  frameSummaries,
+  frameLoadings,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -119,6 +135,11 @@ export const Dtour = ({
           colorMap={colorMap}
           onReady={onReady}
           backend={backend}
+          tourMode={tourMode}
+          tourDescription={tourDescription}
+          tourFrameDescription={tourFrameDescription}
+          frameSummaries={frameSummaries}
+          frameLoadings={frameLoadings}
         />
       </Provider>
     </PortalContainerContext.Provider>
@@ -142,6 +163,11 @@ const DtourInner = ({
   colorMap,
   onReady,
   backend,
+  tourMode: tourModeProp,
+  tourDescription: tourDescriptionProp,
+  tourFrameDescription: tourFrameDescriptionProp,
+  frameSummaries: frameSummariesProp,
+  frameLoadings: frameLoadingsProp,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -158,6 +184,11 @@ const DtourInner = ({
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
   backend: 'webgpu' | 'webgl' | undefined;
+  tourMode: 'signed' | 'discriminative' | 'parameter' | null | undefined;
+  tourDescription: string | null | undefined;
+  tourFrameDescription: string | null | undefined;
+  frameSummaries: string[] | null | undefined;
+  frameLoadings: FrameLoading[][] | null | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
@@ -194,17 +225,33 @@ const DtourInner = ({
     setColorMap(colorMap ?? embeddedConfig?.colorMap ?? null);
   }, [colorMap, embeddedConfig, setColorMap]);
 
-  // Sync tour frame loadings, tour mode, and description strings from embedded config
+  // Sync tour metadata: props take priority over embedded config
   const setFrameLoadings = useSetAtom(frameLoadingsAtom);
+  const setFrameSummaries = useSetAtom(frameSummariesAtom);
   const setTourMode = useSetAtom(tourModeAtom);
   const setTourDescription = useSetAtom(tourDescriptionAtom);
   const setTourFrameDescription = useSetAtom(tourFrameDescriptionAtom);
   useEffect(() => {
-    setFrameLoadings(embeddedConfig?.tour?.frameLoadings ?? null);
-    setTourMode(embeddedConfig?.tour?.tourMode ?? null);
-    setTourDescription(embeddedConfig?.tour?.tourDescription ?? null);
-    setTourFrameDescription(embeddedConfig?.tour?.tourFrameDescription ?? null);
-  }, [embeddedConfig, setFrameLoadings, setTourMode, setTourDescription, setTourFrameDescription]);
+    setFrameLoadings(frameLoadingsProp ?? embeddedConfig?.tour?.frameLoadings ?? null);
+    setFrameSummaries(frameSummariesProp ?? embeddedConfig?.tour?.frameSummaries ?? null);
+    setTourMode(tourModeProp ?? embeddedConfig?.tour?.tourMode ?? null);
+    setTourDescription(tourDescriptionProp ?? embeddedConfig?.tour?.tourDescription ?? null);
+    setTourFrameDescription(
+      tourFrameDescriptionProp ?? embeddedConfig?.tour?.tourFrameDescription ?? null,
+    );
+  }, [
+    embeddedConfig,
+    frameLoadingsProp,
+    frameSummariesProp,
+    tourModeProp,
+    tourDescriptionProp,
+    tourFrameDescriptionProp,
+    setFrameLoadings,
+    setFrameSummaries,
+    setTourMode,
+    setTourDescription,
+    setTourFrameDescription,
+  ]);
 
   // Sync resolved theme → background color + CSS class
   const resolvedTheme = useAtomValue(resolvedThemeAtom);

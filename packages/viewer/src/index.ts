@@ -4,7 +4,7 @@ import './styles.css';
 // Primary API — self-contained component with spec-driven state
 export { Dtour } from './Dtour.tsx';
 export type { DtourProps, DtourHandle } from './Dtour.tsx';
-export type { DtourSpec, EmbeddedConfig } from './spec.ts';
+export type { DtourSpec, EmbeddedConfig, FrameLoading } from './spec.ts';
 export { dtourSpecSchema, DTOUR_DEFAULTS, parseEmbeddedConfig } from './spec.ts';
 
 // Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
@@ -54,9 +54,10 @@ export {
   showAxesAtom,
   // Frame numbers
   showFrameNumbersAtom,
-  // Frame loadings
+  // Frame loadings & summaries
   showFrameLoadingsAtom,
   frameLoadingsAtom,
+  frameSummariesAtom,
   tourModeAtom,
   legendVisibleAtom,
   // Theme

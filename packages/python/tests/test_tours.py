@@ -8,8 +8,10 @@ from dtour.tours import (
     _build_knn_affinity,
     _compute_feature_loadings,
     _nystroem_extend,
+    _procrustes_align,
     le_tour,
     little_tour,
+    spectrum_tour,
 )
 
 
@@ -733,3 +735,146 @@ def test_subsample_warns_on_ignored_params():
     msg = str(oos_warnings[0].message)
     assert "mutual_knn" in msg
     assert "normalize_alpha" in msg
+
+
+# ── spectrum_tour (attraction-repulsion parameter tour) ─────────────────
+
+
+def test_procrustes_align_identity():
+    """Procrustes of identical embeddings should return the same points."""
+    rng = np.random.default_rng(42)
+    target = rng.standard_normal((100, 2)).astype(np.float32)
+    aligned = _procrustes_align(target, target.copy())
+    np.testing.assert_allclose(aligned, target, atol=1e-5)
+
+
+def test_procrustes_align_rotation():
+    """Procrustes should recover a known 90-degree rotation."""
+    rng = np.random.default_rng(42)
+    target = rng.standard_normal((100, 2)).astype(np.float32)
+    # Rotate 90 degrees
+    R = np.array([[0, -1], [1, 0]], dtype=np.float32)
+    rotated = (target - target.mean(0)) @ R.T + target.mean(0)
+    aligned = _procrustes_align(target, rotated)
+    np.testing.assert_allclose(aligned, target, atol=1e-4)
+
+
+def test_spectrum_tour_basic():
+    """spectrum_tour with default params should produce valid TourResult."""
+    X = make_data(n=200, p=10)
+    result = spectrum_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
+    assert isinstance(result, TourResult)
+    assert result.tour_mode == "parameter"
+    assert result.n_views == 2
+    assert result.n_dims == 4  # 2 * n_frames
+    assert result.embedding.shape == (200, 4)
+    for basis in result.views:
+        assert basis.shape == (4, 2)
+        assert basis.dtype == np.float32
+
+
+def test_spectrum_tour_frame_summaries():
+    """Frame summaries should include rho values and landmarks."""
+    X = make_data(n=200, p=10)
+    result = spectrum_tour(X, rhos=[100, 4, 1], n_neighbors=10, random_state=42)
+    assert result.frame_summaries is not None
+    assert len(result.frame_summaries) == 3
+    assert "rho=100" in result.frame_summaries[0]
+    assert "LE-like" in result.frame_summaries[0]
+    assert "UMAP-like" in result.frame_summaries[1]
+    assert "t-SNE" in result.frame_summaries[2]
+
+
+def test_spectrum_tour_custom_rhos_override_n_frames():
+    """Explicit rhos should override n_frames."""
+    X = make_data(n=200, p=10)
+    result = spectrum_tour(X, n_frames=99, rhos=[10, 5, 2, 1], n_neighbors=10, random_state=42)
+    assert result.n_views == 4
+
+
+def test_spectrum_tour_pca_init():
+    """spectrum_tour with init='pca' should work."""
+    X = make_data(n=200, p=10)
+    result = spectrum_tour(X, rhos=[4, 1], n_neighbors=10, init="pca", random_state=42)
+    assert isinstance(result, TourResult)
+    assert result.n_views == 2
+
+
+def test_spectrum_tour_invalid_init():
+    """Invalid init should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="init must be"):
+        spectrum_tour(X, rhos=[4, 1], init="bogus")
+
+
+def test_spectrum_tour_too_few_frames():
+    """Fewer than 2 frames should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="at least 2 frames"):
+        spectrum_tour(X, n_frames=1)
+
+
+def test_spectrum_tour_pymde_basic():
+    """spectrum_tour with method='pymde' should produce valid TourResult."""
+    X = make_data(n=200, p=10)
+    result = spectrum_tour(
+        X,
+        rhos=[4, 1],
+        n_neighbors=10,
+        method="pymde",
+        random_state=42,
+    )
+    assert isinstance(result, TourResult)
+    assert result.tour_mode == "parameter"
+    assert result.n_views == 2
+    assert result.embedding.shape == (200, 4)
+
+
+def test_spectrum_tour_pymde_regularization():
+    """Higher regularization should produce less movement between frames."""
+    X = make_data(n=200, p=10)
+
+    result_free = spectrum_tour(
+        X,
+        rhos=[4, 1],
+        n_neighbors=10,
+        method="pymde",
+        regularization=0.0,
+        random_state=42,
+    )
+    result_reg = spectrum_tour(
+        X,
+        rhos=[4, 1],
+        n_neighbors=10,
+        method="pymde",
+        regularization=10.0,
+        random_state=42,
+    )
+
+    # Measure per-point movement between frame 0 and frame 1
+    def frame_movement(emb):
+        f0 = emb[:, :2]
+        f1 = emb[:, 2:]
+        return np.sqrt(np.mean(np.sum((f1 - f0) ** 2, axis=1)))
+
+    move_free = frame_movement(result_free.embedding)
+    move_reg = frame_movement(result_reg.embedding)
+    assert move_reg < move_free, (
+        f"Regularized movement ({move_reg:.3f}) should be less than free ({move_free:.3f})"
+    )
+
+
+def test_spectrum_tour_invalid_method():
+    """Invalid method should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="method must be"):
+        spectrum_tour(X, rhos=[4, 1], method="bogus")
+
+
+def test_spectrum_tour_negative_rho():
+    """Negative or zero rho values should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="positive"):
+        spectrum_tour(X, rhos=[4, 0, 1])
+    with pytest.raises(ValueError, match="positive"):
+        spectrum_tour(X, rhos=[-1, 1])
