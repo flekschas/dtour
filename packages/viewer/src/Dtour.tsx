@@ -35,6 +35,8 @@ export type DtourHandle = {
     indicesOrMask: number[] | Int32Array | Uint32Array,
     opts?: { isBitPacked?: boolean },
   ) => void;
+  /** Select by categorical label names. Resolves labels against the active color column. */
+  selectByLabels: (labels: string[]) => void;
   /** Clear the current selection. */
   clearSelection: () => void;
 };
@@ -302,13 +304,25 @@ const DtourInner = ({
           scatterInstance.setSelectionMask(packed);
         }
       },
+      selectByLabels: (labels) => {
+        const color = store.get(pointColorAtom);
+        if (typeof color !== 'string' || !metadata.categoricalColumnNames.includes(color)) return;
+        const allLabels = metadata.categoricalLabels[color] ?? [];
+        const labelSet = new Set(labels);
+        const indices = allLabels.map((l, i) => (labelSet.has(l) ? i : -1)).filter((i) => i >= 0);
+        if (indices.length > 0) {
+          scatterInstance.selectByColumn(color, { labelIndices: indices });
+        } else {
+          scatterInstance.clearSelection();
+        }
+      },
       clearSelection: () => {
         scatterInstance.clearSelection();
       },
     };
 
     onReadyRef.current?.(handle);
-  }, [scatterInstance, metadata]);
+  }, [scatterInstance, metadata, store]);
 
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';

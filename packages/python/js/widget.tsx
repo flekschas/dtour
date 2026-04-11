@@ -80,6 +80,9 @@ function parseViews(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Fl
   return views;
 }
 
+const arraysEqual = (a: readonly unknown[], b: readonly unknown[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
 // biome-ignore lint/suspicious/noExplicitAny: anywidget model is untyped
 function readSpecFromModel(model: any): DtourSpec {
   const spec: Record<string, unknown> = {};
@@ -196,15 +199,55 @@ function Widget() {
     [model],
   );
 
-  // Selection → traitlet sync (JS → Python)
+  // ── Bidirectional selection sync ──────────────────────────────────────
+  // Guards to prevent infinite update loops: when JS pushes a selection to
+  // Python, we record what we sent so the incoming `change:` echo is ignored.
+  const lastSyncedLabels = useRef<string[]>([]);
+  const lastSyncedIndices = useRef<number[]>([]);
+
+  // JS → Python: legend/lasso selection changed in the viewer
   const handleSelectionChange = useCallback(
     (labels: string[]) => {
-      console.log('[dtour] selection → Python:', labels);
+      if (arraysEqual(labels, lastSyncedLabels.current)) return;
+      lastSyncedLabels.current = labels;
+      // Clear index selection when label selection changes from UI
+      lastSyncedIndices.current = [];
       model.set('selected_labels', labels);
+      model.set('selected_indices', []);
       model.save_changes();
     },
     [model],
   );
+
+  // Python → JS: traitlet changed from Python side (or linked widget)
+  useEffect(() => {
+    function onLabelsChange() {
+      const labels: string[] = model.get('selected_labels') ?? [];
+      if (arraysEqual(labels, lastSyncedLabels.current)) return;
+      lastSyncedLabels.current = labels;
+      if (labels.length === 0) {
+        dtourApiRef.current?.clearSelection();
+      } else {
+        dtourApiRef.current?.selectByLabels(labels);
+      }
+    }
+    function onIndicesChange() {
+      const indices: number[] = model.get('selected_indices') ?? [];
+      if (arraysEqual(indices, lastSyncedIndices.current)) return;
+      lastSyncedIndices.current = indices;
+      if (indices.length === 0) {
+        dtourApiRef.current?.clearSelection();
+      } else {
+        dtourApiRef.current?.select(indices);
+      }
+    }
+    model.on('change:selected_labels', onLabelsChange);
+    model.on('change:selected_indices', onIndicesChange);
+    return () => {
+      model.off('change:selected_labels', onLabelsChange);
+      model.off('change:selected_indices', onIndicesChange);
+    };
+  }, [model]);
 
   const height: number = model.get('height') ?? 600;
   const [metricBarWidth, setMetricBarWidth] = useState<'full' | number>(

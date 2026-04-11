@@ -85,8 +85,9 @@ class Widget(anywidget.AnyWidget):
         default_value="full",
     ).tag(sync=True)
 
-    # ── Selection state (JS → Python) ───────────────────────────────────
+    # ── Selection state (bidirectional) ───────────────────────────────────
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
+    selected_indices = t.List(t.Int(), default_value=[]).tag(sync=True)
 
     # ── Color map ────────────────────────────────────────────────────────
     color_map = t.Dict(default_value={}).tag(sync=True)
