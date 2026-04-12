@@ -2,7 +2,20 @@
 
 ## v0.3.0
 
+### python
+- feat: spectrum tour with configurable parameters
+- feat: bidirectional point selection sync via `selected_indices` traitlet
+- feat: fine-grained point selections
+- chore: enforce synced `tourMode` and `tourBy` for parameter tours
+
+### viewer
+- feat: spectrum tour support and updated toolbar/gallery
+- feat: bidirectional point selection sync
+- fix: lasso selection and vertical toolbar offset
+- fix: point selection propagation
+
 ### scatter
+- feat: bidirectional point selection sync
 - fix: hardcoded preview canvas resolution -> now track layout size × DPR
 
 ### webapp
