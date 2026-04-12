@@ -1142,6 +1142,10 @@ const handleLassoSelect = (polygon: Float32Array): void => {
   const gl = state.mainView.gl;
   uploadSelectionMask(gl, mask);
   applySelectionUpdate();
+
+  // Send mask back so the host can read which points were selected
+  const maskCopy = new Uint32Array(mask);
+  postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
 };
 
 // ─── Metrics ─────────────────────────────────────────────────────────────
@@ -1427,6 +1431,7 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.dataTexture) {
       renderAllViews();
     }
+    postMain({ type: 'selectionResult', mask: new Uint32Array(0) });
     return;
   }
 

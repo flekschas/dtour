@@ -112,4 +112,5 @@ export type GpuToMain =
       /** JS heap measured from inside the GPU worker (its own V8 context). */
       workerJsHeapBytes: number | null;
     }
-  | { type: 'residualPC'; residualPC: Float32Array };
+  | { type: 'residualPC'; residualPC: Float32Array }
+  | { type: 'selectionResult'; mask: Uint32Array };

@@ -51,7 +51,8 @@ export type ScatterStatus =
       numDims: number;
       workerJsHeapBytes: number | null;
     }
-  | { type: 'residualPC'; residualPC: Float32Array };
+  | { type: 'residualPC'; residualPC: Float32Array }
+  | { type: 'selectionResult'; mask: Uint32Array };
 
 export type ScatterInstance = {
   /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */

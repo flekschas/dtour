@@ -67,6 +67,8 @@ export type DtourProps = {
   onLogoClick?: () => void;
   /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
   onSelectionChange?: (labels: string[]) => void;
+  /** Fires when lasso selection completes. Reports the bit-packed selection mask (1 bit per point, Uint32Array). */
+  onPointSelectionChange?: (mask: Uint32Array) => void;
   /** Per-label color map. Values are hex strings or theme-aware {light, dark} objects. */
   colorMap?: Record<string, string | { light: string; dark: string }>;
   /** Element to portal Radix popups into (for Shadow DOM isolation). When omitted, portals render into document.body as usual. */
@@ -100,6 +102,7 @@ export const Dtour = ({
   onLoadData,
   onLogoClick,
   onSelectionChange,
+  onPointSelectionChange,
   colorMap,
   portalContainer,
   onReady,
@@ -135,6 +138,7 @@ export const Dtour = ({
           onLoadData={onLoadData}
           onLogoClick={onLogoClick}
           onSelectionChange={onSelectionChange}
+          onPointSelectionChange={onPointSelectionChange}
           colorMap={colorMap}
           onReady={onReady}
           backend={backend}
@@ -163,6 +167,7 @@ const DtourInner = ({
   onLoadData,
   onLogoClick,
   onSelectionChange,
+  onPointSelectionChange,
   colorMap,
   onReady,
   backend,
@@ -184,6 +189,7 @@ const DtourInner = ({
   onLoadData: ((data: ArrayBuffer, fileName: string) => void) | undefined;
   onLogoClick: (() => void) | undefined;
   onSelectionChange: ((labels: string[]) => void) | undefined;
+  onPointSelectionChange: ((mask: Uint32Array) => void) | undefined;
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
   backend: 'webgpu' | 'webgl' | undefined;
@@ -355,6 +361,18 @@ const DtourInner = ({
     onReadyRef.current?.(handle);
   }, [scatterInstance, metadata, store]);
 
+  // Intercept scatter status to extract point selection results
+  const onPointSelectionRef = useRef(onPointSelectionChange);
+  onPointSelectionRef.current = onPointSelectionChange;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
+  const handleStatus = useCallback((status: ScatterStatus) => {
+    if (status.type === 'selectionResult') {
+      onPointSelectionRef.current?.(status.mask);
+    }
+    onStatusRef.current?.(status);
+  }, []);
+
   const viewMode = useAtomValue(viewModeAtom);
   const isGrand = viewMode === 'grand';
   const legendVisible = useAtomValue(legendVisibleAtom);
@@ -432,7 +450,7 @@ const DtourInner = ({
             metrics={metrics}
             metricTracks={metricTracks}
             metricBarWidth={metricBarWidth}
-            onStatus={onStatus}
+            onStatus={handleStatus}
             toolbarHeight={effectiveToolbarHeight}
             onScatterReady={setScatterInstance}
             backend={backend}

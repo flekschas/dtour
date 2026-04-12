@@ -218,6 +218,28 @@ function Widget() {
     [model],
   );
 
+  // JS → Python: lasso point selection (bit-packed mask → index list)
+  const handlePointSelectionChange = useCallback(
+    (mask: Uint32Array) => {
+      const indices: number[] = [];
+      for (let w = 0; w < mask.length; w++) {
+        let bits = mask[w]!;
+        while (bits !== 0) {
+          const bit = bits & -bits; // lowest set bit
+          indices.push((w << 5) + (31 - Math.clz32(bit)));
+          bits ^= bit;
+        }
+      }
+      lastSyncedIndices.current = indices;
+      // Clear label selection when point selection comes from lasso
+      lastSyncedLabels.current = [];
+      model.set('selected_indices', indices);
+      model.set('selected_labels', []);
+      model.save_changes();
+    },
+    [model],
+  );
+
   // JS → Python: legend/lasso selection changed in the viewer
   const handleSelectionChange = useCallback(
     (labels: string[]) => {
@@ -318,6 +340,7 @@ function Widget() {
         spec={spec}
         onSpecChange={handleSpecChange}
         onSelectionChange={handleSelectionChange}
+        onPointSelectionChange={handlePointSelectionChange}
         onReady={handleReady}
         portalContainer={portalContainer}
       />
