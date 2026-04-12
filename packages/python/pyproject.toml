@@ -29,6 +29,7 @@ pymde = [
 dev = [
   "pymde>=0.1.0",
   "matplotlib>=3.9",
+  "pandas>=2.0",
   "polars>=1.38.1",
   "pytest>=9.0.2",
   "ruff>=0.15.2",
