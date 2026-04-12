@@ -8,6 +8,8 @@ type LassoOverlayProps = {
   scatter: ScatterInstance | null;
   width: number;
   height: number;
+  /** Vertical offset of the overlay within the full canvas (e.g. toolbar height). */
+  offsetY: number;
 };
 
 const LONG_PRESS_MS = 750;
@@ -15,16 +17,23 @@ const MIN_MOVE_PX = 5;
 const MIN_POINT_DISTANCE = 5;
 const THROTTLE_MS = 10;
 
-/** Convert CSS coords to clip-space NDC [-1,1].
- *  The GPU worker inverts the full camera transform (zoom, pan, inset)
- *  to go from clip-space to projection-space, so we only do pixel→NDC here. */
-const cssToNdc = (x: number, y: number, width: number, height: number): [number, number] => {
-  const ndcX = (x / width) * 2 - 1;
-  const ndcY = -((y / height) * 2 - 1);
+/** Convert overlay-local CSS coords to full-canvas clip-space NDC [-1,1].
+ *  The overlay may be offset from the top of the canvas (e.g. by a toolbar),
+ *  so we translate to full-canvas pixel coords before normalizing.
+ *  The GPU worker then inverts the full camera transform (zoom, pan, inset). */
+const cssToNdc = (
+  x: number,
+  y: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  offsetY: number,
+): [number, number] => {
+  const ndcX = (x / canvasWidth) * 2 - 1;
+  const ndcY = -(((y + offsetY) / canvasHeight) * 2 - 1);
   return [ndcX, ndcY];
 };
 
-export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
+export const LassoOverlay = ({ scatter, width, height, offsetY }: LassoOverlayProps) => {
   const viewMode = useAtomValue(viewModeAtom);
   const setViewMode = useSetAtom(viewModeAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
@@ -138,7 +147,7 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
     // Convert CSS path to NDC polygon and send to GPU worker
     const polygon = new Float32Array(path.length * 2);
     for (let i = 0; i < path.length; i++) {
-      const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height);
+      const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height + offsetY, offsetY);
       polygon[i * 2] = ndcX;
       polygon[i * 2 + 1] = ndcY;
     }
@@ -148,7 +157,17 @@ export const LassoOverlay = ({ scatter, width, height }: LassoOverlayProps) => {
 
     setLassoMode(false);
     setPath([]);
-  }, [lassoMode, path, scatter, width, height, clearLongPress, hideIndicator, setLegendSelection]);
+  }, [
+    lassoMode,
+    path,
+    scatter,
+    width,
+    height,
+    offsetY,
+    clearLongPress,
+    hideIndicator,
+    setLegendSelection,
+  ]);
 
   // Double-click or Escape clears selection
   const handleDoubleClick = useCallback(() => {
