@@ -5,6 +5,9 @@
 ### scatter
 - fix: hardcoded preview canvas resolution -> now track layout size × DPR
 
+### webapp
+- feat: add CSV support
+
 ## v0.2.0
 
 ### python

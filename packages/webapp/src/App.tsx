@@ -5,12 +5,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
+import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
 import LorenzWorkerFactory from './workers/lorenz.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
 type ThemeMode = 'light' | 'dark' | 'system';
 
-const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow'];
+const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
 const GCS_BASE = import.meta.env.DEV ? '/gcs/dtour' : 'https://storage.googleapis.com/dtour';
 
@@ -78,6 +79,25 @@ function savePersistedSpec(fileName: string, spec: Required<DtourSpec>): void {
   try {
     localStorage.setItem(SPEC_STORAGE_PREFIX + fileName, JSON.stringify(spec));
   } catch {}
+}
+
+function csvToArrow(csvBuffer: ArrayBuffer): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const worker = new CsvWorkerFactory();
+    worker.onmessage = (e: MessageEvent<ArrayBuffer | { error: string }>) => {
+      if (e.data instanceof ArrayBuffer) {
+        resolve(e.data);
+      } else {
+        reject(new Error(e.data.error));
+      }
+      worker.terminate();
+    };
+    worker.onerror = (e: ErrorEvent) => {
+      reject(new Error(e.message));
+      worker.terminate();
+    };
+    worker.postMessage(csvBuffer, [csvBuffer]);
+  });
 }
 
 // URL parameters for benchmark automation
@@ -158,17 +178,33 @@ const App = () => {
     async (file: File) => {
       setHomeOpen(false);
       const id = ++loadIdRef.current;
-      const buffer = await file.arrayBuffer();
-      if (id !== loadIdRef.current) return;
-      if (logoPhase === 'done') {
-        setFileName(file.name);
-        setData(buffer);
-      } else {
-        pendingDataRef.current = buffer;
-        pendingNameRef.current = file.name;
-        if (drawCompleteRef.current) {
-          setLogoPhase('moving');
+      const isCsv = file.name.toLowerCase().endsWith('.csv');
+      if (isCsv) setLoading(true);
+
+      try {
+        let buffer = await file.arrayBuffer();
+        if (id !== loadIdRef.current) return;
+
+        if (isCsv) {
+          buffer = await csvToArrow(buffer);
+          if (id !== loadIdRef.current) return;
         }
+
+        if (logoPhase === 'done') {
+          setFileName(file.name);
+          setData(buffer);
+        } else {
+          pendingDataRef.current = buffer;
+          pendingNameRef.current = file.name;
+          if (drawCompleteRef.current) {
+            setLogoPhase('moving');
+          }
+        }
+      } catch (err) {
+        if (id !== loadIdRef.current) return;
+        console.error('Failed to load file:', err);
+      } finally {
+        if (isCsv && id === loadIdRef.current) setLoading(false);
       }
     },
     [logoPhase],
@@ -176,16 +212,36 @@ const App = () => {
 
   const handleLoadData = useCallback(
     (buffer: ArrayBuffer, name: string) => {
-      if (logoPhase === 'done') {
-        setFileName(name);
-        setData(buffer);
-      } else {
-        pendingDataRef.current = buffer;
-        pendingNameRef.current = name;
-        if (drawCompleteRef.current) {
-          setLogoPhase('moving');
+      const applyData = (b: ArrayBuffer) => {
+        if (logoPhase === 'done') {
+          setFileName(name);
+          setData(b);
+        } else {
+          pendingDataRef.current = b;
+          pendingNameRef.current = name;
+          if (drawCompleteRef.current) setLogoPhase('moving');
         }
+      };
+
+      if (name.toLowerCase().endsWith('.csv')) {
+        setLoading(true);
+        const id = ++loadIdRef.current;
+        csvToArrow(buffer)
+          .then((arrowBuffer) => {
+            if (id !== loadIdRef.current) return;
+            applyData(arrowBuffer);
+          })
+          .catch((err) => {
+            if (id !== loadIdRef.current) return;
+            console.error('Failed to parse CSV:', err);
+          })
+          .finally(() => {
+            if (id === loadIdRef.current) setLoading(false);
+          });
+        return;
       }
+
+      applyData(buffer);
     },
     [logoPhase],
   );
@@ -329,7 +385,7 @@ const App = () => {
       <input
         ref={inputRef}
         type="file"
-        accept=".parquet,.pq,.arrow"
+        accept=".parquet,.pq,.arrow,.csv"
         className="hidden"
         onChange={handleFileSelect}
       />
@@ -385,7 +441,9 @@ const App = () => {
                   <polyline points="17 8 12 3 7 8" />
                   <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
-                <span className="text-sm select-none">Drop a Parquet or Arrow file to start</span>
+                <span className="text-sm select-none">
+                  Drop a Parquet, Arrow, or CSV file to start
+                </span>
               </Button>
               <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
               <div className="flex items-center gap-1 mt-3 pointer-events-auto">
@@ -477,7 +535,7 @@ const App = () => {
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                     <span className="text-sm select-none">
-                      Drop a Parquet or Arrow file to start
+                      Drop a Parquet, Arrow, or CSV file to start
                     </span>
                   </Button>
                   <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
