@@ -18,6 +18,8 @@ jobs:
 
       - uses: pnpm/action-setup@v5
 
+      - uses: astral-sh/setup-uv@v7
+
       - name: Install dependencies
         run: pnpm install
 
@@ -25,4 +27,8 @@ jobs:
         run: pnpm run build
 
       - name: Lint
-        run: pnpm run lint:js
+        run: pnpm run lint
+
+      - name: Test Python
+        working-directory: packages/python
+        run: uv run --extra dev pytest
