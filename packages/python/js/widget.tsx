@@ -107,9 +107,28 @@ function Widget() {
   const suppressRef = useRef(false);
   const dtourApiRef = useRef<DtourHandle | null>(null);
 
-  const handleReady = useCallback((api: DtourHandle) => {
-    dtourApiRef.current = api;
-  }, []);
+  // ── Bidirectional selection sync ──────────────────────────────────────
+  // Guards to prevent infinite update loops: when JS pushes a selection to
+  // Python, we record what we sent so the incoming `change:` echo is ignored.
+  const lastSyncedLabels = useRef<string[]>([]);
+  const lastSyncedIndices = useRef<number[]>([]);
+
+  const handleReady = useCallback(
+    (api: DtourHandle) => {
+      dtourApiRef.current = api;
+      // Apply any selection state that was set before the viewer became ready
+      const labels: string[] = model.get('selected_labels') ?? [];
+      const indices: number[] = model.get('selected_indices') ?? [];
+      if (labels.length > 0) {
+        lastSyncedLabels.current = labels;
+        api.selectByLabels(labels);
+      } else if (indices.length > 0) {
+        lastSyncedIndices.current = indices;
+        api.select(indices);
+      }
+    },
+    [model],
+  );
 
   // Detect Shadow DOM and create a dedicated portal container inside it so
   // Radix popovers/dropdowns/tooltips render within the shadow boundary and
@@ -198,12 +217,6 @@ function Widget() {
     },
     [model],
   );
-
-  // ── Bidirectional selection sync ──────────────────────────────────────
-  // Guards to prevent infinite update loops: when JS pushes a selection to
-  // Python, we record what we sent so the incoming `change:` echo is ignored.
-  const lastSyncedLabels = useRef<string[]>([]);
-  const lastSyncedIndices = useRef<number[]>([]);
 
   // JS → Python: legend/lasso selection changed in the viewer
   const handleSelectionChange = useCallback(

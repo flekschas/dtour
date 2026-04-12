@@ -881,7 +881,12 @@ export const DtourViewer = ({
 
         {/* Lasso selection overlay — available in all modes (disabled during 3D rotation) */}
         {hasData && containerSize.width > 0 && !is3dRotated && (
-          <LassoOverlay scatter={scatter} width={containerSize.width} height={overlayHeight} />
+          <LassoOverlay
+            scatter={scatter}
+            width={containerSize.width}
+            height={overlayHeight}
+            offsetY={overlayOffsetY}
+          />
         )}
 
         {/* Axis overlay — interactive in manual mode (disabled during 3D rotation),

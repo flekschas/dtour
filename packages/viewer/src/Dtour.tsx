@@ -341,8 +341,10 @@ const DtourInner = ({
         const indices = allLabels.map((l, i) => (labelSet.has(l) ? i : -1)).filter((i) => i >= 0);
         if (indices.length > 0) {
           scatterInstance.selectByColumn(color, { labelIndices: indices });
+          store.set(legendSelectionAtom, new Set(indices));
         } else {
           scatterInstance.clearSelection();
+          store.set(legendSelectionAtom, null);
         }
       },
       clearSelection: () => {
