@@ -234,7 +234,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     <span className="text-xs text-dtour-highlight cursor-default px-1">Params</span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    Parameter tours show 2D embeddings at varying parameter settings
+                    In parameter touring, only guided tour is available
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

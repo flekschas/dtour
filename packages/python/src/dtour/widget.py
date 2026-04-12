@@ -127,6 +127,19 @@ class Widget(anywidget.AnyWidget):
             raise t.TraitError(
                 f"tour_by must be 'dimensions', 'pca', or 'parameter'; got {value!r}"
             )
+        # Enforce consistency between tour_by and the active tour's tour_mode
+        tour = getattr(self, "_tour", None)
+        if tour is not None:
+            if value == "parameter" and tour.tour_mode != "parameter":
+                raise t.TraitError(
+                    "tour_by='parameter' requires a parameter tour; "
+                    f"the active tour has tour_mode={tour.tour_mode!r}"
+                )
+            if value != "parameter" and tour.tour_mode == "parameter":
+                raise t.TraitError(
+                    f"tour_by={value!r} is not allowed when the active tour is a "
+                    "parameter tour; tour_by must be 'parameter'"
+                )
         return value
 
     @t.validate("view_mode")

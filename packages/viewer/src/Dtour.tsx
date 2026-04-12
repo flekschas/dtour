@@ -22,6 +22,7 @@ import {
   pointColorAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
+  tourByAtom,
   tourDescriptionAtom,
   tourFrameDescriptionAtom,
   tourModeAtom,
@@ -233,14 +234,41 @@ const DtourInner = ({
   const setTourMode = useSetAtom(tourModeAtom);
   const setTourDescription = useSetAtom(tourDescriptionAtom);
   const setTourFrameDescription = useSetAtom(tourFrameDescriptionAtom);
+  const setTourBy = useSetAtom(tourByAtom);
   useEffect(() => {
     setFrameLoadings(frameLoadingsProp ?? embeddedConfig?.tour?.frameLoadings ?? null);
     setFrameSummaries(frameSummariesProp ?? embeddedConfig?.tour?.frameSummaries ?? null);
-    setTourMode(tourModeProp ?? embeddedConfig?.tour?.tourMode ?? null);
     setTourDescription(tourDescriptionProp ?? embeddedConfig?.tour?.tourDescription ?? null);
     setTourFrameDescription(
       tourFrameDescriptionProp ?? embeddedConfig?.tour?.tourFrameDescription ?? null,
     );
+
+    // Resolve tourMode and enforce tourBy consistency
+    const resolvedTourMode = tourModeProp ?? embeddedConfig?.tour?.tourMode ?? null;
+    setTourMode(resolvedTourMode);
+
+    type TourBy = 'dimensions' | 'pca' | 'parameter';
+    if (resolvedTourMode === 'parameter') {
+      setTourBy((prev: TourBy) => {
+        if (prev !== 'parameter') {
+          console.warn(
+            `[dtour] tourMode is 'parameter' but tourBy was '${prev}'; forcing tourBy to 'parameter'`,
+          );
+          return 'parameter';
+        }
+        return prev;
+      });
+    } else {
+      setTourBy((prev: TourBy) => {
+        if (prev === 'parameter') {
+          console.warn(
+            `[dtour] tourBy is 'parameter' but tourMode is '${resolvedTourMode}'; falling back to 'dimensions'`,
+          );
+          return 'dimensions';
+        }
+        return prev;
+      });
+    }
   }, [
     embeddedConfig,
     frameLoadingsProp,
@@ -253,6 +281,7 @@ const DtourInner = ({
     setTourMode,
     setTourDescription,
     setTourFrameDescription,
+    setTourBy,
   ]);
 
   // Sync resolved theme → background color + CSS class
