@@ -6,11 +6,17 @@
 - feat: spectrum tour with configurable parameters
 - feat: bidirectional point selection sync via `selected_indices` traitlet
 - feat: fine-grained point selections
+- refactor: switch PyMDE regularization to concave log penalty
 - chore: enforce synced `tourMode` and `tourBy` for parameter tours
 
 ### viewer
+- feat: support preview counts 2-16 with U-shape and perimeter layouts
 - feat: spectrum tour support and updated toolbar/gallery
 - feat: bidirectional point selection sync
+- fix: align circular slider ticks with gallery layout positions
+- fix: account for frame summaries in selector size computation
+- fix: suppress spurious `tourBy` coercion warnings
+- fix: guard `parseEmbeddedConfig` log behind dev mode
 - fix: lasso selection and vertical toolbar offset
 - fix: point selection propagation
 
