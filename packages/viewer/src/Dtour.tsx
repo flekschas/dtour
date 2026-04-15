@@ -254,12 +254,17 @@ const DtourInner = ({
     setTourMode(resolvedTourMode);
 
     type TourBy = 'dimensions' | 'pca' | 'parameter';
+    // The embedded spec effect may not have applied tourBy yet, so only warn
+    // when the mismatch isn't about to be resolved by the spec itself.
+    const specWillSetTourBy = embeddedConfig?.spec?.tourBy;
     if (resolvedTourMode === 'parameter') {
       setTourBy((prev: TourBy) => {
         if (prev !== 'parameter') {
-          console.warn(
-            `[dtour] tourMode is 'parameter' but tourBy was '${prev}'; forcing tourBy to 'parameter'`,
-          );
+          if (specWillSetTourBy !== 'parameter') {
+            console.warn(
+              `[dtour] tourMode is 'parameter' but tourBy was '${prev}'; forcing tourBy to 'parameter'`,
+            );
+          }
           return 'parameter';
         }
         return prev;
@@ -267,6 +272,7 @@ const DtourInner = ({
     } else {
       setTourBy((prev: TourBy) => {
         if (prev === 'parameter') {
+          if (specWillSetTourBy === 'parameter') return prev; // spec will handle it
           console.warn(
             `[dtour] tourBy is 'parameter' but tourMode is '${resolvedTourMode}'; falling back to 'dimensions'`,
           );
