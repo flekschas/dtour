@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { computeStartAngle } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils';
 
 export type CircularSliderHandle = {
@@ -41,7 +42,6 @@ export type CircularSliderProps = {
   previewCenters?: PreviewCenter[];
 };
 
-const START_DEG = -135;
 const BASE_STROKE = 3;
 const MIN_STROKE = 1;
 const MAX_STROKE = 7;
@@ -79,7 +79,8 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
 
     const center = size / 2;
     const radius = size * 0.4;
-    const startRad = (START_DEG * Math.PI) / 180;
+    const startDeg = useMemo(() => computeStartAngle(tickCount), [tickCount]);
+    const startRad = (startDeg * Math.PI) / 180;
     const startX = center + radius * Math.cos(startRad);
     const startY = center + radius * Math.sin(startRad);
 
@@ -92,9 +93,9 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
         } else {
           tickFraction = i / tickCount;
         }
-        return ((tickFraction * 360 + START_DEG) * Math.PI) / 180;
+        return ((tickFraction * 360 + startDeg) * Math.PI) / 180;
       },
-      [spacingMode, arcLengths, tickCount],
+      [spacingMode, arcLengths, tickCount, startDeg],
     );
 
     /** Update SVG DOM elements directly — no React re-render needed. */
@@ -103,7 +104,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
         const isWrapping = Math.abs(val - prevValueRef.current) > 0.5;
         prevValueRef.current = val;
 
-        const handleRad = ((val * 360 + START_DEG) * Math.PI) / 180;
+        const handleRad = ((val * 360 + startDeg) * Math.PI) / 180;
         const hx = center + radius * Math.cos(handleRad);
         const hy = center + radius * Math.sin(handleRad);
 
@@ -123,7 +124,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           arcRef.current?.setAttribute('display', 'none');
         }
       },
-      [center, radius, startX, startY],
+      [center, radius, startX, startY, startDeg],
     );
 
     // Expose imperative handle for parent to update position without re-renders
@@ -140,14 +141,13 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
         const rect = svgRef.current.getBoundingClientRect();
         const dx = clientX - (rect.left + center);
         const dy = clientY - (rect.top + center);
-        // atan2 gives angle from +x axis; rotate so 0 is at 10:30 position, clockwise
-        // 10:30 = -135° from +x axis, so offset by +135°
-        let deg = (Math.atan2(dy, dx) * 180) / Math.PI + 135;
+        // atan2 gives angle from +x axis; rotate so 0 aligns with startDeg
+        let deg = (Math.atan2(dy, dx) * 180) / Math.PI - startDeg;
         if (deg < 0) deg += 360;
         if (deg >= 360) deg -= 360;
         return deg / 360; // normalize to [0, 1]
       },
-      [center],
+      [center, startDeg],
     );
 
     const handlePointerDown = useCallback(
@@ -192,7 +192,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
     }, [isDragging, angleFromPointer, onChange, onDragStart]);
 
     // Initial positions from value prop (first paint; updateDom takes over after mount)
-    const handleRad = ((value * 360 + START_DEG) * Math.PI) / 180;
+    const handleRad = ((value * 360 + startDeg) * Math.PI) / 180;
     const handleX = center + radius * Math.cos(handleRad);
     const handleY = center + radius * Math.sin(handleRad);
 
@@ -281,8 +281,8 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
 
         const startFrac = i / n;
         const endFrac = (i + 1) / n;
-        const a1 = ((startFrac * 360 + START_DEG) * Math.PI) / 180;
-        const a2 = ((endFrac * 360 + START_DEG) * Math.PI) / 180;
+        const a1 = ((startFrac * 360 + startDeg) * Math.PI) / 180;
+        const a2 = ((endFrac * 360 + startDeg) * Math.PI) / 180;
 
         const x1 = center + radius * Math.cos(a1);
         const y1 = center + radius * Math.sin(a1);
@@ -304,7 +304,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
         );
       }
       return segments;
-    }, [spacingMode, arcLengths, radius, center]);
+    }, [spacingMode, arcLengths, radius, center, startDeg]);
 
     return (
       <svg
