@@ -1,8 +1,16 @@
 import type { ScatterInstance } from '@dtour/scatter';
+import { bitPackIndices } from '@dtour/scatter';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLongPressIndicator } from '../hooks/useLongPressIndicator.ts';
-import { guidedSuspendedAtom, legendSelectionAtom, viewModeAtom } from '../state/atoms.ts';
+import { isHexColor } from '../lib/color-utils.ts';
+import {
+  guidedSuspendedAtom,
+  legendSelectionAtom,
+  metadataAtom,
+  pointColorAtom,
+  viewModeAtom,
+} from '../state/atoms.ts';
 
 type LassoOverlayProps = {
   scatter: ScatterInstance | null;
@@ -33,11 +41,15 @@ const cssToNdc = (
   return [ndcX, ndcY];
 };
 
+const HIT_RADIUS_PX = 3;
+
 export const LassoOverlay = ({ scatter, width, height, offsetY }: LassoOverlayProps) => {
   const viewMode = useAtomValue(viewModeAtom);
   const setViewMode = useSetAtom(viewModeAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setLegendSelection = useSetAtom(legendSelectionAtom);
+  const metadata = useAtomValue(metadataAtom);
+  const pointColor = useAtomValue(pointColorAtom);
 
   const [lassoMode, setLassoMode] = useState(false);
   const [path, setPath] = useState<[number, number][]>([]);
@@ -134,40 +146,97 @@ export const LassoOverlay = ({ scatter, width, height, offsetY }: LassoOverlayPr
     return () => window.removeEventListener('blur', handleBlur);
   }, [lassoMode, clearLongPress]);
 
-  const handlePointerUp = useCallback(() => {
-    clearLongPress();
-    hideIndicator();
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      clearLongPress();
+      hideIndicator();
 
-    if (!lassoMode || path.length < 3 || !scatter) {
+      if (!lassoMode || path.length < 3 || !scatter) {
+        // Not a lasso — check if it's a short click (no significant movement)
+        if (!lassoMode && scatter && startPos.current) {
+          const dx = e.clientX - startPos.current[0];
+          const dy = e.clientY - startPos.current[1];
+          if (Math.sqrt(dx * dx + dy * dy) <= MIN_MOVE_PX) {
+            const rect = overlayRef.current?.getBoundingClientRect();
+            if (rect) {
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              const canvasH = height + offsetY;
+              const [ndcX, ndcY] = cssToNdc(x, y, width, canvasH, offsetY);
+              const radiusNdc = (HIT_RADIUS_PX * 2) / Math.min(width, canvasH);
+              const isAlt = e.altKey;
+
+              scatter.pickPoint(ndcX, ndcY, radiusNdc).then((result) => {
+                if (result.pointIndex === -1 || !metadata) return;
+
+                if (isAlt) {
+                  // Alt+click: select all points with same category/band
+                  if (result.categoryLabelIndex !== undefined) {
+                    setLegendSelection(new Set([result.categoryLabelIndex]));
+                  } else if (result.continuousValue !== undefined) {
+                    const column =
+                      typeof pointColor === 'string' && !isHexColor(pointColor) ? pointColor : null;
+                    if (column) {
+                      const colIndex = metadata.columnNames.indexOf(column);
+                      if (colIndex !== -1) {
+                        const min = metadata.mins[colIndex]!;
+                        const max = metadata.maxes[colIndex]!;
+                        const range = max - min;
+                        // Constant column (range=0): all points map to stop 0
+                        const t = range > 0 ? (result.continuousValue - min) / range : 0;
+                        const stopIdx = Math.max(
+                          0,
+                          Math.min(12, Math.round(Math.max(0, Math.min(1, t)) * 12)),
+                        );
+                        setLegendSelection(new Set([stopIdx]));
+                      }
+                    }
+                  }
+                } else {
+                  // Plain click: select just this point
+                  const mask = bitPackIndices([result.pointIndex], metadata.rowCount);
+                  scatter.setSelectionMask(mask);
+                  setLegendSelection(null);
+                }
+              });
+            }
+          }
+        }
+        setLassoMode(false);
+        setPath([]);
+        startPos.current = null;
+        return;
+      }
+
+      // Convert CSS path to NDC polygon and send to GPU worker
+      const polygon = new Float32Array(path.length * 2);
+      for (let i = 0; i < path.length; i++) {
+        const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height + offsetY, offsetY);
+        polygon[i * 2] = ndcX;
+        polygon[i * 2 + 1] = ndcY;
+      }
+
+      scatter.lassoSelect(polygon);
+      setLegendSelection(null);
+
       setLassoMode(false);
       setPath([]);
-      return;
-    }
-
-    // Convert CSS path to NDC polygon and send to GPU worker
-    const polygon = new Float32Array(path.length * 2);
-    for (let i = 0; i < path.length; i++) {
-      const [ndcX, ndcY] = cssToNdc(path[i]![0], path[i]![1], width, height + offsetY, offsetY);
-      polygon[i * 2] = ndcX;
-      polygon[i * 2 + 1] = ndcY;
-    }
-
-    scatter.lassoSelect(polygon);
-    setLegendSelection(null);
-
-    setLassoMode(false);
-    setPath([]);
-  }, [
-    lassoMode,
-    path,
-    scatter,
-    width,
-    height,
-    offsetY,
-    clearLongPress,
-    hideIndicator,
-    setLegendSelection,
-  ]);
+      startPos.current = null;
+    },
+    [
+      lassoMode,
+      path,
+      scatter,
+      width,
+      height,
+      offsetY,
+      clearLongPress,
+      hideIndicator,
+      setLegendSelection,
+      metadata,
+      pointColor,
+    ],
+  );
 
   // Double-click or Escape clears selection
   const handleDoubleClick = useCallback(() => {

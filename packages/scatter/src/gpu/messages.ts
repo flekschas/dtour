@@ -82,7 +82,16 @@ export type MainToGpu =
       matrix: Float32Array;
     }
   | { type: 'benchmark'; numFrames: number }
-  | { type: 'getMetrics' };
+  | { type: 'getMetrics' }
+  | {
+      // Pick the nearest point to an NDC click position within a radius.
+      // GPU worker projects all points, finds the nearest, and optionally
+      // reads back category index or continuous value for the hit point.
+      type: 'pickPoint';
+      ndcX: number;
+      ndcY: number;
+      radiusNdc: number;
+    };
 
 // GPU Worker → Main thread
 export type GpuToMain =
@@ -113,4 +122,10 @@ export type GpuToMain =
       workerJsHeapBytes: number | null;
     }
   | { type: 'residualPC'; residualPC: Float32Array }
-  | { type: 'selectionResult'; mask: Uint32Array };
+  | { type: 'selectionResult'; mask: Uint32Array }
+  | {
+      type: 'pickResult';
+      pointIndex: number;
+      categoryLabelIndex?: number;
+      continuousValue?: number;
+    };

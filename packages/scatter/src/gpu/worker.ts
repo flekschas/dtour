@@ -1265,6 +1265,10 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
+
+    // Emit mask so onPointSelectionChange subscribers see click selections
+    const maskCopy = new Uint32Array(mask);
+    postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
     return;
   }
 
@@ -1481,6 +1485,148 @@ const handleMessage = (msg: MainToGpu): void => {
       // Send mask back so the host can read which points were selected
       const maskCopy = new Uint32Array(mask);
       postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
+    });
+    return;
+  }
+
+  if (msg.type === 'pickPoint') {
+    if (!state.projectionResources || !state.projectionBindGroup || state.numPoints === 0) {
+      postMain({ type: 'pickResult', pointIndex: -1 });
+      return;
+    }
+
+    const { device, numPoints, projectionPipeline, projectionResources, camera } = state;
+    const { ndcX, ndcY, radiusNdc } = msg;
+
+    // Get the current basis to populate projectedBuffer on-demand
+    let currentBasis: Float32Array | null = null;
+    if (state.directBasis) {
+      currentBasis = state.directBasis;
+    } else if (state.tour) {
+      const { tour } = state;
+      interpolateAtPosition(
+        tour.interpolatedBasis,
+        tour.bases,
+        tour.arcLengths,
+        tour.dims,
+        tour.position,
+      );
+      currentBasis = tour.interpolatedBasis;
+    }
+    if (!currentBasis) {
+      postMain({ type: 'pickResult', pointIndex: -1 });
+      return;
+    }
+
+    // Dispatch compute projection on-demand
+    device.queue.writeBuffer(
+      projectionResources.basisBuffer,
+      0,
+      currentBasis as Float32Array<ArrayBuffer>,
+    );
+    const computeCmd = dispatchProjection(
+      device,
+      projectionPipeline,
+      state.projectionBindGroup,
+      numPoints,
+    );
+    device.queue.submit([computeCmd]);
+
+    // Convert click from NDC to projection space (same inverse as lasso)
+    const canvas = state.mainView.canvas;
+    const aspect = canvas.width / canvas.height || 1;
+    const iz = camera.insetZoom;
+    const zoomIz = camera.zoom * iz;
+    const clickProjX = (ndcX * aspect) / zoomIz - camera.panX;
+    const clickProjY = (ndcY - camera.insetOffsetY) / zoomIz - camera.panY;
+
+    // Convert radius from NDC to projection space
+    // NDC delta maps to proj delta: dx_proj = dx_ndc * aspect / zoomIz
+    // Use the larger axis scale for a conservative circular hit zone
+    const radiusProj = (radiusNdc * Math.max(aspect, 1)) / zoomIz;
+    const radiusProj2 = radiusProj * radiusProj;
+
+    // Read projected positions back from GPU
+    const projSize = numPoints * 2 * 4;
+    const readBuffer = device.createBuffer({
+      label: 'pick-readback',
+      size: projSize,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+
+    const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(projectionResources.projectedBuffer, 0, readBuffer, 0, projSize);
+    device.queue.submit([encoder.finish()]);
+
+    readBuffer.mapAsync(GPUMapMode.READ).then(() => {
+      const projected = new Float32Array(readBuffer.getMappedRange());
+
+      // Find nearest point within radius
+      let bestIdx = -1;
+      let bestDist2 = radiusProj2;
+      for (let i = 0; i < numPoints; i++) {
+        const dx = projected[i * 2]! - clickProjX;
+        const dy = projected[i * 2 + 1]! - clickProjY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestDist2) {
+          bestDist2 = d2;
+          bestIdx = i;
+        }
+      }
+
+      readBuffer.unmap();
+      readBuffer.destroy();
+
+      if (bestIdx === -1 || !state) {
+        postMain({ type: 'pickResult', pointIndex: -1 });
+        return;
+      }
+
+      // Read back category index or continuous value for the hit point
+      const { colorState } = state;
+
+      if (colorState.mode === 2 && state.activeCatColumnName) {
+        // Categorical: read the label index from categoricalBuffers
+        const catBuf = state.categoricalBuffers.get(state.activeCatColumnName);
+        if (!catBuf) {
+          postMain({ type: 'pickResult', pointIndex: bestIdx });
+          return;
+        }
+        const catReadBuf = device.createBuffer({
+          label: 'pick-cat-readback',
+          size: 4,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(catBuf, bestIdx * 4, catReadBuf, 0, 4);
+        device.queue.submit([enc.finish()]);
+        catReadBuf.mapAsync(GPUMapMode.READ).then(() => {
+          const labelIndex = new Uint32Array(catReadBuf.getMappedRange())[0]!;
+          catReadBuf.unmap();
+          catReadBuf.destroy();
+          postMain({ type: 'pickResult', pointIndex: bestIdx, categoryLabelIndex: labelIndex });
+        });
+      } else if (colorState.mode === 1 && state.projectionResources) {
+        // Continuous: read the raw column value from the data buffer
+        const dataOffset = (colorState.columnOffset + bestIdx) * 4;
+        const valReadBuf = device.createBuffer({
+          label: 'pick-val-readback',
+          size: 4,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(state.projectionResources.dataBuffer, dataOffset, valReadBuf, 0, 4);
+        device.queue.submit([enc.finish()]);
+        valReadBuf.mapAsync(GPUMapMode.READ).then(() => {
+          const value = new Float32Array(valReadBuf.getMappedRange())[0]!;
+          valReadBuf.unmap();
+          valReadBuf.destroy();
+          postMain({ type: 'pickResult', pointIndex: bestIdx, continuousValue: value });
+        });
+      } else {
+        // No color encoding — just return the point index
+        postMain({ type: 'pickResult', pointIndex: bestIdx });
+      }
     });
     return;
   }

@@ -293,6 +293,40 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     return () => subscribers.delete(handler);
   };
 
+  let pendingPick:
+    | {
+        resolve: (v: {
+          pointIndex: number;
+          categoryLabelIndex?: number;
+          continuousValue?: number;
+        }) => void;
+        unsub: () => void;
+      }
+    | undefined;
+
+  const pickPoint = (ndcX: number, ndcY: number, radiusNdc: number) => {
+    if (pendingPick) {
+      pendingPick.unsub();
+      pendingPick.resolve({ pointIndex: -1 });
+      pendingPick = undefined;
+    }
+
+    return new Promise<{
+      pointIndex: number;
+      categoryLabelIndex?: number;
+      continuousValue?: number;
+    }>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'pickResult') return;
+        unsub();
+        pendingPick = undefined;
+        resolve(s);
+      });
+      pendingPick = { resolve, unsub };
+      sendToGpu(gpuWorker, { type: 'pickPoint', ndcX, ndcY, radiusNdc });
+    });
+  };
+
   const destroy = (): void => {
     gpuWorker.terminate();
     dataWorker.terminate();
@@ -315,6 +349,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setSelectionMask,
     lassoSelect,
     clearSelection,
+    pickPoint,
     computePCA,
     startPlayback,
     stopPlayback,

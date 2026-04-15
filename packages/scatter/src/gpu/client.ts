@@ -52,7 +52,13 @@ export type ScatterStatus =
       workerJsHeapBytes: number | null;
     }
   | { type: 'residualPC'; residualPC: Float32Array }
-  | { type: 'selectionResult'; mask: Uint32Array };
+  | { type: 'selectionResult'; mask: Uint32Array }
+  | {
+      type: 'pickResult';
+      pointIndex: number;
+      categoryLabelIndex?: number;
+      continuousValue?: number;
+    };
 
 export type ScatterInstance = {
   /** Transfer an Arrow IPC or Parquet ArrayBuffer for loading. Ownership is transferred. */
@@ -125,6 +131,16 @@ export type ScatterInstance = {
   disable3d: () => void;
   /** Update the 3×3 camera rotation matrix (column-major, 9 floats). */
   set3dRotation: (matrix: Float32Array) => void;
+  /** Pick the nearest point to an NDC click position. Returns point index and color info. */
+  pickPoint: (
+    ndcX: number,
+    ndcY: number,
+    radiusNdc: number,
+  ) => Promise<{
+    pointIndex: number;
+    categoryLabelIndex?: number;
+    continuousValue?: number;
+  }>;
   /** Run a render benchmark on loaded data. Sweeps through the full tour, timing each frame. */
   benchmark: (numFrames?: number) => Promise<{
     frameTimes: Float64Array;
@@ -409,6 +425,41 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'set3dRotation', matrix });
   };
 
+  let pendingPick:
+    | {
+        resolve: (v: {
+          pointIndex: number;
+          categoryLabelIndex?: number;
+          continuousValue?: number;
+        }) => void;
+        unsub: () => void;
+      }
+    | undefined;
+
+  const pickPoint = (ndcX: number, ndcY: number, radiusNdc: number) => {
+    // Cancel any in-flight pick so only the latest click wins
+    if (pendingPick) {
+      pendingPick.unsub();
+      pendingPick.resolve({ pointIndex: -1 });
+      pendingPick = undefined;
+    }
+
+    return new Promise<{
+      pointIndex: number;
+      categoryLabelIndex?: number;
+      continuousValue?: number;
+    }>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'pickResult') return;
+        unsub();
+        pendingPick = undefined;
+        resolve(s);
+      });
+      pendingPick = { resolve, unsub };
+      sendToGpu(gpuWorker, { type: 'pickPoint', ndcX, ndcY, radiusNdc });
+    });
+  };
+
   const benchmark = (numFrames = 120) => {
     return new Promise<{
       frameTimes: Float64Array;
@@ -498,6 +549,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setSelectionMask,
     lassoSelect,
     clearSelection,
+    pickPoint,
     computePCA,
     startPlayback,
     stopPlayback,

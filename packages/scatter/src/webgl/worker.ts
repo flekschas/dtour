@@ -1148,6 +1148,88 @@ const handleLassoSelect = (polygon: Float32Array): void => {
   postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
 };
 
+const handlePickPoint = (ndcX: number, ndcY: number, radiusNdc: number): void => {
+  if (!state || !state.normMins || !state.normRanges || state.numPoints === 0) {
+    postMain({ type: 'pickResult', pointIndex: -1 });
+    return;
+  }
+
+  const { numPoints, numDims, dataBuffers, camera } = state;
+
+  // Get current basis
+  let currentBasis: Float32Array | null = null;
+  if (state.directBasis) {
+    currentBasis = state.directBasis;
+  } else if (state.tour) {
+    const { tour } = state;
+    interpolateAtPosition(
+      tour.interpolatedBasis,
+      tour.bases,
+      tour.arcLengths,
+      tour.dims,
+      tour.position,
+    );
+    currentBasis = tour.interpolatedBasis;
+  }
+  if (!currentBasis) {
+    postMain({ type: 'pickResult', pointIndex: -1 });
+    return;
+  }
+
+  const { weights, biasX, biasY } = computeAdjustedBasis(
+    currentBasis,
+    state.normMins,
+    state.normRanges,
+    numDims,
+  );
+
+  // Convert click from NDC to projection space (same inverse as lasso)
+  const canvas = state.mainView.canvas;
+  const aspect = canvas.width / canvas.height || 1;
+  const iz = camera.insetZoom;
+  const zoomIz = camera.zoom * iz;
+  const clickProjX = (ndcX * aspect) / zoomIz - camera.panX;
+  const clickProjY = (ndcY - camera.insetOffsetY) / zoomIz - camera.panY;
+  const radiusProj = (radiusNdc * Math.max(aspect, 1)) / zoomIz;
+  let radiusProj2 = radiusProj * radiusProj;
+
+  // Project all points on CPU and find nearest within radius
+  let bestIdx = -1;
+  for (let i = 0; i < numPoints; i++) {
+    let px = biasX;
+    let py = biasY;
+    for (let d = 0; d < numDims; d++) {
+      const raw = dataBuffers[d]![i]!;
+      px += raw * weights[d]!;
+      py += raw * weights[numDims + d]!;
+    }
+    const dx = px - clickProjX;
+    const dy = py - clickProjY;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < radiusProj2) {
+      radiusProj2 = d2;
+      bestIdx = i;
+    }
+  }
+
+  if (bestIdx === -1) {
+    postMain({ type: 'pickResult', pointIndex: -1 });
+    return;
+  }
+
+  // Read category index or continuous value for the hit point
+  if (state.colorMode === 2 && state.activeCatColumnName) {
+    const catIndices = state.categoricalBuffers.get(state.activeCatColumnName);
+    const categoryLabelIndex = catIndices ? catIndices[bestIdx]! : undefined;
+    postMain({ type: 'pickResult', pointIndex: bestIdx, categoryLabelIndex });
+  } else if (state.colorMode === 1) {
+    const continuousValue = dataBuffers[state.colorColumnIndex]?.[bestIdx];
+    postMain({ type: 'pickResult', pointIndex: bestIdx, continuousValue });
+  } else {
+    postMain({ type: 'pickResult', pointIndex: bestIdx });
+  }
+};
+
 // ─── Metrics ─────────────────────────────────────────────────────────────
 
 /** Compute estimated GPU memory usage from known texture sizes. */
@@ -1419,6 +1501,9 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.dataTexture) {
       renderAllViews();
     }
+    // Emit mask so onPointSelectionChange subscribers see click selections
+    const maskCopy = new Uint32Array(msg.mask);
+    postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
     return;
   }
 
@@ -1454,6 +1539,11 @@ const handleMessage = (msg: MainToGpu): void => {
 
   if (msg.type === 'lassoSelect') {
     handleLassoSelect(msg.polygon);
+    return;
+  }
+
+  if (msg.type === 'pickPoint') {
+    handlePickPoint(msg.ndcX, msg.ndcY, msg.radiusNdc);
     return;
   }
 
