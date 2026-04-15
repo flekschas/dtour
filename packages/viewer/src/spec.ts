@@ -1,5 +1,25 @@
 import { z } from 'zod';
 
+export type PreviewCount = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+
+const previewCountSchema = z.union([
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+  z.literal(7),
+  z.literal(8),
+  z.literal(9),
+  z.literal(10),
+  z.literal(11),
+  z.literal(12),
+  z.literal(13),
+  z.literal(14),
+  z.literal(15),
+  z.literal(16),
+]);
+
 /**
  * JSON-serializable spec for the Dtour component.
  * All fields optional — omitted fields use defaults.
@@ -11,7 +31,7 @@ export const dtourSpecSchema = z.object({
   tourPlaying: z.boolean().optional(),
   tourSpeed: z.number().min(0.1).max(5).optional(),
   tourDirection: z.enum(['forward', 'backward']).optional(),
-  previewCount: z.number().int().min(2).max(16).optional(),
+  previewCount: previewCountSchema.optional(),
   previewScale: z.union([z.literal(1), z.literal(0.75), z.literal(0.5)]).optional(),
   previewPadding: z.number().nonnegative().optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),

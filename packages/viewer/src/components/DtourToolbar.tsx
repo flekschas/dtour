@@ -22,6 +22,7 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePortalContainer } from '../portal-container.tsx';
+import type { PreviewCount } from '../spec.ts';
 import {
   activeColumnsAtom,
   cameraZoomAtom,
@@ -667,7 +668,7 @@ const ColumnRow = ({
 // Preview step slider — generic discrete slider with local drag state
 // ---------------------------------------------------------------------------
 
-const PREVIEW_COUNT_STEPS: number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];
 const SCALE_LABELS: Record<number, string> = { 1: 'L', 0.75: 'M', 0.5: 'S' };
 

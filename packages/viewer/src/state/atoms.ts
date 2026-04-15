@@ -1,6 +1,6 @@
 import type { Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
-import type { EmbeddedConfig, FrameLoading } from '../spec.ts';
+import type { EmbeddedConfig, FrameLoading, PreviewCount } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -24,7 +24,7 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // View state — controls preview layout and keyframe selection
 // ---------------------------------------------------------------------------
 
-export const previewCountAtom = atom<number>(4);
+export const previewCountAtom = atom<PreviewCount>(4);
 export const previewScaleAtom = atom<1 | 0.75 | 0.5>(1);
 export const previewPaddingAtom = atom(12);
 export const selectedKeyframeAtom = atom<number | null>(null);
