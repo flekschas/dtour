@@ -1250,12 +1250,13 @@ def _spectrum_pymde(
     regularization: float,
     random_state: int | None,
 ) -> list[np.ndarray]:
-    """Compute PyMDE embeddings with optional spring regularization.
+    """Compute PyMDE embeddings with optional concave anchor regularization.
 
     For each rho, ``repulsive_fraction`` is set to ``1/rho`` so that higher
     rho means stronger relative attraction (matching the t-SNE exaggeration
-    semantics).  When *regularization* > 0, a spring penalty anchors each
-    point to its position in the previous frame.
+    semantics).  When *regularization* > 0, a concave (log) penalty anchors
+    each point to its position in the previous frame.  This suppresses
+    small jitter while allowing large, structurally meaningful movements.
     """
     import pymde
     import torch
@@ -1292,7 +1293,9 @@ def _spectrum_pymde(
             repulsive_fraction=repulsive_frac,
         )
 
-        # Spring regularization: penalize deviation from previous frame
+        # Concave (log) regularization: penalize deviation from previous frame.
+        # log(1 + |x|) has a steep gradient near zero (suppresses jitter) but
+        # saturates for large displacements (lets structural changes through).
         if regularization > 0 and prev_emb is not None:
             anchor = prev_emb.clone().detach()
             lam = regularization
@@ -1302,7 +1305,8 @@ def _spectrum_pymde(
                 def _reg_ad(X=None):
                     base = orig(X)
                     emb_x = X if X is not None else m.X
-                    return base + strength * torch.mean((emb_x - anc) ** 2)
+                    dist = torch.sqrt(torch.sum((emb_x - anc) ** 2, dim=1) + 1e-8)
+                    return base + strength * torch.mean(torch.log1p(dist))
 
                 return _reg_ad
 
@@ -1359,10 +1363,12 @@ def spectrum_tour(
         method: Embedding engine.  ``"tsne"`` (default) uses openTSNE
             with sequential initialization.  ``"pymde"`` uses PyMDE
             with optional spring regularization.
-        regularization: Spring penalty strength for ``method="pymde"``.
+        regularization: Concave anchor penalty strength for ``method="pymde"``.
             ``0`` means no regularization (points move freely).
-            Higher values penalize deviation from the previous frame.
-            Typical range: ``0.1`` -- ``10.0``.  Ignored for ``"tsne"``.
+            Higher values penalize deviation from the previous frame using
+            ``log(1 + displacement)``, which suppresses jitter while allowing
+            large structural movements.  Typical range: ``0.5`` -- ``5.0``.
+            Ignored for ``"tsne"``.
         feature_names: Original feature column names.
         random_state: Random seed for reproducibility.
 

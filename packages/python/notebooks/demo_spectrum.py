@@ -123,12 +123,11 @@ def _(dtour, label_names, tour):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## PyMDE with spring regularization
+    ## PyMDE with concave anchor regularization
 
-    Same spectrum tour but using **PyMDE** with spring regularization
-    (``regularization=1.0``). Points are penalized for moving away from
-    their previous-frame positions, producing smoother transitions at
-    the cost of slower structural adaptation.
+    Same spectrum tour but using **PyMDE** with concave (log) regularization
+    (``regularization=0.25``). Small jitter is suppressed while large,
+    structurally meaningful movements are allowed through.
     """)
     return
 
