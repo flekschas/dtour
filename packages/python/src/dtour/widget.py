@@ -102,8 +102,8 @@ class Widget(anywidget.AnyWidget):
     @t.validate("preview_count")
     def _validate_preview_count(self, proposal: t.Bunch) -> int:
         value = proposal["value"]
-        if value not in (4, 8, 12, 16):
-            raise t.TraitError(f"preview_count must be 4, 8, 12, or 16; got {value}")
+        if not (2 <= value <= 16):
+            raise t.TraitError(f"preview_count must be between 2 and 16; got {value}")
         return value
 
     @t.validate("preview_size")

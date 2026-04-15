@@ -11,7 +11,7 @@ export const dtourSpecSchema = z.object({
   tourPlaying: z.boolean().optional(),
   tourSpeed: z.number().min(0.1).max(5).optional(),
   tourDirection: z.enum(['forward', 'backward']).optional(),
-  previewCount: z.union([z.literal(4), z.literal(8), z.literal(12), z.literal(16)]).optional(),
+  previewCount: z.number().int().min(2).max(16).optional(),
   previewScale: z.union([z.literal(1), z.literal(0.75), z.literal(0.5)]).optional(),
   previewPadding: z.number().nonnegative().optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),

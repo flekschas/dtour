@@ -128,7 +128,7 @@ def build_dtour_metadata(
     tour_direction : str, optional
         ``"forward"`` or ``"backward"``.
     preview_count : int, optional
-        Number of gallery previews (4, 8, 12, or 16).
+        Number of gallery previews (2-16).
     preview_scale : float, optional
         Preview size (1, 0.75, or 0.5).
     preview_padding : float, optional

@@ -24,7 +24,7 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // View state — controls preview layout and keyframe selection
 // ---------------------------------------------------------------------------
 
-export const previewCountAtom = atom<4 | 8 | 12 | 16>(4);
+export const previewCountAtom = atom<number>(4);
 export const previewScaleAtom = atom<1 | 0.75 | 0.5>(1);
 export const previewPaddingAtom = atom(12);
 export const selectedKeyframeAtom = atom<number | null>(null);

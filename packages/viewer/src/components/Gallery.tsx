@@ -2,7 +2,11 @@ import { ArrowsLeftRightIcon, EqualsIcon } from '@phosphor-icons/react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
-import { LOADING_BAR_HEIGHT, computeGallerySizes } from '../layout/gallery-positions.ts';
+import {
+  LOADING_BAR_HEIGHT,
+  computeGallerySizes,
+  computeLayout,
+} from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import type { FrameLoading } from '../spec.ts';
 import {
@@ -71,6 +75,8 @@ export const Gallery = ({
 
   // Whether loading pills are actually visible (data available + user toggle on)
   const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
+  const summariesVisible = !loadingsVisible && frameSummaries !== null && frameSummaries.length > 0;
+  const showBarSpace = loadingsVisible || summariesVisible;
 
   // Grid area = container minus its CSS insets.
   const verticalInset = 16 + toolbarHeight / 2;
@@ -78,8 +84,8 @@ export const Gallery = ({
   const gridHeight = containerHeight - 2 * verticalInset;
 
   const { gridTemplateColumns, gridTemplateRows, sizes } = useMemo(
-    () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale, loadingsVisible),
-    [gridWidth, gridHeight, previewCount, previewScale, loadingsVisible],
+    () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale, showBarSpace),
+    [gridWidth, gridHeight, previewCount, previewScale, showBarSpace],
   );
 
   // Adopt each canvas into its wrapper div (once, on mount)
@@ -149,7 +155,7 @@ export const Gallery = ({
     [previewCount, arcLengths, setSelectedKeyframe, setPlaying, setGuidedSuspended, animateTo],
   );
 
-  const k = previewCount / 4;
+  const layout = useMemo(() => computeLayout(previewCount), [previewCount]);
 
   return (
     <div
@@ -160,29 +166,17 @@ export const Gallery = ({
       {previewCanvases.map((_, i) => {
         const visible = i < previewCount;
 
-        let col: number;
-        let row: number;
-        if (i < k) {
-          row = 0;
-          col = i;
-        } else if (i < 2 * k) {
-          row = i - k;
-          col = k;
-        } else if (i < 3 * k) {
-          row = k;
-          col = 3 * k - i;
-        } else {
-          row = 4 * k - i;
-          col = 0;
-        }
+        const pos = layout.positions[i];
+        const col = pos?.col ?? 0;
+        const row = pos?.row ?? 0;
 
         const verticalAlignment =
-          row === 0 ? 'items-start' : row < k ? 'items-center' : 'items-end';
+          row === 0 ? 'items-start' : row < layout.rows - 1 ? 'items-center' : 'items-end';
         const horizontalAlignment =
-          col === 0 ? 'justify-start' : col < k ? 'justify-center' : 'justify-end';
+          col === 0 ? 'justify-start' : col < layout.cols - 1 ? 'justify-center' : 'justify-end';
 
         // For bottom-edge previews, put loading bar above (flex-col-reverse)
-        const isBottomEdge = row === k;
+        const isBottomEdge = row === layout.rows - 1;
         const loadingPairs: FrameLoading[] | null =
           loadingsVisible && frameLoadings && i < frameLoadings.length ? frameLoadings[i]! : null;
         const hasLoadingPills = loadingPairs !== null && loadingPairs.length >= 2;
@@ -234,8 +228,16 @@ export const Gallery = ({
                   <span
                     className={cn(
                       'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
-                      row === 0 ? 'top-0.5' : row === k ? 'bottom-0.5' : 'top-1/2 -translate-y-1/2',
-                      col === 0 ? 'left-1' : col === k ? 'right-1' : 'left-1/2 -translate-x-1/2',
+                      row === 0
+                        ? 'top-0.5'
+                        : row === layout.rows - 1
+                          ? 'bottom-0.5'
+                          : 'top-1/2 -translate-y-1/2',
+                      col === 0
+                        ? 'left-1'
+                        : col === layout.cols - 1
+                          ? 'right-1'
+                          : 'left-1/2 -translate-x-1/2',
                       i === selectedKeyframe || i === currentKeyframe
                         ? 'opacity-100'
                         : 'opacity-40 group-hover:opacity-100',

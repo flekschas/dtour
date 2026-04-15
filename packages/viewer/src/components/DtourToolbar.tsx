@@ -667,7 +667,7 @@ const ColumnRow = ({
 // Preview step slider — generic discrete slider with local drag state
 // ---------------------------------------------------------------------------
 
-const PREVIEW_COUNT_STEPS: (4 | 8 | 12 | 16)[] = [4, 8, 12, 16];
+const PREVIEW_COUNT_STEPS: number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];
 const SCALE_LABELS: Record<number, string> = { 1: 'L', 0.75: 'M', 0.5: 'S' };
 

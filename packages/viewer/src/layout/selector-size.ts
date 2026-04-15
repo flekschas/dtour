@@ -1,4 +1,10 @@
-import { GAP, LOADING_BAR_HEIGHT, MAX_SIZE, sizeRatio } from './gallery-positions.ts';
+import {
+  GAP,
+  LOADING_BAR_HEIGHT,
+  MAX_SIZE,
+  computeLayout,
+  sizeRatio,
+} from './gallery-positions.ts';
 
 const MIN_SIZE = 80;
 
@@ -11,7 +17,7 @@ const RING_RATIO = 0.4;
 
 /**
  * Compute the largest selector diameter (px) whose visible ring does
- * not overlap any preview in the gallery perimeter layout.
+ * not overlap any preview in the gallery layout.
  *
  * For every preview bounding-box we compute the Euclidean distance from
  * the container centre to the nearest point on that box.  The container
@@ -36,8 +42,7 @@ export function computeSelectorSize(
     return Math.max(MIN_SIZE, Math.min(containerWidth, containerHeight));
   }
 
-  const k = Math.max(1, previewCount / 4);
-  const numTracks = k + 1;
+  const { cols, rows, positions } = computeLayout(previewCount);
   const loadingExtra = showLoadings ? LOADING_BAR_HEIGHT : 0;
 
   // Must match Gallery CSS: left-4, right-4, top/bottom = verticalInset.
@@ -49,37 +54,54 @@ export function computeSelectorSize(
   const gridW = containerWidth - 2 * gridLeft;
   const gridH = containerHeight - 2 * verticalInset;
 
-  // Track sizes (same logic as computeGallerySizes)
-  const ratios: number[] = [];
-  let ratioSum = 0;
-  for (let j = 0; j <= k; j++) {
-    const r = sizeRatio(j, k);
-    ratios.push(r);
-    ratioSum += r;
+  // Column ratios
+  const colRatios: number[] = [];
+  let colRatioSum = 0;
+  for (let c = 0; c < cols; c++) {
+    const r = sizeRatio(c, cols - 1);
+    colRatios.push(r);
+    colRatioSum += r;
   }
-  const totalLoadingHeight = numTracks * loadingExtra;
+
+  // Row ratios
+  const rowRatios: number[] = [];
+  let rowRatioSum = 0;
+  for (let r = 0; r < rows; r++) {
+    const ratio = sizeRatio(r, rows - 1);
+    rowRatios.push(ratio);
+    rowRatioSum += ratio;
+  }
+
+  const totalLoadingHeight = rows * loadingExtra;
   const effectiveHeight = gridH - totalLoadingHeight;
-  const shortSide = Math.min(gridW, effectiveHeight);
-  const availableForCells = shortSide - (numTracks - 1) * GAP;
-  const baseSize = Math.min(MAX_SIZE, availableForCells / ratioSum) * scale;
-  const trackSizes = ratios.map((r) => baseSize * r);
-  const rowTrackSizes = ratios.map((r) => baseSize * r + loadingExtra);
-  const trackTotal = trackSizes.reduce((a, b) => a + b, 0);
+
+  const baseSize =
+    Math.min(
+      MAX_SIZE,
+      (gridW - Math.max(0, cols - 1) * GAP) / colRatioSum,
+      (effectiveHeight - Math.max(0, rows - 1) * GAP) / rowRatioSum,
+    ) * scale;
+
+  const colTrackSizes = colRatios.map((r) => baseSize * r);
+  const rowTrackSizes = rowRatios.map((r) => baseSize * r + loadingExtra);
+  const colTrackTotal = colTrackSizes.reduce((a, b) => a + b, 0);
   const rowTrackTotal = rowTrackSizes.reduce((a, b) => a + b, 0);
 
   // Effective gaps: CSS justify-content/align-content: space-between
   // distributes remaining free space equally between inter-track gutters.
-  const freeX = gridW - trackTotal - (numTracks - 1) * GAP;
-  const freeY = gridH - rowTrackTotal - (numTracks - 1) * GAP;
-  const effGapX = GAP + (numTracks > 1 ? Math.max(0, freeX) / (numTracks - 1) : 0);
-  const effGapY = GAP + (numTracks > 1 ? Math.max(0, freeY) / (numTracks - 1) : 0);
+  const freeX = gridW - colTrackTotal - Math.max(0, cols - 1) * GAP;
+  const freeY = gridH - rowTrackTotal - Math.max(0, rows - 1) * GAP;
+  const effGapX = GAP + (cols > 1 ? Math.max(0, freeX) / (cols - 1) : 0);
+  const effGapY = GAP + (rows > 1 ? Math.max(0, freeY) / (rows - 1) : 0);
 
   // Track start positions relative to grid origin
   const colStarts: number[] = [0];
+  for (let c = 1; c < cols; c++) {
+    colStarts.push(colStarts[c - 1]! + colTrackSizes[c - 1]! + effGapX);
+  }
   const rowStarts: number[] = [0];
-  for (let j = 1; j <= k; j++) {
-    colStarts.push(colStarts[j - 1]! + trackSizes[j - 1]! + effGapX);
-    rowStarts.push(rowStarts[j - 1]! + rowTrackSizes[j - 1]! + effGapY);
+  for (let r = 1; r < rows; r++) {
+    rowStarts.push(rowStarts[r - 1]! + rowTrackSizes[r - 1]! + effGapY);
   }
 
   // Selector centre in the overlay-wrapper coordinate system
@@ -91,33 +113,20 @@ export function computeSelectorSize(
   let minDist = Math.min(containerWidth / 2, containerHeight / 2 - toolbarOffset);
 
   for (let i = 0; i < previewCount; i++) {
-    // Grid cell — same edge-walk order as Gallery
-    let col: number;
-    let row: number;
-    if (i < k) {
-      row = 0;
-      col = i;
-    } else if (i < 2 * k) {
-      row = i - k;
-      col = k;
-    } else if (i < 3 * k) {
-      row = k;
-      col = 3 * k - i;
-    } else {
-      row = 4 * k - i;
-      col = 0;
-    }
+    const pos = positions[i];
+    if (!pos) continue;
+    const { col, row } = pos;
 
     const cellX = gridLeft + colStarts[col]!;
     const cellY = verticalInset + rowStarts[row]!;
-    const cellW = trackSizes[col]!;
+    const cellW = colTrackSizes[col]!;
     const cellH = rowTrackSizes[row]!;
-    const size = baseSize * sizeRatio(i % k, k);
+    const size = baseSize * Math.min(colRatios[col]!, rowRatios[row]!);
 
     // Alignment within cell (matches Gallery flex alignment)
     let px: number;
     if (col === 0) px = cellX;
-    else if (col === k) px = cellX + cellW - size;
+    else if (col === cols - 1) px = cellX + cellW - size;
     else px = cellX + (cellW - size) / 2;
 
     // Vertical: the cell now includes loading bar height.
@@ -125,12 +134,12 @@ export function computeSelectorSize(
     // so the preview canvas sits at the bottom of the cell.
     let py: number;
     if (row === 0) py = cellY;
-    else if (row === k) py = cellY + cellH - size;
+    else if (row === rows - 1) py = cellY + cellH - size;
     else py = cellY + (cellH - size) / 2;
 
     // Bounding box includes loading bar
     const boxH = size + loadingExtra;
-    const boxY = row === k ? py - loadingExtra : py;
+    const boxY = row === rows - 1 ? py - loadingExtra : py;
 
     // Euclidean distance from centre to nearest point on preview rect
     const dx = Math.max(0, px - cx, cx - (px + size));
