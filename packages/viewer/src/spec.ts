@@ -176,7 +176,25 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
     }
   }
 
-  return { spec: spec as DtourSpec, colorMap, tour };
+  const result = { spec: spec as DtourSpec, colorMap, tour };
+  if (import.meta.env.DEV) {
+    console.log('[dtour] parseEmbeddedConfig:', {
+      spec,
+      colorMap: colorMap ? `${Object.keys(colorMap).length} entries` : undefined,
+      tour: tour
+        ? {
+            nDims: tour.nDims,
+            nViews: tour.nViews,
+            tourMode: tour.tourMode,
+            tourDescription: tour.tourDescription,
+            tourFrameDescription: tour.tourFrameDescription,
+            frameSummaries: tour.frameSummaries,
+            frameLoadings: tour.frameLoadings?.length ?? null,
+          }
+        : undefined,
+    });
+  }
+  return result;
 }
 
 export const DTOUR_DEFAULTS: Required<DtourSpec> = {
