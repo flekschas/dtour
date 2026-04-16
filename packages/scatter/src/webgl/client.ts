@@ -293,37 +293,34 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     return () => subscribers.delete(handler);
   };
 
-  let pendingPick:
-    | {
-        resolve: (v: {
-          pointIndex: number;
-          categoryLabelIndex?: number;
-          continuousValue?: number;
-        }) => void;
-        unsub: () => void;
-      }
-    | undefined;
+  let pendingPositions: { unsub: () => void } | undefined;
 
-  const pickPoint = (ndcX: number, ndcY: number, radiusNdc: number) => {
-    if (pendingPick) {
-      pendingPick.unsub();
-      pendingPick.resolve({ pointIndex: -1 });
-      pendingPick = undefined;
-    }
+  const getProjectedPositions = () => {
+    if (pendingPositions) pendingPositions.unsub();
+    return new Promise<Float32Array>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'projectedPositions') return;
+        unsub();
+        pendingPositions = undefined;
+        resolve(s.positions);
+      });
+      pendingPositions = { unsub };
+      sendToGpu(gpuWorker, { type: 'getProjectedPositions' });
+    });
+  };
 
+  const getPointData = (pointIndex: number) => {
     return new Promise<{
       pointIndex: number;
-      categoryLabelIndex?: number;
-      continuousValue?: number;
+      numericValues: Record<string, number>;
+      categoricalValues: Record<string, number>;
     }>((resolve) => {
       const unsub = subscribe((s: ScatterStatus) => {
-        if (s.type !== 'pickResult') return;
+        if (s.type !== 'pointData' || s.pointIndex !== pointIndex) return;
         unsub();
-        pendingPick = undefined;
         resolve(s);
       });
-      pendingPick = { resolve, unsub };
-      sendToGpu(gpuWorker, { type: 'pickPoint', ndcX, ndcY, radiusNdc });
+      sendToGpu(gpuWorker, { type: 'getPointData', pointIndex });
     });
   };
 
@@ -349,7 +346,8 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setSelectionMask,
     lassoSelect,
     clearSelection,
-    pickPoint,
+    getProjectedPositions,
+    getPointData,
     computePCA,
     startPlayback,
     stopPlayback,

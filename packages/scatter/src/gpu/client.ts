@@ -53,11 +53,12 @@ export type ScatterStatus =
     }
   | { type: 'residualPC'; residualPC: Float32Array }
   | { type: 'selectionResult'; mask: Uint32Array }
+  | { type: 'projectedPositions'; positions: Float32Array }
   | {
-      type: 'pickResult';
+      type: 'pointData';
       pointIndex: number;
-      categoryLabelIndex?: number;
-      continuousValue?: number;
+      numericValues: Record<string, number>;
+      categoricalValues: Record<string, number>;
     };
 
 export type ScatterInstance = {
@@ -131,16 +132,6 @@ export type ScatterInstance = {
   disable3d: () => void;
   /** Update the 3×3 camera rotation matrix (column-major, 9 floats). */
   set3dRotation: (matrix: Float32Array) => void;
-  /** Pick the nearest point to an NDC click position. Returns point index and color info. */
-  pickPoint: (
-    ndcX: number,
-    ndcY: number,
-    radiusNdc: number,
-  ) => Promise<{
-    pointIndex: number;
-    categoryLabelIndex?: number;
-    continuousValue?: number;
-  }>;
   /** Run a render benchmark on loaded data. Sweeps through the full tour, timing each frame. */
   benchmark: (numFrames?: number) => Promise<{
     frameTimes: Float64Array;
@@ -164,6 +155,14 @@ export type ScatterInstance = {
     jsHeapUsedBytes: number | null;
     /** GPU-worker JS heap (V8 heap of the render worker). */
     workerJsHeapUsedBytes: number | null;
+  }>;
+  /** Request projected 2D positions for building a spatial index. Returns N×2 interleaved Float32Array. */
+  getProjectedPositions: () => Promise<Float32Array>;
+  /** Get column values for a single point by index. Numeric values keyed by dim index string, categorical by column name. */
+  getPointData: (pointIndex: number) => Promise<{
+    pointIndex: number;
+    numericValues: Record<string, number>;
+    categoricalValues: Record<string, number>;
   }>;
   /** Add a preview canvas. Ownership is transferred; the worker blits rendered previews to its 2D context. */
   addPreviewCanvas: (id: number, canvas: HTMLCanvasElement) => void;
@@ -425,41 +424,6 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'set3dRotation', matrix });
   };
 
-  let pendingPick:
-    | {
-        resolve: (v: {
-          pointIndex: number;
-          categoryLabelIndex?: number;
-          continuousValue?: number;
-        }) => void;
-        unsub: () => void;
-      }
-    | undefined;
-
-  const pickPoint = (ndcX: number, ndcY: number, radiusNdc: number) => {
-    // Cancel any in-flight pick so only the latest click wins
-    if (pendingPick) {
-      pendingPick.unsub();
-      pendingPick.resolve({ pointIndex: -1 });
-      pendingPick = undefined;
-    }
-
-    return new Promise<{
-      pointIndex: number;
-      categoryLabelIndex?: number;
-      continuousValue?: number;
-    }>((resolve) => {
-      const unsub = subscribe((s: ScatterStatus) => {
-        if (s.type !== 'pickResult') return;
-        unsub();
-        pendingPick = undefined;
-        resolve(s);
-      });
-      pendingPick = { resolve, unsub };
-      sendToGpu(gpuWorker, { type: 'pickPoint', ndcX, ndcY, radiusNdc });
-    });
-  };
-
   const benchmark = (numFrames = 120) => {
     return new Promise<{
       frameTimes: Float64Array;
@@ -514,6 +478,38 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     return () => subscribers.delete(handler);
   };
 
+  // Latest-wins: only one getProjectedPositions request can be in-flight at a time
+  let pendingPositions: { unsub: () => void } | undefined;
+
+  const getProjectedPositions = () => {
+    if (pendingPositions) pendingPositions.unsub();
+    return new Promise<Float32Array>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'projectedPositions') return;
+        unsub();
+        pendingPositions = undefined;
+        resolve(s.positions);
+      });
+      pendingPositions = { unsub };
+      sendToGpu(gpuWorker, { type: 'getProjectedPositions' });
+    });
+  };
+
+  const getPointData = (pointIndex: number) => {
+    return new Promise<{
+      pointIndex: number;
+      numericValues: Record<string, number>;
+      categoricalValues: Record<string, number>;
+    }>((resolve) => {
+      const unsub = subscribe((s: ScatterStatus) => {
+        if (s.type !== 'pointData' || s.pointIndex !== pointIndex) return;
+        unsub();
+        resolve(s);
+      });
+      sendToGpu(gpuWorker, { type: 'getPointData', pointIndex });
+    });
+  };
+
   const addPreviewCanvas = (id: number, canvas: HTMLCanvasElement): void => {
     const offscreen = canvas.transferControlToOffscreen();
     sendToGpu(gpuWorker, { type: 'addPreviewCanvas', id, canvas: offscreen }, [offscreen]);
@@ -549,7 +545,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setSelectionMask,
     lassoSelect,
     clearSelection,
-    pickPoint,
+    getProjectedPositions,
+    getPointData,
     computePCA,
     startPlayback,
     stopPlayback,

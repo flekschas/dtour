@@ -84,13 +84,15 @@ export type MainToGpu =
   | { type: 'benchmark'; numFrames: number }
   | { type: 'getMetrics' }
   | {
-      // Pick the nearest point to an NDC click position within a radius.
-      // GPU worker projects all points, finds the nearest, and optionally
-      // reads back category index or continuous value for the hit point.
-      type: 'pickPoint';
-      ndcX: number;
-      ndcY: number;
-      radiusNdc: number;
+      // Read back all projected 2D positions (N×2 interleaved Float32Array)
+      // for building a client-side spatial index (kdbush).
+      type: 'getProjectedPositions';
+    }
+  | {
+      // Read column values for a single point by index.
+      // Returns numeric and categorical values for all columns.
+      type: 'getPointData';
+      pointIndex: number;
     };
 
 // GPU Worker → Main thread
@@ -124,8 +126,15 @@ export type GpuToMain =
   | { type: 'residualPC'; residualPC: Float32Array }
   | { type: 'selectionResult'; mask: Uint32Array }
   | {
-      type: 'pickResult';
+      // Projected 2D positions for spatial indexing.
+      // Interleaved Float32Array: [x0, y0, x1, y1, ...], length = numPoints * 2.
+      type: 'projectedPositions';
+      positions: Float32Array;
+    }
+  | {
+      type: 'pointData';
       pointIndex: number;
-      categoryLabelIndex?: number;
-      continuousValue?: number;
+      /** Column name → value. Numeric columns are numbers, categorical columns are label index (u32). */
+      numericValues: Record<string, number>;
+      categoricalValues: Record<string, number>;
     };

@@ -81,7 +81,7 @@ export const createProjectionResources = (
   const dataBuffer = device.createBuffer({
     label: 'nd-data',
     size: numPoints * numDims * 4,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
 
   const normParamsBuffer = device.createBuffer({

@@ -2,6 +2,17 @@
 
 ## v0.3.0
 
+### viewer
+- feat: hover tooltip with lazy point data loading
+- feat: kdbush spatial index for sub-millisecond point picking (replaces O(n) GPU scan)
+- perf: click-to-select is now synchronous on main thread (no worker round-trip)
+
+### scatter
+- feat: `getProjectedPositions()` API for client-side spatial indexing
+- feat: `getPointData(index)` API for lazy column value readback
+- refactor: remove `pickPoint` in favor of client-side kdbush spatial index
+- fix: add `COPY_SRC` to data and categorical GPU buffers for readback
+
 ### python
 - feat: spectrum tour with configurable parameters
 - feat: bidirectional point selection sync via `selected_indices` traitlet

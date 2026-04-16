@@ -21,6 +21,7 @@ import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
+import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
   IDENTITY_QUAT,
@@ -314,6 +315,9 @@ export const DtourViewer = ({
 
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatter);
+
+  // Spatial index for hover picking
+  const spatialIndexRef = useSpatialIndex(scatter);
 
   const isToolbarVisible = toolbarHeight > 0 && viewMode !== 'grand';
   const effectiveToolbarHeight = isToolbarVisible ? toolbarHeight : 0;
@@ -867,6 +871,9 @@ export const DtourViewer = ({
   }
 
   const overlayHeight = containerSize.height - overlayOffsetY;
+  // Compute camera inset values for hover coordinate transform
+  const cameraInsetOffsetY = containerSize.height > 0 ? -overlayOffsetY / containerSize.height : 0;
+  const cameraInsetZoom = containerSize.height > 0 ? 1 - overlayOffsetY / containerSize.height : 1;
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-dtour-bg">
@@ -890,6 +897,9 @@ export const DtourViewer = ({
             width={containerSize.width}
             height={overlayHeight}
             offsetY={overlayOffsetY}
+            spatialIndex={spatialIndexRef}
+            insetOffsetY={cameraInsetOffsetY}
+            insetZoom={cameraInsetZoom}
           />
         )}
 
