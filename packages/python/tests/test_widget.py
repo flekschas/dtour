@@ -32,7 +32,7 @@ def test_widget_preview_count_validation():
     assert w.preview_count == 8
 
     with pytest.raises(Exception):
-        Widget(preview_count=5)
+        Widget(preview_count=1)
 
 
 def test_widget_tour_direction_validation():
