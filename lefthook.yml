@@ -7,3 +7,9 @@ pre-commit:
     ruff:
       glob: "*.py"
       run: uvx ruff check --config packages/python/pyproject.toml {staged_files}
+
+pre-push:
+  parallel: true
+  commands:
+    pytest:
+      run: cd packages/python && uv run pytest
