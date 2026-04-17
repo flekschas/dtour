@@ -2,7 +2,17 @@
 
 ## v0.3.0
 
+### python
+- feat: `sequential_tour` for warm-started DR sequences (UMAP, t-SNE, pymde, or custom callables)
+- feat: `aligned_umap_tour` using UMAP's joint AlignedUMAP optimisation
+- feat: `EmbeddingStep` dataclass for per-frame method/kwarg overrides
+- refactor: `spectrum_tour` now delegates to `sequential_tour`
+
+### scatter
+- feat: 2D colormap encoding (two numeric columns mapped to procedural 2D colormaps)
+
 ### viewer
+- feat: 2D colormap mode with 1D/2D toggle and colormap picker
 - feat: hover tooltip with lazy point data loading
 - feat: kdbush spatial index for sub-millisecond point picking (replaces O(n) GPU scan)
 - perf: click-to-select is now synchronous on main thread (no worker round-trip)
