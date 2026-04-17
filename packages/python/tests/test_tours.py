@@ -4,13 +4,16 @@ import numpy as np
 import pytest
 from dtour.data import _to_ipc_bytes, from_numpy, from_pandas
 from dtour.tours import (
+    EmbeddingStep,
     TourResult,
     _build_knn_affinity,
     _compute_feature_loadings,
     _nystroem_extend,
     _procrustes_align,
+    aligned_umap_tour,
     le_tour,
     little_tour,
+    sequential_tour,
     spectrum_tour,
 )
 
@@ -735,6 +738,270 @@ def test_subsample_warns_on_ignored_params():
     msg = str(oos_warnings[0].message)
     assert "mutual_knn" in msg
     assert "normalize_alpha" in msg
+
+
+# ── sequential_tour ─────────────────────────────────────────────────────
+
+
+def test_sequential_tour_basic_callable():
+    """sequential_tour with a callable method should produce valid TourResult."""
+    rng = np.random.default_rng(42)
+    n, p = 100, 5
+    datasets = [rng.standard_normal((n, p)).astype(np.float32) for _ in range(3)]
+
+    def fake_embed(data, init, **kwargs):
+        # Simple PCA-2D as a stand-in for a real DR method
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(data).astype(np.float32)
+
+    result = sequential_tour(
+        data=datasets,
+        method=fake_embed,
+        frame_summaries=["a", "b", "c"],
+    )
+    assert isinstance(result, TourResult)
+    assert result.n_views == 3
+    assert result.n_dims == 6  # 2 * 3
+    assert result.embedding.shape == (n, 6)
+    assert result.tour_mode == "parameter"
+    assert result.frame_summaries == ["a", "b", "c"]
+    for basis in result.views:
+        assert basis.shape == (6, 2)
+        assert basis.dtype == np.float32
+
+
+def test_sequential_tour_per_step_override():
+    """Per-step EmbeddingStep should override the shared method."""
+    rng = np.random.default_rng(42)
+    n = 80
+    data = [rng.standard_normal((n, 5)).astype(np.float32) for _ in range(2)]
+
+    call_log = []
+
+    def method_a(d, init, **kwargs):
+        call_log.append("a")
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(d).astype(np.float32)
+
+    def method_b(d, init, **kwargs):
+        call_log.append("b")
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(d).astype(np.float32)
+
+    result = sequential_tour(
+        data=data,
+        method=method_a,
+        steps=[
+            EmbeddingStep(),  # inherits method_a
+            EmbeddingStep(method=method_b),  # overrides to method_b
+        ],
+    )
+    assert call_log == ["a", "b"]
+    assert result.n_views == 2
+
+
+def test_sequential_tour_warm_start_passed():
+    """The callable should receive prev_embedding from previous step."""
+    rng = np.random.default_rng(42)
+    n = 50
+    data = [rng.standard_normal((n, 4)).astype(np.float32) for _ in range(3)]
+
+    inits_received = []
+
+    def tracking_embed(d, init, **kwargs):
+        inits_received.append(init)
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(d).astype(np.float32)
+
+    sequential_tour(data=data, method=tracking_embed)
+    assert inits_received[0] is None  # first frame gets no init
+    assert inits_received[1] is not None  # subsequent frames get prev
+    assert inits_received[2] is not None
+    assert inits_received[1].shape == (n, 2)
+
+
+def test_sequential_tour_init_passed_to_first_frame():
+    """Explicit init should be passed as prev to the first frame."""
+    rng = np.random.default_rng(42)
+    n = 50
+    data = [rng.standard_normal((n, 4)).astype(np.float32) for _ in range(2)]
+    custom_init = rng.standard_normal((n, 2)).astype(np.float32)
+
+    inits_received = []
+
+    def tracking_embed(d, init, **kwargs):
+        inits_received.append(init)
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(d).astype(np.float32)
+
+    sequential_tour(data=data, method=tracking_embed, init=custom_init)
+    np.testing.assert_array_equal(inits_received[0], custom_init)
+
+
+def test_sequential_tour_too_few_frames():
+    """Fewer than 2 frames should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="at least 2"):
+        sequential_tour(data=[X], method=lambda d, i, **kw: d[:, :2])
+
+
+def test_sequential_tour_mismatched_rows():
+    """Datasets with different row counts should raise ValueError."""
+    rng = np.random.default_rng(42)
+    d1 = rng.standard_normal((50, 4)).astype(np.float32)
+    d2 = rng.standard_normal((60, 4)).astype(np.float32)
+    with pytest.raises(ValueError, match="same number of rows"):
+        sequential_tour(data=[d1, d2], method=lambda d, i, **kw: d[:, :2])
+
+
+def test_sequential_tour_steps_length_mismatch():
+    """steps length != data length should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="steps length"):
+        sequential_tour(
+            data=[X, X],
+            method=lambda d, i, **kw: d[:, :2],
+            steps=[EmbeddingStep()],
+        )
+
+
+def test_sequential_tour_unknown_method():
+    """Unknown string method should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="Unknown method"):
+        sequential_tour(data=[X, X], method="bogus")  # type: ignore[arg-type]
+
+
+def test_sequential_tour_procrustes_alignment():
+    """Embeddings should be Procrustes-aligned (rotation removed)."""
+    rng = np.random.default_rng(42)
+    n = 100
+    base = rng.standard_normal((n, 2)).astype(np.float32)
+    # Second "embedding" is a 90-degree rotation of the first
+    R = np.array([[0, -1], [1, 0]], dtype=np.float32)
+    rotated = (base - base.mean(0)) @ R.T + base.mean(0)
+
+    call_count = [0]
+
+    def return_precomputed(d, init, **kwargs):
+        result = base if call_count[0] == 0 else rotated
+        call_count[0] += 1
+        return result
+
+    data = [rng.standard_normal((n, 4)).astype(np.float32)] * 2
+    result = sequential_tour(data=data, method=return_precomputed)
+
+    # After Procrustes, frames should be close
+    f0 = result.embedding[:, :2]
+    f1 = result.embedding[:, 2:]
+    np.testing.assert_allclose(f0, f1, atol=1e-4)
+
+
+def test_sequential_tour_kwargs_passed_to_callable():
+    """method_kwargs and per-step kwargs should be forwarded to callables."""
+    rng = np.random.default_rng(42)
+    n = 50
+    data = [rng.standard_normal((n, 4)).astype(np.float32) for _ in range(2)]
+
+    received_kwargs: list[dict] = []
+
+    def spy_embed(d, init, **kwargs):
+        received_kwargs.append(kwargs)
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(d).astype(np.float32)
+
+    sequential_tour(
+        data=data,
+        method=spy_embed,
+        method_kwargs={"alpha": 0.5},
+        steps=[
+            EmbeddingStep(),  # inherits method_kwargs
+            EmbeddingStep(kwargs={"alpha": 0.9, "beta": 1}),  # overrides
+        ],
+    )
+    assert received_kwargs[0] == {"alpha": 0.5}
+    assert received_kwargs[1] == {"alpha": 0.9, "beta": 1}
+
+
+# ── aligned_umap_tour ───────────────────────────────────────────────────
+
+
+def test_aligned_umap_tour_basic():
+    """aligned_umap_tour with identity relations should produce valid result."""
+    rng = np.random.default_rng(42)
+    n, p = 80, 8
+    slices = [rng.standard_normal((n, p)).astype(np.float32) for _ in range(3)]
+
+    result = aligned_umap_tour(
+        data=slices,
+        umap_kwargs={"n_neighbors": 10, "random_state": 42},
+        frame_summaries=["t0", "t1", "t2"],
+    )
+    assert isinstance(result, TourResult)
+    assert result.n_views == 3
+    assert result.n_dims == 6
+    assert result.embedding.shape == (n, 6)
+    assert result.tour_mode == "parameter"
+    assert result.frame_summaries == ["t0", "t1", "t2"]
+    for basis in result.views:
+        assert basis.shape == (6, 2)
+        assert basis.dtype == np.float32
+
+
+def test_aligned_umap_tour_explicit_relations():
+    """aligned_umap_tour with explicit relations should work."""
+    rng = np.random.default_rng(42)
+    n = 60
+    slices = [rng.standard_normal((n, 5)).astype(np.float32) for _ in range(2)]
+    relations = [{i: i for i in range(n)}]
+
+    result = aligned_umap_tour(
+        data=slices,
+        relations=relations,
+        umap_kwargs={"n_neighbors": 10, "random_state": 42},
+    )
+    assert result.n_views == 2
+    assert result.embedding.shape == (n, 4)
+
+
+def test_aligned_umap_tour_too_few_datasets():
+    """Fewer than 2 datasets should raise ValueError."""
+    X = make_data(n=50, p=5)
+    with pytest.raises(ValueError, match="at least 2"):
+        aligned_umap_tour(data=[X])
+
+
+def test_aligned_umap_tour_mismatched_rows_no_relations():
+    """Mismatched row counts without relations should raise ValueError."""
+    rng = np.random.default_rng(42)
+    d1 = rng.standard_normal((50, 5)).astype(np.float32)
+    d2 = rng.standard_normal((60, 5)).astype(np.float32)
+    with pytest.raises(ValueError, match="same number of rows"):
+        aligned_umap_tour(data=[d1, d2])
+
+
+def test_aligned_umap_tour_mismatched_rows_with_relations():
+    """Mismatched row counts even with explicit relations should raise."""
+    rng = np.random.default_rng(42)
+    d1 = rng.standard_normal((50, 5)).astype(np.float32)
+    d2 = rng.standard_normal((40, 5)).astype(np.float32)
+    relations = [{i: i for i in range(40)}]
+    with pytest.raises(ValueError, match="same number of rows"):
+        aligned_umap_tour(data=[d1, d2], relations=relations)
+
+
+def test_aligned_umap_tour_wrong_relations_length():
+    """relations length != n_frames - 1 should raise ValueError."""
+    rng = np.random.default_rng(42)
+    slices = [rng.standard_normal((30, 5)).astype(np.float32) for _ in range(3)]
+    with pytest.raises(ValueError, match="relations must have 2"):
+        aligned_umap_tour(data=slices, relations=[{0: 0}])
 
 
 # ── spectrum_tour (attraction-repulsion parameter tour) ─────────────────

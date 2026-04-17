@@ -1,11 +1,12 @@
-"""Tour computation helpers: little_tour, umap_little_tour, le_tour."""
+"""Tour computation helpers: little_tour, umap_little_tour, le_tour, sequential_tour."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -140,6 +141,30 @@ class TourResult:
             tour_description=tour_description,
             tour_frame_description=tour_frame_description,
         )
+
+
+@dataclass
+class EmbeddingStep:
+    """Per-step configuration for :func:`sequential_tour`.
+
+    Overrides the top-level ``method`` and ``method_kwargs`` for a single
+    frame.  Only the fields you set take effect; ``None`` fields inherit
+    the shared defaults.
+
+    Attributes:
+        method: DR method for this step (``"umap"``, ``"tsne"``,
+            ``"pymde"``, or a callable ``(data, prev, **kwargs) -> (n, 2)``).
+            ``None`` inherits from the top-level ``method`` parameter.
+        kwargs: Extra keyword arguments passed to the DR method for this
+            step.  ``None`` inherits from the top-level ``method_kwargs``.
+    """
+
+    method: (
+        Literal["umap", "tsne", "pymde"]
+        | Callable[..., np.ndarray]
+        | None
+    ) = None
+    kwargs: dict | None = None
 
 
 def _extract_feature_names(
@@ -1216,116 +1241,312 @@ def _procrustes_align(target: np.ndarray, source: np.ndarray) -> np.ndarray:
     return (s_c @ R.T) + mu_t
 
 
-def _spectrum_tsne(
+# ── Method handlers for sequential_tour ──────────────────────────────
+
+
+def _seq_embed_umap(
     arr: np.ndarray,
-    rhos: list[float],
-    n_neighbors: int,
-    init_coords: np.ndarray | str,
-    random_state: int | None,
-) -> list[np.ndarray]:
-    """Compute sequentially-initialized t-SNE embeddings at each rho."""
+    prev: np.ndarray | None,
+    kwargs: dict,
+) -> np.ndarray:
+    """Run UMAP with optional warm-start from *prev*."""
+    import umap
+
+    kw = {"n_components": 2, **kwargs}
+    if prev is not None:
+        kw.setdefault("init", prev.astype(np.float32))
+    return np.asarray(
+        umap.UMAP(**kw).fit_transform(arr), dtype=np.float32
+    )
+
+
+def _seq_embed_tsne(
+    arr: np.ndarray,
+    prev: np.ndarray | None,
+    kwargs: dict,
+) -> np.ndarray:
+    """Run openTSNE with optional warm-start from *prev*."""
     from openTSNE import TSNE
 
-    embeddings: list[np.ndarray] = []
-    current_init = init_coords
-    for rho in rhos:
-        tsne = TSNE(
-            n_components=2,
-            perplexity=n_neighbors,
-            exaggeration=rho,
-            initialization=current_init,
-            random_state=random_state,
-        )
-        emb = np.asarray(tsne.fit(arr), dtype=np.float32)
-        embeddings.append(emb)
-        current_init = emb.astype(np.float64)
-    return embeddings
+    kw = {"n_components": 2, **kwargs}
+    if prev is not None:
+        kw.setdefault("initialization", prev.astype(np.float64))
+    return np.asarray(TSNE(**kw).fit(arr), dtype=np.float32)
 
 
-def _spectrum_pymde(
+def _seq_embed_pymde(
     arr: np.ndarray,
-    rhos: list[float],
-    n_neighbors: int,
-    init_coords: np.ndarray | str,
-    regularization: float,
-    random_state: int | None,
-) -> list[np.ndarray]:
-    """Compute PyMDE embeddings with optional concave anchor regularization.
+    prev: np.ndarray | None,
+    kwargs: dict,
+) -> np.ndarray:
+    """Run PyMDE with optional warm-start and anchor regularization.
 
-    For each rho, ``repulsive_fraction`` is set to ``1/rho`` so that higher
-    rho means stronger relative attraction (matching the t-SNE exaggeration
-    semantics).  When *regularization* > 0, a concave (log) penalty anchors
-    each point to its position in the previous frame.  This suppresses
-    small jitter while allowing large, structurally meaningful movements.
+    Supports an extra ``regularization`` key in *kwargs*: a concave
+    (log) penalty that anchors each point to its position in the
+    previous frame, suppressing jitter while allowing large structural
+    movements.
     """
     import pymde
     import torch
 
-    if random_state is not None:
-        torch.manual_seed(random_state)
+    kw = {**kwargs}
+    regularization = kw.pop("regularization", 0.0)
+
+    # Handle init: prev embedding or explicit init array
+    init_arr = kw.pop("init", None)
+    if prev is not None:
+        init_tensor = torch.tensor(prev.astype(np.float32))
+    elif init_arr is not None:
+        init_tensor = torch.tensor(
+            np.asarray(init_arr, dtype=np.float32)
+        )
+    elif isinstance(kw.get("initialization"), str) and kw["initialization"] == "pca":
+        kw.pop("initialization", None)
+        pca_init = PCA(n_components=2).fit_transform(arr).astype(np.float32)
+        init_tensor = torch.tensor(pca_init)
+    else:
+        kw.pop("initialization", None)
+        init_tensor = None
 
     data = torch.tensor(arr, dtype=torch.float32)
+    mde = pymde.preserve_neighbors(data, embedding_dim=2, **kw)
 
-    # Resolve initial coordinates — pymde needs a tensor, not a string
-    if isinstance(init_coords, str):
-        # init="pca": compute PCA(2) ourselves since pymde doesn't accept "pca"
-        from sklearn.decomposition import PCA
+    # Concave anchor regularization: log(1 + displacement)
+    if regularization > 0 and prev is not None:
+        anchor = torch.tensor(prev.astype(np.float32))
+        lam = regularization
+        _orig_ad = mde.average_distortion
 
-        pca_init = PCA(n_components=2).fit_transform(arr).astype(np.float32)
-        first_init = torch.tensor(pca_init, dtype=torch.float32)
-    else:
-        first_init = torch.tensor(init_coords, dtype=torch.float32)
+        def _make_reg(orig, anc, strength, m):
+            def _reg_ad(X=None):
+                base = orig(X)
+                emb_x = X if X is not None else m.X
+                dist = torch.sqrt(
+                    torch.sum((emb_x - anc) ** 2, dim=1) + 1e-8
+                )
+                return base + strength * torch.mean(torch.log1p(dist))
 
-    embeddings: list[np.ndarray] = []
-    prev_emb: torch.Tensor | None = None
+            return _reg_ad
 
-    for rho in rhos:
-        # Higher rho = more attraction. Map to pymde's repulsive_fraction:
-        # rho=100 -> repulsive_fraction ~0.01 (almost no repulsion)
-        # rho=1   -> repulsive_fraction=1.0 (balanced)
-        # rho=0.5 -> repulsive_fraction=2.0 (strong repulsion)
-        repulsive_frac = 1.0 / rho
+        mde.average_distortion = _make_reg(_orig_ad, anchor, lam, mde)
 
-        mde = pymde.preserve_neighbors(
-            data,
-            embedding_dim=2,
-            n_neighbors=n_neighbors,
-            repulsive_fraction=repulsive_frac,
+    emb_t = mde.embed(X=init_tensor)
+    return emb_t.detach().numpy().astype(np.float32)
+
+
+_SEQ_METHOD_HANDLERS: dict[str, Callable] = {
+    "umap": _seq_embed_umap,
+    "tsne": _seq_embed_tsne,
+    "pymde": _seq_embed_pymde,
+}
+
+
+def _pack_embedding_frames(
+    embeddings: list[np.ndarray],
+    *,
+    feature_names: list[str] | None = None,
+    frame_summaries: list[str] | None = None,
+    tour_description: str | None = None,
+    tour_frame_description: str | None = None,
+) -> TourResult:
+    """Procrustes-align a list of 2D embeddings and pack into a TourResult.
+
+    Shared post-processing for :func:`sequential_tour` and
+    :func:`aligned_umap_tour`: aligns successive frames, stacks into
+    an ``n x (2K)`` matrix, and builds selector basis matrices.
+
+    All embeddings must have the same number of rows and exactly 2
+    columns.
+    """
+    n_frames = len(embeddings)
+
+    aligned = [np.asarray(embeddings[0], dtype=np.float32)]
+    for i in range(1, n_frames):
+        aligned.append(
+            _procrustes_align(
+                aligned[i - 1],
+                np.asarray(embeddings[i], dtype=np.float32),
+            ).astype(np.float32)
         )
 
-        # Concave (log) regularization: penalize deviation from previous frame.
-        # log(1 + |x|) has a steep gradient near zero (suppresses jitter) but
-        # saturates for large displacements (lets structural changes through).
-        if regularization > 0 and prev_emb is not None:
-            anchor = prev_emb.clone().detach()
-            lam = regularization
-            _orig_ad = mde.average_distortion
+    stacked = np.hstack(aligned)  # (n, 2K)
+    n_dims = 2 * n_frames
 
-            def _make_reg(orig, anc, strength, m):
-                def _reg_ad(X=None):
-                    base = orig(X)
-                    emb_x = X if X is not None else m.X
-                    dist = torch.sqrt(torch.sum((emb_x - anc) ** 2, dim=1) + 1e-8)
-                    return base + strength * torch.mean(torch.log1p(dist))
+    views: list[np.ndarray] = []
+    for i in range(n_frames):
+        basis = np.zeros((n_dims, 2), dtype=np.float32)
+        basis[2 * i, 0] = 1.0
+        basis[2 * i + 1, 1] = 1.0
+        views.append(basis)
 
-                return _reg_ad
+    result = TourResult(
+        views=views,
+        n_views=n_frames,
+        n_dims=n_dims,
+    )
+    result.embedding = stacked
+    result.feature_names = feature_names
+    result.frame_summaries = frame_summaries
+    result.tour_mode = "parameter"
+    result.tour_description = tour_description
+    result.tour_frame_description = tour_frame_description
 
-            mde.average_distortion = _make_reg(_orig_ad, anchor, lam, mde)
+    return result
 
-        # Initialize from previous embedding (sequential) or from init_coords
-        if prev_emb is not None:
-            x_init = prev_emb.clone()
-        elif isinstance(first_init, torch.Tensor):
-            x_init = first_init.clone()
+
+# ── Sequential tour ─────────────────────────────────────────────────
+
+
+def sequential_tour(
+    data: list[np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table],
+    method: (
+        Literal["umap", "tsne", "pymde"]
+        | Callable[..., np.ndarray]
+    ) = "umap",
+    method_kwargs: dict | None = None,
+    *,
+    steps: list[EmbeddingStep] | None = None,
+    init: np.ndarray | None = None,
+    feature_names: list[str] | None = None,
+    frame_summaries: list[str] | None = None,
+    tour_description: str | None = None,
+    tour_frame_description: str | None = None,
+    random_state: int | None = None,
+) -> TourResult:
+    """Compute a sequential embedding tour.
+
+    Produces a sequence of 2D embeddings — one per frame — where each
+    embedding is warm-started from the previous one, then Procrustes-aligned
+    and stacked into a :class:`TourResult`.
+
+    This is the general-purpose building block for tours that sweep over
+    different datasets (e.g. time points) or hyperparameters (e.g.
+    attraction-repulsion spectrum).  :func:`spectrum_tour` is a thin
+    wrapper around this function.
+
+    Args:
+        data: One dataset per frame.  Each element is converted to a
+            float32 numpy array via :func:`_to_float32`.  All datasets
+            must have the same number of rows (same entities across
+            frames).
+        method: DR method shared across all frames.  One of ``"umap"``,
+            ``"tsne"``, ``"pymde"``, or a callable
+            ``(data, prev_embedding | None, **kwargs) -> (n, 2) ndarray``.
+            Callables receive ``method_kwargs`` (merged with per-step
+            overrides) as keyword arguments.
+        method_kwargs: Keyword arguments passed to every frame's DR call
+            (both built-in methods and callables).  Per-step overrides
+            can be provided via *steps*.
+        steps: Optional per-step overrides.  When provided, must have the
+            same length as *data*.  Each :class:`EmbeddingStep` can
+            override the ``method`` and/or ``kwargs`` for that frame.
+        init: Initial coordinates for the first frame, shape ``(n, 2)``.
+            When ``None``, the first frame starts from the method's
+            default initialization.
+        feature_names: Original feature column names for the result.
+        frame_summaries: Per-frame text descriptions.
+        tour_description: Human-readable tour description.
+        tour_frame_description: Template string for per-frame tooltips.
+        random_state: Seed for reproducibility.  Passed to PyMDE's
+            ``torch.manual_seed`` when the pymde method is used.
+
+    Returns:
+        A :class:`TourResult` with ``tour_mode="parameter"``.
+        The embedding is an ``n x (2K)`` matrix of stacked aligned
+        2D embeddings.  Basis matrices select each ``(x, y)`` pair.
+    """
+    if not data:
+        msg = "data must contain at least one dataset."
+        raise ValueError(msg)
+
+    n_frames = len(data)
+    if n_frames < 2:
+        msg = "sequential_tour requires at least 2 frames."
+        raise ValueError(msg)
+
+    if steps is not None and len(steps) != n_frames:
+        msg = (
+            f"steps length ({len(steps)}) must match "
+            f"data length ({n_frames})."
+        )
+        raise ValueError(msg)
+
+    # Seed torch if any step uses pymde
+    if random_state is not None:
+        _methods_used = set()
+        if isinstance(method, str):
+            _methods_used.add(method)
+        if steps:
+            for s in steps:
+                if isinstance(s.method, str):
+                    _methods_used.add(s.method)
+        if "pymde" in _methods_used:
+            import torch
+
+            torch.manual_seed(random_state)
+
+    shared_kwargs = method_kwargs or {}
+
+    # Convert all datasets upfront and validate row counts
+    arrays = [_to_float32(d) for d in data]
+    n_points = arrays[0].shape[0]
+    for i, arr in enumerate(arrays):
+        if arr.shape[0] != n_points:
+            msg = (
+                f"All datasets must have the same number of rows. "
+                f"data[0] has {n_points}, data[{i}] has {arr.shape[0]}."
+            )
+            raise ValueError(msg)
+
+    # ── Sequential embedding loop ────────────────────────────────────
+    embeddings: list[np.ndarray] = []
+    prev: np.ndarray | None = init
+
+    for i, arr in enumerate(arrays):
+        # Resolve method and kwargs for this step
+        step = steps[i] if steps is not None else None
+        step_method = (step.method if step and step.method is not None else method)
+        step_kwargs = (
+            {**shared_kwargs, **(step.kwargs or {})}
+            if step and step.kwargs is not None
+            else dict(shared_kwargs)
+        )
+
+        if callable(step_method) and not isinstance(step_method, str):
+            emb = np.asarray(
+                step_method(arr, prev, **step_kwargs), dtype=np.float32
+            )
+        elif isinstance(step_method, str):
+            handler = _SEQ_METHOD_HANDLERS.get(step_method)
+            if handler is None:
+                supported = ", ".join(sorted(_SEQ_METHOD_HANDLERS))
+                msg = (
+                    f"Unknown method {step_method!r}. "
+                    f"Supported: {supported}, or a callable."
+                )
+                raise ValueError(msg)
+            emb = handler(arr, prev, step_kwargs)
         else:
-            x_init = None  # let pymde pick (quadratic init)
+            msg = f"method must be a string or callable, got {type(step_method)}"
+            raise TypeError(msg)
 
-        emb_t = mde.embed(X=x_init)
-        emb_np = emb_t.detach().numpy().astype(np.float32)
-        embeddings.append(emb_np)
-        prev_emb = emb_t.detach()
+        if emb.shape != (n_points, 2):
+            msg = (
+                f"Embedding at step {i} has shape {emb.shape}, "
+                f"expected ({n_points}, 2)."
+            )
+            raise ValueError(msg)
 
-    return embeddings
+        embeddings.append(emb)
+        prev = emb
+
+    return _pack_embedding_frames(
+        embeddings,
+        feature_names=feature_names,
+        frame_summaries=frame_summaries,
+        tour_description=tour_description,
+        tour_frame_description=tour_frame_description,
+    )
 
 
 def spectrum_tour(
@@ -1334,7 +1555,7 @@ def spectrum_tour(
     rhos: list[float] | None = None,
     n_neighbors: int = 15,
     init: str = "le",
-    method: str = "tsne",
+    method: Literal["tsne", "pymde"] = "tsne",
     regularization: float = 0.0,
     feature_names: list[str] | None = None,
     random_state: int | None = None,
@@ -1349,6 +1570,9 @@ def spectrum_tour(
     high rho (pure attraction, LE-like) through to low rho (strong
     repulsion, t-SNE or beyond).
 
+    Internally delegates to :func:`sequential_tour` for warm-start
+    orchestration, Procrustes alignment, and result packaging.
+
     Args:
         X: Input data, shape ``(n_samples, n_features)``.
         n_frames: Number of frames (i.e. rho values).  Ignored when
@@ -1362,13 +1586,13 @@ def spectrum_tour(
             default) or ``"pca"``.
         method: Embedding engine.  ``"tsne"`` (default) uses openTSNE
             with sequential initialization.  ``"pymde"`` uses PyMDE
-            with optional spring regularization.
-        regularization: Concave anchor penalty strength for ``method="pymde"``.
-            ``0`` means no regularization (points move freely).
-            Higher values penalize deviation from the previous frame using
-            ``log(1 + displacement)``, which suppresses jitter while allowing
-            large structural movements.  Typical range: ``0.5`` -- ``5.0``.
-            Ignored for ``"tsne"``.
+            with optional anchor regularization.
+        regularization: Concave anchor penalty strength for
+            ``method="pymde"``.  ``0`` means no regularization (points
+            move freely).  Higher values penalize deviation from the
+            previous frame using ``log(1 + displacement)``, which
+            suppresses jitter while allowing large structural movements.
+            Typical range: ``0.5`` -- ``5.0``.  Ignored for ``"tsne"``.
         feature_names: Original feature column names.
         random_state: Random seed for reproducibility.
 
@@ -1401,56 +1625,51 @@ def spectrum_tour(
         msg = f"All rho values must be positive; got {rhos}"
         raise ValueError(msg)
 
+    # ── Validate method before computing init ────────────────────────
+    if method not in ("tsne", "pymde"):
+        msg = f"method must be 'tsne' or 'pymde'; got {method!r}"
+        raise ValueError(msg)
+
     # ── Initialization ────────────────────────────────────────────────
     if init == "le":
-        init_coords = SpectralEmbedding(
+        init_coords: np.ndarray | None = SpectralEmbedding(
             n_components=2,
             n_neighbors=n_neighbors,
             affinity="nearest_neighbors",
             eigen_solver="amg",
-            **({"random_state": random_state} if random_state is not None else {}),
+            **(
+                {"random_state": random_state}
+                if random_state is not None
+                else {}
+            ),
         ).fit_transform(arr)
-        # openTSNE expects float64
-        init_coords = init_coords.astype(np.float64)
     elif init == "pca":
-        init_coords = "pca"
+        init_coords = PCA(n_components=2).fit_transform(arr)
     else:
         msg = f"init must be 'le' or 'pca'; got {init!r}"
         raise ValueError(msg)
 
-    # ── Compute embeddings at each rho (sequentially initialized) ───────
-    if method == "tsne":
-        embeddings = _spectrum_tsne(arr, rhos, n_neighbors, init_coords, random_state)
-    elif method == "pymde":
-        embeddings = _spectrum_pymde(
-            arr,
-            rhos,
-            n_neighbors,
-            init_coords,
-            regularization,
-            random_state,
-        )
-    else:
-        msg = f"method must be 'tsne' or 'pymde'; got {method!r}"
-        raise ValueError(msg)
+    # ── Build per-step kwargs ────────────────────────────────────────
+    steps: list[EmbeddingStep] = []
+    for rho in rhos:
+        if method == "tsne":
+            steps.append(EmbeddingStep(kwargs={
+                "perplexity": n_neighbors,
+                "exaggeration": rho,
+                **(
+                    {"random_state": random_state}
+                    if random_state is not None
+                    else {}
+                ),
+            }))
+        else:  # pymde
+            steps.append(EmbeddingStep(kwargs={
+                "n_neighbors": n_neighbors,
+                "repulsive_fraction": 1.0 / rho,
+                "regularization": regularization,
+            }))
 
-    # ── Lightweight Procrustes to fix residual sign flips ─────────────
-    aligned = [embeddings[0]]
-    for i in range(1, len(embeddings)):
-        aligned.append(_procrustes_align(aligned[i - 1], embeddings[i]).astype(np.float32))
-
-    # ── Stack into n x (2K) and build basis matrices ──────────────────
-    stacked = np.hstack(aligned)  # (n, 2K)
-    n_dims = 2 * n_frames
-
-    views: list[np.ndarray] = []
-    for i in range(n_frames):
-        basis = np.zeros((n_dims, 2), dtype=np.float32)
-        basis[2 * i, 0] = 1.0
-        basis[2 * i + 1, 1] = 1.0
-        views.append(basis)
-
-    # ── Frame summaries ───────────────────────────────────────────────
+    # ── Frame summaries ──────────────────────────────────────────────
     frame_summaries: list[str] = []
     for rho in rhos:
         label = _RHO_LANDMARKS.get(rho)
@@ -1459,17 +1678,112 @@ def spectrum_tour(
         else:
             frame_summaries.append(f"rho={rho:g}")
 
-    # ── Build result ──────────────────────────────────────────────────
-    result = TourResult(
-        views=views,
-        n_views=n_frames,
-        n_dims=n_dims,
+    # ── Delegate to sequential_tour ──────────────────────────────────
+    result = sequential_tour(
+        data=[arr] * n_frames,
+        method=method,
+        steps=steps,
+        init=init_coords,
+        feature_names=feature_names,
+        frame_summaries=frame_summaries,
+        tour_description=_TOUR_DESCRIPTIONS["parameter"],
+        tour_frame_description=_TOUR_FRAME_DESCRIPTIONS["parameter"],
+        random_state=random_state,
     )
-    result.embedding = stacked
-    result.feature_names = feature_names
-    result.frame_summaries = frame_summaries
     result.tour_mode = "parameter"
-    result.tour_description = _TOUR_DESCRIPTIONS["parameter"]
-    result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS["parameter"]
-
     return result
+
+
+# ── Aligned UMAP tour ───────────────────────────────────────────────
+
+
+def aligned_umap_tour(
+    data: list[np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table],
+    relations: list[dict[int, int]] | None = None,
+    *,
+    umap_kwargs: dict | None = None,
+    feature_names: list[str] | None = None,
+    frame_summaries: list[str] | None = None,
+    tour_description: str | None = None,
+    tour_frame_description: str | None = None,
+) -> TourResult:
+    """Compute a tour using UMAP's joint AlignedUMAP optimisation.
+
+    Unlike :func:`sequential_tour` (which warm-starts each frame from
+    the previous), ``AlignedUMAP`` optimises all slices simultaneously
+    with a regularisation term that penalises displacement of
+    corresponding points across adjacent slices.
+
+    All datasets must have the same number of rows and row *i* must
+    represent the same entity across all slices (the tour viewer
+    animates each point continuously across frames).
+
+    Args:
+        data: One dataset per frame.  All datasets must have the same
+            number of rows.  Row order must be consistent: row *i* is
+            the same entity across all slices.
+        relations: List of ``n_frames - 1`` dicts mapping row indices
+            from slice *k* to slice *k + 1*, passed directly to
+            ``AlignedUMAP`` to improve joint optimisation quality.
+            Row order in the *output* must still be consistent across
+            slices (identity mapping).  When ``None``, identity
+            correspondence is generated automatically.
+        umap_kwargs: Keyword arguments forwarded to
+            ``umap.AlignedUMAP`` (e.g. ``n_neighbors``,
+            ``alignment_regularisation``, ``random_state``).
+        feature_names: Original feature column names for the result.
+        frame_summaries: Per-frame text descriptions.
+        tour_description: Human-readable tour description.
+        tour_frame_description: Template string for per-frame tooltips.
+
+    Returns:
+        A :class:`TourResult` with ``tour_mode="parameter"``.
+        The embedding is an ``n x (2K)`` matrix of stacked
+        Procrustes-aligned 2D embeddings.
+    """
+    import umap
+
+    if len(data) < 2:
+        msg = "aligned_umap_tour requires at least 2 datasets."
+        raise ValueError(msg)
+
+    arrays = [_to_float32(d) for d in data]
+    n_frames = len(arrays)
+
+    # All slices must have equal row counts (tour viewer requires it)
+    n_points = arrays[0].shape[0]
+    for i, arr in enumerate(arrays):
+        if arr.shape[0] != n_points:
+            msg = (
+                f"All datasets must have the same number of rows. "
+                f"data[0] has {n_points}, data[{i}] has "
+                f"{arr.shape[0]}."
+            )
+            raise ValueError(msg)
+
+    # Default: identity relations
+    if relations is None:
+        relations = [
+            {j: j for j in range(n_points)} for _ in range(n_frames - 1)
+        ]
+    elif len(relations) != n_frames - 1:
+        msg = (
+            f"relations must have {n_frames - 1} elements "
+            f"(one fewer than data), got {len(relations)}."
+        )
+        raise ValueError(msg)
+
+    kw = {"n_components": 2, **(umap_kwargs or {})}
+    embeddings = list(
+        umap.AlignedUMAP(**kw).fit_transform(
+            arrays, relations=relations
+        )
+    )
+
+    return _pack_embedding_frames(
+        embeddings,
+        feature_names=feature_names,
+        frame_summaries=frame_summaries,
+        tour_description=tour_description,
+        tour_frame_description=tour_frame_description,
+    )
