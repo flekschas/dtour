@@ -19,10 +19,10 @@ export type PointPipeline = {
   defaultCatIndicesBuffer: GPUBuffer;
 };
 
-// Uniform layout (80 bytes, 16-byte aligned):
+// Uniform layout (96 bytes, 16-byte aligned):
 //   offset  0: point_size            (f32)
 //   offset  4: opacity               (f32)
-//   offset  8: color_mode            (u32) — 0=uniform, 1=continuous, 2=categorical
+//   offset  8: color_mode            (u32) — 0=uniform, 1=continuous, 2=categorical, 3=2D colormap
 //   offset 12: useSelectionMask      (f32)
 //   offset 16: color                 (vec4f)
 //   offset 32: useSubtractive        (f32)
@@ -35,8 +35,12 @@ export type PointPipeline = {
 //   offset 64: color_range           (f32)
 //   offset 68: color_num_stops       (u32)
 //   offset 72: bias_z                (f32) — z-axis bias (3D mode only)
-//   offset 76-79: padding
-const UNIFORM_SIZE = 80;
+//   offset 76: color_column_offset_v (u32) — 2D colormap second column
+//   offset 80: color_min_v           (f32) — 2D colormap second column min
+//   offset 84: color_range_v         (f32) — 2D colormap second column range
+//   offset 88: color2d_map_index     (u32) — which 2D colormap (0-6)
+//   offset 92-95: padding
+const UNIFORM_SIZE = 96;
 
 // Camera layout (80 bytes — 8 scalar fields + 3×3 rotation matrix padded to 3×vec4f):
 //   offset  0: pan_x           (f32)
@@ -66,8 +70,8 @@ export type RawPointStyle = {
   color: [number, number, number];
 };
 
-/** Color mode: 0 = uniform color, 1 = continuous (data column → colormap), 2 = categorical. */
-export type ColorMode = 0 | 1 | 2;
+/** Color mode: 0 = uniform color, 1 = continuous, 2 = categorical, 3 = 2D colormap. */
+export type ColorMode = 0 | 1 | 2 | 3;
 
 /** Color mapping state for the shader LUT approach. */
 export type ColorState = {
@@ -76,6 +80,11 @@ export type ColorState = {
   min: number;
   range: number;
   numStops: number; // LUT size
+  // 2D colormap fields (used when mode == 3)
+  columnOffsetV: number; // second column index * numPoints
+  minV: number;
+  rangeV: number;
+  mapIndex: number; // which 2D colormap (0-6)
 };
 
 export type StyleFlags = {
@@ -114,6 +123,10 @@ const DEFAULT_COLOR: ColorState = {
   min: 0,
   range: 1,
   numStops: 0,
+  columnOffsetV: 0,
+  minV: 0,
+  rangeV: 1,
+  mapIndex: 0,
 };
 
 const DEFAULT_CAMERA: CameraState = {
@@ -344,7 +357,11 @@ export const writeUniforms = (
   uniformF32[16] = colorState.range;
   uniformU32[17] = colorState.numStops;
   uniformF32[18] = biasZ;
-  uniformF32[19] = 0; // padding
+  uniformU32[19] = colorState.columnOffsetV;
+  uniformF32[20] = colorState.minV;
+  uniformF32[21] = colorState.rangeV;
+  uniformU32[22] = colorState.mapIndex;
+  uniformF32[23] = 0; // padding
   device.queue.writeBuffer(uniformBuffer, 0, uniformBuf);
 };
 

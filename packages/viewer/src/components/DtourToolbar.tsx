@@ -26,6 +26,8 @@ import type { PreviewCount } from '../spec.ts';
 import {
   activeColumnsAtom,
   cameraZoomAtom,
+  color2dColumnsAtom,
+  color2dEnabledAtom,
   frameLoadingsAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
@@ -102,6 +104,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
+  const [color2dEnabled, setColor2dEnabled] = useAtom(color2dEnabledAtom);
+  const [color2dColumns, setColor2dColumns] = useAtom(color2dColumnsAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,11 +143,53 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const activeColorColumn = typeof pointColor === 'string' ? pointColor : null;
 
   const toggleColorBy = useCallback(
-    (columnName: string) => {
-      setPointColor((prev) => (prev === columnName ? DEFAULT_COLOR : columnName));
+    (columnName: string, isCategorical?: boolean) => {
+      if (isCategorical && color2dEnabled) {
+        // Clicking a categorical column exits 2D mode and applies 1D coloring
+        setColor2dEnabled(false);
+        setColor2dColumns(null);
+        setPointColor(columnName);
+        return;
+      }
+      if (color2dEnabled) {
+        // In 2D mode: toggle column in/out of the pair (max 2, FIFO eviction).
+        // Only produces a valid [colA, colB] when two distinct columns are selected.
+        setColor2dColumns((prev) => {
+          if (!prev) return [columnName, ''] as unknown as [string, string]; // partial: 1 selected
+          if (prev[1] === '') {
+            // Had 1 selected — this click completes the pair or deselects
+            if (prev[0] === columnName) return null; // deselect only selected column
+            return [prev[0], columnName]; // pair complete
+          }
+          // Already have 2 distinct columns
+          if (prev[0] === columnName) return [prev[1], ''] as unknown as [string, string]; // deselect first
+          if (prev[1] === columnName) return [prev[0], ''] as unknown as [string, string]; // deselect second
+          // Evict oldest, add new
+          return [prev[1], columnName];
+        });
+      } else {
+        setPointColor((prev) => (prev === columnName ? DEFAULT_COLOR : columnName));
+      }
     },
-    [setPointColor],
+    [setPointColor, color2dEnabled, setColor2dEnabled, setColor2dColumns],
   );
+
+  const toggle2dMode = useCallback(() => {
+    setColor2dEnabled((prev) => {
+      if (!prev) {
+        // Entering 2D mode: clear 1D color and auto-select first two numerical columns
+        setPointColor(DEFAULT_COLOR);
+        const cols = metadata?.columnNames;
+        if (cols && cols.length >= 2) {
+          setColor2dColumns([cols[0]!, cols[1]!]);
+        }
+      } else {
+        // Leaving 2D mode: clear 2D columns
+        setColor2dColumns(null);
+      }
+      return !prev;
+    });
+  }, [setColor2dEnabled, setPointColor, setColor2dColumns, metadata]);
 
   const activeCount =
     activeColumns === null ? (metadata?.columnNames.length ?? 0) : activeColumns.size;
@@ -526,9 +572,46 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               {/* Numeric columns */}
               {metadata.columnNames.length > 0 && (
                 <>
-                  <DropdownMenuLabel className="text-xs font-semibold">Numerical</DropdownMenuLabel>
+                  <DropdownMenuLabel className="flex items-center justify-between text-xs font-semibold">
+                    <span>Numerical Dims</span>
+                    {/* biome-ignore lint/a11y/useKeyWithClickEvents: inner buttons handle keyboard */}
+                    <div
+                      className="flex rounded-md border border-dtour-border text-[10px] font-medium overflow-hidden opacity-50"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (color2dEnabled) toggle2dMode();
+                        }}
+                        className={`cursor-pointer px-1.5 py-0.5 transition-colors ${
+                          !color2dEnabled
+                            ? 'bg-dtour-highlight text-dtour-bg'
+                            : 'text-dtour-text-muted hover:text-dtour-highlight'
+                        }`}
+                        title="1D coloring (single column)"
+                      >
+                        1D
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!color2dEnabled) toggle2dMode();
+                        }}
+                        className={`cursor-pointer px-1.5 py-0.5 transition-colors border-l border-dtour-border ${
+                          color2dEnabled
+                            ? 'bg-dtour-highlight text-dtour-bg'
+                            : 'text-dtour-text-muted hover:text-dtour-highlight'
+                        }`}
+                        title="2D coloring (two columns)"
+                      >
+                        2D
+                      </button>
+                    </div>
+                  </DropdownMenuLabel>
                   {metadata.columnNames.map((col, index) => {
                     const isActive = activeColumns === null || activeColumns.has(index);
+                    const isColor2d = color2dEnabled && color2dColumns?.includes(col);
                     return (
                       <ColumnRow
                         key={col}
@@ -537,7 +620,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                         checked={isActive}
                         onCheckedChange={() => handleToggleColumn(index)}
                         disabled={isActive && activeCount <= 2}
-                        isColorActive={activeColorColumn === col}
+                        isColorActive={color2dEnabled ? !!isColor2d : activeColorColumn === col}
                         onToggleColor={() => toggleColorBy(col)}
                       />
                     );
@@ -548,8 +631,11 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               {/* Categorical columns */}
               {metadata.categoricalColumnNames.length > 0 && (
                 <>
-                  <DropdownMenuLabel className="text-xs font-semibold">
-                    Categorical
+                  <DropdownMenuLabel className="flex items-center justify-between text-xs font-semibold">
+                    <span>Categorical Dims</span>
+                    <div className="flex rounded-md border border-dtour-border text-[10px] font-medium overflow-hidden opacity-50">
+                      <span className="bg-dtour-highlight text-dtour-bg px-1.5 py-0.5">1D</span>
+                    </div>
                   </DropdownMenuLabel>
                   {metadata.categoricalColumnNames.map((col) => (
                     <ColumnRow
@@ -557,7 +643,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                       name={col}
                       dtype="cat"
                       isColorActive={activeColorColumn === col}
-                      onToggleColor={() => toggleColorBy(col)}
+                      onToggleColor={() => toggleColorBy(col, true)}
                     />
                   ))}
                 </>
@@ -601,7 +687,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             <MonitorIcon size={16} weight="fill" />
           )}
         </Button>
-        {activeColorColumn && (
+        {(activeColorColumn || (color2dEnabled && color2dColumns?.[1])) && (
           <Button
             variant="ghost"
             size="icon"

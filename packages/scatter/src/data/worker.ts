@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { COLORMAP_2D_INDEX, packColormap2DLut } from './colormaps2d.ts';
+import type { Colormap2DName } from './colormaps2d.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
 import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';
@@ -171,6 +173,34 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       };
       gpuPort.postMessage(gpuMsg, [packed.buffer]);
     }
+  }
+
+  if (msg.type === 'encodeColor2D') {
+    if (!gpuPort) return;
+
+    const { columnX, columnY, colormap } = msg;
+    const colIdxX = numericColumnNames.indexOf(columnX);
+    const colIdxY = numericColumnNames.indexOf(columnY);
+    if (colIdxX < 0 || colIdxY < 0) return;
+
+    const mapIndex = COLORMAP_2D_INDEX[colormap as Colormap2DName] ?? 0;
+    const lut = packColormap2DLut(mapIndex);
+    const transfers: Transferable[] = [];
+    if (lut) transfers.push(lut.buffer);
+
+    const gpuMsg: DataToGpu = {
+      type: 'setColor2D',
+      dataVersion,
+      columnIndexX: colIdxX,
+      columnIndexY: colIdxY,
+      minX: numericMins.get(columnX) ?? 0,
+      rangeX: numericRanges.get(columnX) ?? 1,
+      minY: numericMins.get(columnY) ?? 0,
+      rangeY: numericRanges.get(columnY) ?? 1,
+      lut,
+      mapIndex,
+    };
+    gpuPort.postMessage(gpuMsg, transfers);
   }
 
   if (msg.type === 'selectByColumn') {

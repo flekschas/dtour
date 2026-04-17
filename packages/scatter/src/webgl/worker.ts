@@ -815,6 +815,12 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     return;
   }
 
+  // ── 2D colormap (not supported in WebGL backend) ──
+  if (event.data.type === 'setColor2D') {
+    console.warn('2D colormaps are not supported in the WebGL backend');
+    return;
+  }
+
   // ── Continuous selection (CPU) ──
   if (event.data.type === 'selectContinuous') {
     if (event.data.dataVersion !== currentDataVersion) return;

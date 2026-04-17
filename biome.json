@@ -36,6 +36,14 @@
           "a11y": { "noSvgWithoutTitle": "off" }
         }
       }
+    },
+    {
+      "include": ["packages/scatter/src/data/colormaps2d.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noApproximativeNumericConstant": "off" }
+        }
+      }
     }
   ],
   "files": {

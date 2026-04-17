@@ -8,6 +8,9 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  color2dColumnsAtom,
+  color2dEnabledAtom,
+  color2dMapAtom,
   colorMapAtom,
   embeddedConfigAtom,
   guidedSuspendedAtom,
@@ -44,6 +47,9 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const palette = useAtomValue(paletteAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const rawColorMap = useAtomValue(colorMapAtom);
+  const color2dEnabled = useAtomValue(color2dEnabledAtom);
+  const color2dColumns = useAtomValue(color2dColumnsAtom);
+  const color2dMap = useAtomValue(color2dMapAtom);
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const legendSelection = useAtomValue(legendSelectionAtom);
@@ -70,8 +76,16 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   }, [scatter, position, guidedSuspended, playing]);
 
   // Forward point style (size + opacity + uniform color)
+  // When 2D coloring is active, only update size/opacity — don't touch color
+  // state, as that would destroy the 2D colorLutBuffer and reset color_mode.
   useEffect(() => {
     if (!scatter) return;
+
+    if (color2dEnabled) {
+      // 2D mode: only forward size/opacity, color is managed by the 2D effect
+      scatter.setStyle({ pointSize, opacity });
+      return;
+    }
 
     if (Array.isArray(color)) {
       // RGB tuple — uniform color; clear any per-point encoding
@@ -100,7 +114,25 @@ export const useScatter = (scatter: ScatterInstance | null) => {
       }
       scatter.encodeColor(color, palette, resolvedTheme, resolvedColorMap);
     }
-  }, [scatter, pointSize, opacity, color, palette, resolvedTheme, rawColorMap, metadata]);
+  }, [
+    scatter,
+    pointSize,
+    opacity,
+    color,
+    palette,
+    resolvedTheme,
+    rawColorMap,
+    metadata,
+    color2dEnabled,
+  ]);
+
+  // Forward 2D color encoding (overrides 1D color when active).
+  // Only encode when two distinct columns are selected (columns[1] !== '').
+  useEffect(() => {
+    if (!scatter || !metadata || !color2dEnabled || !color2dColumns) return;
+    if (!color2dColumns[1]) return; // partial selection — wait for second column
+    scatter.encodeColor2D(color2dColumns[0], color2dColumns[1], color2dMap);
+  }, [scatter, metadata, color2dEnabled, color2dColumns, color2dMap]);
 
   // Forward legend selection → scatter.selectByColumn
   useEffect(() => {

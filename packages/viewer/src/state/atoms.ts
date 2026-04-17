@@ -1,4 +1,4 @@
-import type { Metadata } from '@dtour/scatter';
+import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
 import type { EmbeddedConfig, FrameLoading, PreviewCount } from '../spec.ts';
 
@@ -70,6 +70,13 @@ export const paletteAtom = atom<'viridis' | 'magma'>('viridis');
 export const colorMapAtom = atom<Record<string, string | { light: string; dark: string }> | null>(
   null,
 );
+
+/** Whether 2D coloring mode is enabled. */
+export const color2dEnabledAtom = atom(false);
+/** Selected columns for 2D coloring (exactly 2 numeric column names). */
+export const color2dColumnsAtom = atom<[string, string] | null>(null);
+/** Which 2D colormap to use. */
+export const color2dMapAtom = atom<Colormap2DName>('schumann');
 
 // ---------------------------------------------------------------------------
 // Background color — WebGPU clear color (RGB 0–1)
@@ -205,6 +212,9 @@ export const legendVisibleAtom = atom((get) => {
   if (!get(showLegendAtom)) return false;
   const meta = get(metadataAtom);
   if (!meta) return false;
+  // 2D color mode has its own legend (only when both columns are selected)
+  const cols2d = get(color2dColumnsAtom);
+  if (get(color2dEnabledAtom) && cols2d && cols2d[1]) return true;
   const color = get(pointColorAtom);
   if (typeof color !== 'string') return false;
   return meta.columnNames.includes(color) || meta.categoricalColumnNames.includes(color);

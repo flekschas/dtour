@@ -175,6 +175,10 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToData(dataWorker, msg);
   };
 
+  const encodeColor2D = (columnX: string, columnY: string, colormap = 'schumann'): void => {
+    sendToData(dataWorker, { type: 'encodeColor2D', columnX, columnY, colormap });
+  };
+
   const setBackgroundColor = (color: [number, number, number]): void => {
     sendToGpu(gpuWorker, { type: 'setBackgroundColor', color });
   };
@@ -340,6 +344,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     render,
     setDirectBasis,
     encodeColor,
+    encodeColor2D,
     setBackgroundColor,
     clearColor,
     selectByColumn,

@@ -8,4 +8,6 @@ export { createScatterWebGL } from './webgl/client.ts';
 export type { Metadata } from './data/types.ts';
 export { computeArcLengths, interpolateAtPosition } from './tour/arc-length.ts';
 export { OKABE_ITO, GLASBEY_DARK, GLASBEY_LIGHT, VIRIDIS_25, MAGMA_25 } from './data/palettes.ts';
+export { COLORMAP_2D_NAMES, COLORMAP_2D_INDEX, packColormap2DLut } from './data/colormaps2d.ts';
+export type { Colormap2DName } from './data/colormaps2d.ts';
 export { bitPackIndices } from './selection.ts';

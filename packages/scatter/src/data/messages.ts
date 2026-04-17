@@ -11,6 +11,12 @@ export type MainToData =
       theme?: 'light' | 'dark';
       colorMap?: Record<string, [number, number, number]>;
     }
+  | {
+      type: 'encodeColor2D';
+      columnX: string;
+      columnY: string;
+      colormap: string; // e.g. 'schumann', 'bremm', 'oklab_polar', ...
+    }
   | { type: 'selectByColumn'; column: string; labelIndices?: number[]; valueRanges?: Float32Array };
 
 // Data Worker → Main thread
@@ -49,6 +55,21 @@ export type DataToGpu =
       catColumnName: string;
       /** Packed RGBA u32 per label. */
       palette: Uint32Array;
+    }
+  // 2D color mapping — two numeric columns → procedural 2D colormap
+  | {
+      type: 'setColor2D';
+      dataVersion: number;
+      columnIndexX: number;
+      columnIndexY: number;
+      minX: number;
+      rangeX: number;
+      minY: number;
+      rangeY: number;
+      /** SVD rank-1 LUT curves packed as f32: R_X[16], R_Y[16], G_X[16], G_Y[16], B_X[16], B_Y[16], B_X2[16], B_Y2[16]. null for procedural colormaps (oklab_polar). */
+      lut: Float32Array | null;
+      /** Colormap index: 0=schumann, 1=bremm, 2=steiger, 3=ziegler, 4=teulingfig2, 5=cubediagonal, 6=oklab_polar */
+      mapIndex: number;
     }
   // Selection — resolved by data worker, computed on GPU
   | {

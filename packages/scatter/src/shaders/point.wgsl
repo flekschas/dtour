@@ -36,6 +36,11 @@ struct Uniforms {
   color_range: f32,
   color_num_stops: u32,      // LUT size
   bias_z: f32,               // z-axis bias (3D mode only)
+  // 2D colormap params (used when color_mode == 3)
+  color_column_offset_v: u32, // second column index * num_points
+  color_min_v: f32,
+  color_range_v: f32,
+  color2d_map_index: u32,     // 0-5 = LUT-based, 6 = oklab_polar
 }
 
 struct Camera {
@@ -113,6 +118,69 @@ fn pcg_hash(input: u32) -> u32 {
 
 fn random_float(seed: u32) -> f32 {
   return f32(pcg_hash(seed)) / 4294967295.0;
+}
+
+// ─── 2D Colormap helpers ──────────────────────────────────────────────────
+
+// Read f32 from the colorLut buffer (which stores u32). Used for 2D colormap LUT curves.
+fn lut_f32(index: u32) -> f32 {
+  return bitcast<f32>(colorLut[index]);
+}
+
+// Linearly interpolate a 16-entry LUT curve stored in colorLut at the given base offset.
+fn lut_interp(base: u32, t: f32) -> f32 {
+  let pos = t * 15.0;
+  let lo = min(u32(floor(pos)), 14u);
+  let hi = lo + 1u;
+  return mix(lut_f32(base + lo), lut_f32(base + hi), fract(pos));
+}
+
+// Reconstruct a 2D colormap color from SVD rank-1 LUT curves stored in colorLut.
+// Layout: R_X[16] R_Y[16] G_X[16] G_Y[16] B_X[16] B_Y[16] B_X2[16] B_Y2[16]
+fn colormap2d_lut(u: f32, v: f32) -> vec3f {
+  let r = lut_interp(0u, u) * lut_interp(16u, v);
+  let g = lut_interp(32u, u) * lut_interp(48u, v);
+  let b = lut_interp(64u, u) * lut_interp(80u, v)
+        + lut_interp(96u, u) * lut_interp(112u, v); // rank-2 correction
+  return clamp(vec3f(r, g, b), vec3f(0.0), vec3f(1.0));
+}
+
+// Oklab → linear sRGB conversion
+fn oklab_to_linear(L: f32, a: f32, b: f32) -> vec3f {
+  let l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  let m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  let s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  let l = l_ * l_ * l_;
+  let m = m_ * m_ * m_;
+  let s = s_ * s_ * s_;
+  return vec3f(
+     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+  );
+}
+
+// Oklab polar 2D colormap: hue = angle, chroma = radius, lightness varies
+fn colormap2d_oklab_polar(u: f32, v: f32) -> vec3f {
+  let cx = u - 0.5;
+  let cy = v - 0.5;
+  let radius = min(length(vec2f(cx, cy)) * 2.0, 1.0);
+  let angle = atan2(cy, cx);
+  let chroma = radius * 0.25;
+  let lightness = 0.80 - radius * 0.30;
+  let a_val = chroma * cos(angle);
+  let b_val = chroma * sin(angle);
+  let linear = oklab_to_linear(lightness, a_val, b_val);
+  // Linear to sRGB gamma (approximate)
+  return pow(clamp(linear, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
+}
+
+// Dispatch 2D colormap by index
+fn colormap2d(map_index: u32, u: f32, v: f32) -> vec3f {
+  if map_index == 6u {
+    return colormap2d_oklab_polar(u, v);
+  }
+  return colormap2d_lut(u, v);
 }
 
 @vertex
@@ -205,6 +273,16 @@ fn vs_main(
     // Categorical: read category index, direct palette lookup
     let catIdx = catIndices[ii];
     col = unpackColor(colorLut[catIdx % uni.color_num_stops]);
+  } else if uni.color_mode == 3u {
+    // 2D colormap: read two columns, normalize to UV, look up from 2D colormap
+    let raw_u = data[uni.color_column_offset + ii];
+    let raw_v = data[uni.color_column_offset_v + ii];
+    let inv_range_u = select(0.0, 1.0 / uni.color_range, uni.color_range > 0.0);
+    let inv_range_v = select(0.0, 1.0 / uni.color_range_v, uni.color_range_v > 0.0);
+    let u_val = clamp((raw_u - uni.color_min) * inv_range_u, 0.0, 1.0);
+    let v_val = clamp((raw_v - uni.color_min_v) * inv_range_v, 0.0, 1.0);
+    let rgb = colormap2d(uni.color2d_map_index, u_val, v_val);
+    col = vec4f(rgb, 1.0);
   } else {
     col = uni.color;
   }

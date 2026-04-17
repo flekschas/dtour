@@ -45,7 +45,7 @@ export const DropdownMenuLabel = ({
   ...props
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>) => (
   <DropdownMenuPrimitive.Label
-    className={cn('px-2 py-1.5 text-xs font-semibold text-dtour-text-muted', className)}
+    className={cn('pl-2 pr-1 py-1.5 text-xs font-semibold text-dtour-text-muted', className)}
     {...props}
   />
 );

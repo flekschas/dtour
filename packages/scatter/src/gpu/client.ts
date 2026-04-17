@@ -103,6 +103,8 @@ export type ScatterInstance = {
     theme?: 'light' | 'dark',
     colorMap?: Record<string, [number, number, number]>,
   ) => void;
+  /** Encode two numeric columns as a 2D colormap. */
+  encodeColor2D: (columnX: string, columnY: string, colormap?: string) => void;
   /** Set the background clear color (RGB 0–1). */
   setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
@@ -361,6 +363,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToData(dataWorker, msg);
   };
 
+  const encodeColor2D = (columnX: string, columnY: string, colormap = 'schumann'): void => {
+    sendToData(dataWorker, { type: 'encodeColor2D', columnX, columnY, colormap });
+  };
+
   const setBackgroundColor = (color: [number, number, number]): void => {
     sendToGpu(gpuWorker, { type: 'setBackgroundColor', color });
   };
@@ -539,6 +545,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     render,
     setDirectBasis,
     encodeColor,
+    encodeColor2D,
     setBackgroundColor,
     clearColor,
     selectByColumn,

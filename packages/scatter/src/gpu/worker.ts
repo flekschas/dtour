@@ -791,6 +791,10 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
       min,
       range,
       numStops: colormap.length,
+      columnOffsetV: 0,
+      minV: 0,
+      rangeV: 1,
+      mapIndex: 0,
     };
     state.activeCatColumnName = null;
 
@@ -820,8 +824,47 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
       min: 0,
       range: 1,
       numStops: palette.length,
+      columnOffsetV: 0,
+      minV: 0,
+      rangeV: 1,
+      mapIndex: 0,
     };
     state.activeCatColumnName = catColumnName;
+
+    applyColorUpdate();
+    return;
+  }
+
+  // ── 2D colormap (two columns → procedural/LUT 2D colormap) ──
+  if (event.data.type === 'setColor2D') {
+    if (event.data.dataVersion !== currentDataVersion) return;
+
+    const { columnIndexX, columnIndexY, minX, rangeX, minY, rangeY, lut, mapIndex } = event.data;
+
+    // Upload LUT curves (if any) into colorLutBuffer
+    if (lut) {
+      state.colorLutBuffer?.destroy();
+      state.colorLutBuffer = device.createBuffer({
+        label: 'color-lut-2d',
+        size: lut.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      // Write f32 data — the shader reads it via bitcast<f32>(colorLut[i])
+      device.queue.writeBuffer(state.colorLutBuffer, 0, lut as Float32Array<ArrayBuffer>);
+    }
+
+    state.colorState = {
+      mode: 3,
+      columnOffset: columnIndexX * state.numPoints,
+      min: minX,
+      range: rangeX,
+      numStops: 0,
+      columnOffsetV: columnIndexY * state.numPoints,
+      minV: minY,
+      rangeV: rangeY,
+      mapIndex,
+    };
+    state.activeCatColumnName = null;
 
     applyColorUpdate();
     return;
@@ -963,7 +1006,17 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   state.categoricalBuffers.clear();
 
   state.styleFlags = { useSelectionMask: false };
-  state.colorState = { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 };
+  state.colorState = {
+    mode: 0,
+    columnOffset: 0,
+    min: 0,
+    range: 1,
+    numStops: 0,
+    columnOffsetV: 0,
+    minV: 0,
+    rangeV: 1,
+    mapIndex: 0,
+  };
   state.activeCatColumnName = null;
   state.is3dActive = false;
   state.rotation3d = null;
@@ -1219,7 +1272,17 @@ const handleMessage = (msg: MainToGpu): void => {
       state.colorLutBuffer.destroy();
       state.colorLutBuffer = null;
     }
-    state.colorState = { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 };
+    state.colorState = {
+      mode: 0,
+      columnOffset: 0,
+      min: 0,
+      range: 1,
+      numStops: 0,
+      columnOffsetV: 0,
+      minV: 0,
+      rangeV: 1,
+      mapIndex: 0,
+    };
     state.activeCatColumnName = null;
     rebuildBindGroups();
 
@@ -1857,7 +1920,17 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
           rotation: null,
         },
         colorLutBuffer: null,
-        colorState: { mode: 0, columnOffset: 0, min: 0, range: 1, numStops: 0 },
+        colorState: {
+          mode: 0,
+          columnOffset: 0,
+          min: 0,
+          range: 1,
+          numStops: 0,
+          columnOffsetV: 0,
+          minV: 0,
+          rangeV: 1,
+          mapIndex: 0,
+        },
         activeCatColumnName: null,
         selectionBuffer: null,
         directBasis: null,
