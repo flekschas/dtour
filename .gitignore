@@ -3,7 +3,7 @@ dist
 
 # Related documents
 papers
-data
+/data
 
 # Python
 __pycache__
