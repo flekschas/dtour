@@ -25,12 +25,13 @@ for pkg in packages/scatter/package.json packages/viewer/package.json; do
   sed -i '' "s/\"version\": \".*\"/\"version\": \"$next\"/" "$pkg"
 done
 
-# Bump Python package (sed the version line in pyproject.toml)
+# Bump Python package (sed the version line in pyproject.toml, then refresh lock)
 sed -i '' "s/^version = \".*\"/version = \"$next\"/" packages/python/pyproject.toml
+uv lock --project packages/python
 
 # Commit and tag
-git add packages/scatter/package.json packages/viewer/package.json packages/python/pyproject.toml
+git add packages/scatter/package.json packages/viewer/package.json packages/python/pyproject.toml packages/python/uv.lock
 git commit -m "chore: release v${next}"
-git tag "v${next}"
+git tag -m "v${next}" "v${next}"
 
 echo "Done. Run 'git push origin main --tags' to publish."
