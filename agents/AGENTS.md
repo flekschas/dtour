@@ -14,3 +14,4 @@
 
 ## Code style
 - Object-oriented functional programming over classes in JS/TS
+- Semantic git messages for commits:, `feat: A new feature`, `fix: A bug fix`, `docs: Changes to documentation`, `style: Formatting changes`, `refactor: Code changes that neither fix a bug nor add a feature.`, `perf: A code change that improves performance`, `test: Adding missing tests`, `chore: Routine tasks like updating build processes or, package manager configs.`, `ci: GHA related changes`, `ai: agents related`
