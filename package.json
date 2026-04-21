@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "build": "pnpm -r build",
+    "predev": "pnpm --filter @dtour/viewer build",
     "dev": "pnpm --parallel --filter @dtour/viewer --filter webapp dev",
     "lint:js": "biome check .",
     "lint:py": "uvx ruff check --config packages/python/pyproject.toml packages/python/",
