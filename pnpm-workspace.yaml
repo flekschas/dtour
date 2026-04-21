@@ -4,6 +4,9 @@ packages:
 
 onlyBuiltDependencies:
   - '@rolldown/binding-darwin-arm64'
+  - '@biomejs/biome'
+  - 'esbuild'
+  - 'lefthook'
 
 catalog:
   # Build
