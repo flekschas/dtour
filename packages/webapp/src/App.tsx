@@ -116,6 +116,7 @@ const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
   const [fileName, setFileName] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [homeOpen, setHomeOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -320,6 +321,11 @@ const App = () => {
     loadExampleRef.current(EXAMPLES[index]!);
   }, []);
 
+  // Start the parsing indicator whenever new data is committed to the viewer.
+  useEffect(() => {
+    if (data) setParsing(true);
+  }, [data]);
+
   // Expose readiness signal for Playwright.
   // We wait for the first 'rendered' event (not just 'metadata'), because bases
   // are installed in a later React effect and benchmark() requires state.tour.
@@ -327,9 +333,15 @@ const App = () => {
   const handleStatus = useCallback((status: { type: string }) => {
     if (status.type === 'metadata') {
       metadataReceivedRef.current = true;
+      // Don't clear parsing yet — bases are installed in a later React effect,
+      // so the canvas is still blank. Wait for the first 'rendered'.
+    }
+    if (status.type === 'error') {
+      setParsing(false);
     }
     if (status.type === 'rendered' && metadataReceivedRef.current) {
       (globalThis as Record<string, unknown>).__dtourReady = true;
+      setParsing(false);
     }
   }, []);
 
@@ -397,14 +409,14 @@ const App = () => {
         onLogoClick={() => setHomeOpen(true)}
         onSpecChange={handleSpecChange}
         onStatus={handleStatus}
-        hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving'}
+        hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving' || parsing}
         backend={rendererParam}
       />
-      {!data && logoPhase !== 'moving' && logoPhase !== 'moved' && (
+      {(!data || parsing) && logoPhase !== 'moving' && logoPhase !== 'moved' && (
         <motion.div
           className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
             logoPhase !== 'done' ? 'justify-end pb-[40vh]' : 'justify-center'
-          }`}
+          } ${loading || parsing ? 'bg-dtour-bg' : ''}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{
@@ -413,7 +425,7 @@ const App = () => {
             ease: 'easeOut',
           }}
         >
-          {loading ? (
+          {loading || parsing ? (
             <div className="flex flex-col items-center gap-3 px-6 py-4">
               <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
             </div>
