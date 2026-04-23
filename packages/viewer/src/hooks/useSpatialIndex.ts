@@ -1,5 +1,5 @@
 import type { ScatterInstance } from '@dtour/scatter';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useStore } from 'jotai';
 import KDBush from 'kdbush';
 import { useEffect, useRef } from 'react';
 import { currentBasisAtom, metadataAtom, tourPlayingAtom, viewModeAtom } from '../state/atoms.ts';
@@ -40,6 +40,8 @@ export type SpatialIndex = {
  *   terminate + respawn or chunked processing, neither worth the complexity.
  * - Zoom/pan does NOT trigger rebuild — positions are in projection space,
  *   and queryNearest converts mouse coords to that space at query time.
+ * - Atom subscriptions use imperative store.sub() to avoid subscribing the
+ *   parent component (DtourViewer) to 60fps currentBasisAtom updates.
  */
 export const useSpatialIndex = (
   scatter: ScatterInstance | null,
@@ -48,13 +50,15 @@ export const useSpatialIndex = (
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
+  const store = useStore();
+  // metadata is low-frequency (only changes on data load) — useAtomValue is fine here
   const metadata = useAtomValue(metadataAtom);
-  const isPlaying = useAtomValue(tourPlayingAtom);
-  const viewMode = useAtomValue(viewModeAtom);
-  const currentBasis = useAtomValue(currentBasisAtom);
 
-  // Projection is continuously animated during playback or grand tour
-  const isAnimating = isPlaying || viewMode === 'grand';
+  // Keep mutable values in refs so subscription callbacks always see latest
+  const scatterRef = useRef(scatter);
+  scatterRef.current = scatter;
+  const metadataRef = useRef(metadata);
+  metadataRef.current = metadata;
 
   // Spin up worker once, tear down on unmount
   useEffect(() => {
@@ -77,56 +81,58 @@ export const useSpatialIndex = (
     };
   }, []);
 
-  // Invalidate index and cancel pending builds during animation
+  // Subscribe imperatively to avoid making DtourViewer re-render on every
+  // currentBasisAtom update (which fires at 60fps during guided animation).
   useEffect(() => {
-    if (isAnimating) {
+    const scheduleRebuild = () => {
+      const isPlaying = store.get(tourPlayingAtom);
+      const viewMode = store.get(viewModeAtom);
+      const isAnimating = isPlaying || viewMode === 'grand';
+
       indexRef.current = null;
       generationRef.current++;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-    }
-  }, [isAnimating]);
 
-  // Rebuild on debounce after projection settles.
-  // currentBasis covers all modes: guided (interpolation), manual (axis drag),
-  // grand (animation — caught by isAnimating guard above).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: currentBasis is a trigger — we re-run when the basis changes, but read positions from the worker
-  useEffect(() => {
-    if (isAnimating || !scatter || !metadata) return;
+      const sc = scatterRef.current;
+      const meta = metadataRef.current;
+      if (isAnimating || !sc || !meta || meta.rowCount === 0) return;
 
-    // Invalidate stale index and bump generation to discard any in-flight build
-    indexRef.current = null;
-    generationRef.current++;
+      const n = meta.rowCount;
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        const gen = ++generationRef.current;
+        sc.getProjectedPositions().then((positions) => {
+          if (gen !== generationRef.current || !workerRef.current) return;
+          workerRef.current.postMessage({ positions, nodeSize: nodeSize(n), generation: gen }, [
+            positions.buffer,
+          ]);
+        });
+      }, debounceMs(n));
+    };
 
-    const n = metadata.rowCount;
-    if (n === 0) return;
+    const unsubBasis = store.sub(currentBasisAtom, scheduleRebuild);
+    // Use scheduleRebuild (not a separate invalidate) so that the transition
+    // from animating → idle also schedules a rebuild, not just a null-out.
+    const unsubPlaying = store.sub(tourPlayingAtom, scheduleRebuild);
+    const unsubViewMode = store.sub(viewModeAtom, scheduleRebuild);
 
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-
-      // Capture current generation before the async gap
-      const gen = ++generationRef.current;
-
-      scatter.getProjectedPositions().then((positions) => {
-        // Check if still current after async readback
-        if (gen !== generationRef.current || !workerRef.current) return;
-
-        workerRef.current.postMessage({ positions, nodeSize: nodeSize(n), generation: gen }, [
-          positions.buffer,
-        ]);
-      });
-    }, debounceMs(n));
+    // Trigger initial build if basis is already set when the hook mounts
+    const initialBasis = store.get(currentBasisAtom);
+    if (initialBasis) scheduleRebuild();
 
     return () => {
+      unsubBasis();
+      unsubPlaying();
+      unsubViewMode();
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [currentBasis, isAnimating, scatter, metadata]);
+  }, [store]);
 
   return indexRef;
 };

@@ -1,6 +1,13 @@
 import type { Metadata, ScatterInstance } from '@dtour/scatter';
-import { bitPackIndices } from '@dtour/scatter';
-import { useAtomValue, useSetAtom } from 'jotai';
+import {
+  GLASBEY_DARK,
+  GLASBEY_LIGHT,
+  MAGMA_25,
+  OKABE_ITO,
+  VIRIDIS_25,
+  bitPackIndices,
+} from '@dtour/scatter';
+import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLongPressIndicator } from '../hooks/useLongPressIndicator.ts';
 import type { SpatialIndex } from '../hooks/useSpatialIndex.ts';
@@ -9,10 +16,15 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
-  guidedSuspendedAtom,
+  color2dEnabledAtom,
+  colorMapAtom,
+  currentBasisAtom,
+  grandExitTargetAtom,
   legendSelectionAtom,
   metadataAtom,
+  paletteAtom,
   pointColorAtom,
+  resolvedThemeAtom,
   viewModeAtom,
 } from '../state/atoms.ts';
 
@@ -53,7 +65,28 @@ const cssToNdc = (
 
 const HIT_RADIUS_PX = 3;
 
-const HOVER_SEARCH_RADIUS_PX = 20;
+const HOVER_SEARCH_RADIUS_PX = 12;
+
+/** Convert projection-space coords to overlay-local CSS coords (inverse of queryNearest's transform). */
+const projToCss = (
+  projX: number,
+  projY: number,
+  width: number,
+  height: number,
+  offsetY: number,
+  insetOffsetY: number,
+  insetZoom: number,
+  cameraZoom: number,
+  cameraPanX: number,
+  cameraPanY: number,
+): [number, number] => {
+  const canvasH = height + offsetY;
+  const aspect = width / canvasH || 1;
+  const zoomIz = cameraZoom * insetZoom;
+  const ndcX = ((projX + cameraPanX) * zoomIz) / aspect;
+  const ndcY = (projY + cameraPanY) * zoomIz + insetOffsetY;
+  return [((ndcX + 1) / 2) * width, ((1 - ndcY) / 2) * canvasH - offsetY];
+};
 
 /** Query kdbush for the nearest point index at the given CSS position. Returns -1 if no hit. */
 const queryNearest = (
@@ -95,17 +128,108 @@ const queryNearest = (
   return bestIdx;
 };
 
+const rgb255ToHex = (r: number, g: number, b: number): string =>
+  `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+const samplePalette = (pal: [number, number, number][], t: number): string => {
+  const n = pal.length - 1;
+  const f = Math.max(0, Math.min(n, t * n));
+  const i = Math.min(n - 1, Math.floor(f));
+  const frac = f - i;
+  const a = pal[i]!;
+  const b = pal[i + 1]!;
+  return rgb255ToHex(
+    Math.round(a[0] + (b[0] - a[0]) * frac),
+    Math.round(a[1] + (b[1] - a[1]) * frac),
+    Math.round(a[2] + (b[2] - a[2]) * frac),
+  );
+};
+
+const resolveHoverColor = (
+  pointColor: [number, number, number] | string,
+  hoverData: {
+    numericValues: Record<string, number>;
+    categoricalValues: Record<string, number>;
+  } | null,
+  metadata: Metadata | null,
+  colorMap: Record<string, string | { light: string; dark: string }> | null,
+  palette: 'viridis' | 'magma',
+  theme: 'light' | 'dark',
+): string => {
+  // Uniform RGB tuple (0–1 range)
+  if (Array.isArray(pointColor)) {
+    return rgb255ToHex(
+      Math.round(pointColor[0] * 255),
+      Math.round(pointColor[1] * 255),
+      Math.round(pointColor[2] * 255),
+    );
+  }
+  // Uniform hex string
+  if (isHexColor(pointColor)) return pointColor;
+  // Column-encoded color — need lazy data to resolve
+  if (!hoverData || !metadata) return 'white';
+
+  const colName = pointColor;
+
+  // Categorical
+  if (metadata.categoricalColumnNames.includes(colName)) {
+    const labelIdx = hoverData.categoricalValues[colName];
+    if (labelIdx === undefined) return 'white';
+    if (colorMap) {
+      const labelName = metadata.categoricalLabels[colName]?.[labelIdx];
+      if (labelName !== undefined && colorMap[labelName] !== undefined) {
+        const entry = colorMap[labelName]!;
+        return typeof entry === 'string' ? entry : entry[theme];
+      }
+    }
+    const glasbey = theme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
+    const [r, g, b] =
+      labelIdx < OKABE_ITO.length
+        ? OKABE_ITO[labelIdx]!
+        : glasbey[(labelIdx - OKABE_ITO.length) % glasbey.length]!;
+    return rgb255ToHex(r, g, b);
+  }
+
+  // Continuous
+  const colIdx = metadata.columnNames.indexOf(colName);
+  if (colIdx >= 0) {
+    const val = hoverData.numericValues[String(colIdx)];
+    if (val === undefined) return 'white';
+    const min = metadata.mins[colIdx] ?? 0;
+    const max = metadata.maxes[colIdx] ?? 1;
+    const t = max > min ? (val - min) / (max - min) : 0;
+    const basePal = palette === 'magma' ? MAGMA_25 : VIRIDIS_25;
+    const colorPal =
+      theme === 'light' ? ([...basePal].reverse() as [number, number, number][]) : basePal;
+    return samplePalette(colorPal, Math.max(0, Math.min(1, t)));
+  }
+
+  return 'white';
+};
+
 type HoverState = {
   pointIndex: number;
-  /** CSS position for tooltip. */
-  x: number;
-  y: number;
+  /** Projection-space coords for stable highlight/tooltip anchoring. */
+  pointProjX: number;
+  pointProjY: number;
   /** Point data (loaded lazily). */
   data: {
     numericValues: Record<string, number>;
     categoricalValues: Record<string, number>;
   } | null;
 };
+
+const HoverHighlight = ({ cx, cy, color }: { cx: number; cy: number; color: string }) => (
+  <svg
+    className="absolute pointer-events-none"
+    width={10}
+    height={10}
+    style={{ left: cx, top: cy, transform: 'translate(-50%, -50%)' }}
+  >
+    <title>Hovered point</title>
+    <circle cx={5} cy={5} r={4} fill={color} />
+  </svg>
+);
 
 export const LassoOverlay = ({
   scatter,
@@ -117,11 +241,15 @@ export const LassoOverlay = ({
   insetZoom,
 }: LassoOverlayProps) => {
   const viewMode = useAtomValue(viewModeAtom);
-  const setViewMode = useSetAtom(viewModeAtom);
-  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
+  const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setLegendSelection = useSetAtom(legendSelectionAtom);
+  const store = useStore();
   const metadata = useAtomValue(metadataAtom);
   const pointColor = useAtomValue(pointColorAtom);
+  const color2dEnabled = useAtomValue(color2dEnabledAtom);
+  const colorMap = useAtomValue(colorMapAtom);
+  const palette = useAtomValue(paletteAtom);
+  const theme = useAtomValue(resolvedThemeAtom);
   const cameraPanX = useAtomValue(cameraPanXAtom);
   const cameraPanY = useAtomValue(cameraPanYAtom);
   const cameraZoom = useAtomValue(cameraZoomAtom);
@@ -162,6 +290,17 @@ export const LassoOverlay = ({
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const { show: showIndicator, hide: hideIndicator } = useLongPressIndicator();
+
+  // Clear hover whenever the projection changes so the highlight/tooltip
+  // don't hang over a stale position until the pointer moves again.
+  useEffect(() => {
+    return store.sub(currentBasisAtom, () => {
+      if (hoverPointRef.current !== -1) {
+        hoverPointRef.current = -1;
+        setHover(null);
+      }
+    });
+  }, [store]);
 
   const clearLongPress = useCallback(() => {
     if (longPressTimer.current) {
@@ -246,13 +385,15 @@ export const LassoOverlay = ({
         }
 
         // Only update if the point changed
-        if (hoverPointRef.current === bestIdx) {
-          setHover((prev) => (prev ? { ...prev, x: cssX, y: cssY } : null));
-          return;
-        }
+        if (hoverPointRef.current === bestIdx) return;
 
         hoverPointRef.current = bestIdx;
-        setHover({ pointIndex: bestIdx, x: cssX, y: cssY, data: null });
+        setHover({
+          pointIndex: bestIdx,
+          pointProjX: si.positions[bestIdx * 2]!,
+          pointProjY: si.positions[bestIdx * 2 + 1]!,
+          data: null,
+        });
 
         // Lazily fetch point data
         if (ctx.scatter) {
@@ -448,9 +589,9 @@ export const LassoOverlay = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (viewMode === 'grand') {
-          // In grand mode, Escape returns to guided mode
-          setGuidedSuspended(true);
-          setViewMode('guided');
+          // In grand mode, route through the exit atom so the ease-out
+          // animation completes before the mode switch.
+          setGrandExitTarget('guided');
         } else {
           scatter?.clearSelection();
         }
@@ -462,7 +603,7 @@ export const LassoOverlay = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scatter, clearLongPress, viewMode, setViewMode, setGuidedSuspended, setLegendSelection]);
+  }, [scatter, clearLongPress, viewMode, setGrandExitTarget, setLegendSelection]);
 
   // Build path string for SVG polygon
   const pathStr = path.map(([x, y]) => `${x},${y}`).join(' ');
@@ -497,38 +638,74 @@ export const LassoOverlay = ({
         </svg>
       )}
 
-      {/* Hover tooltip */}
-      {hover && <PointTooltip hover={hover} metadata={metadata} />}
+      {/* Hover highlight + tooltip, both anchored at the projected point position */}
+      {hover &&
+        (() => {
+          const [cx, cy] = projToCss(
+            hover.pointProjX,
+            hover.pointProjY,
+            width,
+            height,
+            offsetY,
+            insetOffsetY,
+            insetZoom,
+            cameraZoom,
+            cameraPanX,
+            cameraPanY,
+          );
+          const color = color2dEnabled
+            ? 'white'
+            : resolveHoverColor(pointColor, hover.data, metadata, colorMap, palette, theme);
+          return (
+            <>
+              <HoverHighlight cx={cx} cy={cy} color={color} />
+              <PointTooltip
+                hover={hover}
+                metadata={metadata}
+                cx={cx}
+                cy={cy}
+                containerWidth={width}
+              />
+            </>
+          );
+        })()}
     </div>
   );
 };
 
-const TOOLTIP_OFFSET = 12;
+/** Gap from circle edge to arrow tip (px). */
+const POINT_R = 4;
+const ARROW_W = 6;
+const TOOLTIP_MAX_W = 240;
 
 const PointTooltip = ({
   hover,
   metadata,
+  cx,
+  cy,
+  containerWidth,
 }: {
   hover: HoverState;
   metadata: Metadata | null;
+  cx: number;
+  cy: number;
+  containerWidth: number;
 }) => {
   const { data } = hover;
+
+  const gap = POINT_R + 4;
+  const goRight = cx + gap + ARROW_W + TOOLTIP_MAX_W < containerWidth;
 
   // Format tooltip rows from lazy-loaded data
   const rows: { label: string; value: string }[] = [];
   if (data && metadata) {
-    // Categorical columns
     for (const catName of metadata.categoricalColumnNames) {
       const labelIdx = data.categoricalValues[catName];
       if (labelIdx !== undefined) {
         const labels = metadata.categoricalLabels[catName];
-        rows.push({
-          label: catName,
-          value: labels?.[labelIdx] ?? String(labelIdx),
-        });
+        rows.push({ label: catName, value: labels?.[labelIdx] ?? String(labelIdx) });
       }
     }
-    // Numeric columns (keyed by dim index string)
     for (let d = 0; d < metadata.columnNames.length; d++) {
       const val = data.numericValues[String(d)];
       if (val !== undefined) {
@@ -540,14 +717,66 @@ const PointTooltip = ({
     }
   }
 
+  // Arrow: SVG path draws only the two outer edges (no base stroke over tooltip border).
+  // Polygon fills the triangle with the tooltip background color.
+  const arrowSvg = goRight ? (
+    <svg
+      style={{
+        position: 'absolute',
+        left: -ARROW_W,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        overflow: 'visible',
+      }}
+      width={ARROW_W}
+      height={ARROW_W * 2}
+    >
+      <title>Tooltip arrow</title>
+      <polygon
+        points={`${ARROW_W},0 0,${ARROW_W} ${ARROW_W},${ARROW_W * 2}`}
+        style={{ fill: 'var(--color-dtour-bg)' }}
+      />
+      <path
+        d={`M ${ARROW_W},0.5 L 0,${ARROW_W} L ${ARROW_W},${ARROW_W * 2 - 0.5}`}
+        fill="none"
+        style={{ stroke: 'var(--color-dtour-border)', strokeWidth: 1 }}
+      />
+    </svg>
+  ) : (
+    <svg
+      style={{
+        position: 'absolute',
+        right: -ARROW_W,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        overflow: 'visible',
+      }}
+      width={ARROW_W}
+      height={ARROW_W * 2}
+    >
+      <title>Tooltip arrow</title>
+      <polygon
+        points={`0,0 ${ARROW_W},${ARROW_W} 0,${ARROW_W * 2}`}
+        style={{ fill: 'var(--color-dtour-bg)' }}
+      />
+      <path
+        d={`M 0,0.5 L ${ARROW_W},${ARROW_W} L 0,${ARROW_W * 2 - 0.5}`}
+        fill="none"
+        style={{ stroke: 'var(--color-dtour-border)', strokeWidth: 1 }}
+      />
+    </svg>
+  );
+
   return (
     <div
-      className="absolute z-50 pointer-events-none rounded bg-dtour-highlight text-dtour-bg px-2.5 py-1.5 text-xs shadow-[0_1px_4px_rgba(0,0,0,0.6)] max-w-[240px]"
-      style={{
-        left: hover.x + TOOLTIP_OFFSET,
-        top: hover.y + TOOLTIP_OFFSET,
-      }}
+      className="absolute z-50 pointer-events-none rounded border border-dtour-border bg-dtour-bg text-dtour-text px-2.5 py-1.5 text-xs shadow-md max-w-[240px]"
+      style={
+        goRight
+          ? { left: cx + gap + ARROW_W, top: cy, transform: 'translateY(-50%)' }
+          : { right: containerWidth - cx + gap + ARROW_W, top: cy, transform: 'translateY(-50%)' }
+      }
     >
+      {arrowSvg}
       <div className="font-medium mb-0.5 opacity-60">Point {hover.pointIndex.toLocaleString()}</div>
       {rows.length > 0 ? (
         <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
