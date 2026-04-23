@@ -159,11 +159,7 @@ class EmbeddingStep:
             step.  ``None`` inherits from the top-level ``method_kwargs``.
     """
 
-    method: (
-        Literal["umap", "tsne", "pymde"]
-        | Callable[..., np.ndarray]
-        | None
-    ) = None
+    method: Literal["umap", "tsne", "pymde"] | Callable[..., np.ndarray] | None = None
     kwargs: dict | None = None
 
 
@@ -1255,9 +1251,7 @@ def _seq_embed_umap(
     kw = {"n_components": 2, **kwargs}
     if prev is not None:
         kw.setdefault("init", prev.astype(np.float32))
-    return np.asarray(
-        umap.UMAP(**kw).fit_transform(arr), dtype=np.float32
-    )
+    return np.asarray(umap.UMAP(**kw).fit_transform(arr), dtype=np.float32)
 
 
 def _seq_embed_tsne(
@@ -1297,9 +1291,7 @@ def _seq_embed_pymde(
     if prev is not None:
         init_tensor = torch.tensor(prev.astype(np.float32))
     elif init_arr is not None:
-        init_tensor = torch.tensor(
-            np.asarray(init_arr, dtype=np.float32)
-        )
+        init_tensor = torch.tensor(np.asarray(init_arr, dtype=np.float32))
     elif isinstance(kw.get("initialization"), str) and kw["initialization"] == "pca":
         kw.pop("initialization", None)
         pca_init = PCA(n_components=2).fit_transform(arr).astype(np.float32)
@@ -1321,9 +1313,7 @@ def _seq_embed_pymde(
             def _reg_ad(X=None):
                 base = orig(X)
                 emb_x = X if X is not None else m.X
-                dist = torch.sqrt(
-                    torch.sum((emb_x - anc) ** 2, dim=1) + 1e-8
-                )
+                dist = torch.sqrt(torch.sum((emb_x - anc) ** 2, dim=1) + 1e-8)
                 return base + strength * torch.mean(torch.log1p(dist))
 
             return _reg_ad
@@ -1399,10 +1389,7 @@ def _pack_embedding_frames(
 
 def sequential_tour(
     data: list[np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table],
-    method: (
-        Literal["umap", "tsne", "pymde"]
-        | Callable[..., np.ndarray]
-    ) = "umap",
+    method: (Literal["umap", "tsne", "pymde"] | Callable[..., np.ndarray]) = "umap",
     method_kwargs: dict | None = None,
     *,
     steps: list[EmbeddingStep] | None = None,
@@ -1465,10 +1452,7 @@ def sequential_tour(
         raise ValueError(msg)
 
     if steps is not None and len(steps) != n_frames:
-        msg = (
-            f"steps length ({len(steps)}) must match "
-            f"data length ({n_frames})."
-        )
+        msg = f"steps length ({len(steps)}) must match data length ({n_frames})."
         raise ValueError(msg)
 
     # Seed torch if any step uses pymde
@@ -1505,7 +1489,7 @@ def sequential_tour(
     for i, arr in enumerate(arrays):
         # Resolve method and kwargs for this step
         step = steps[i] if steps is not None else None
-        step_method = (step.method if step and step.method is not None else method)
+        step_method = step.method if step and step.method is not None else method
         step_kwargs = (
             {**shared_kwargs, **(step.kwargs or {})}
             if step and step.kwargs is not None
@@ -1513,17 +1497,12 @@ def sequential_tour(
         )
 
         if callable(step_method) and not isinstance(step_method, str):
-            emb = np.asarray(
-                step_method(arr, prev, **step_kwargs), dtype=np.float32
-            )
+            emb = np.asarray(step_method(arr, prev, **step_kwargs), dtype=np.float32)
         elif isinstance(step_method, str):
             handler = _SEQ_METHOD_HANDLERS.get(step_method)
             if handler is None:
                 supported = ", ".join(sorted(_SEQ_METHOD_HANDLERS))
-                msg = (
-                    f"Unknown method {step_method!r}. "
-                    f"Supported: {supported}, or a callable."
-                )
+                msg = f"Unknown method {step_method!r}. Supported: {supported}, or a callable."
                 raise ValueError(msg)
             emb = handler(arr, prev, step_kwargs)
         else:
@@ -1531,10 +1510,7 @@ def sequential_tour(
             raise TypeError(msg)
 
         if emb.shape != (n_points, 2):
-            msg = (
-                f"Embedding at step {i} has shape {emb.shape}, "
-                f"expected ({n_points}, 2)."
-            )
+            msg = f"Embedding at step {i} has shape {emb.shape}, expected ({n_points}, 2)."
             raise ValueError(msg)
 
         embeddings.append(emb)
@@ -1637,11 +1613,7 @@ def spectrum_tour(
             n_neighbors=n_neighbors,
             affinity="nearest_neighbors",
             eigen_solver="amg",
-            **(
-                {"random_state": random_state}
-                if random_state is not None
-                else {}
-            ),
+            **({"random_state": random_state} if random_state is not None else {}),
         ).fit_transform(arr)
     elif init == "pca":
         init_coords = PCA(n_components=2).fit_transform(arr)
@@ -1653,21 +1625,25 @@ def spectrum_tour(
     steps: list[EmbeddingStep] = []
     for rho in rhos:
         if method == "tsne":
-            steps.append(EmbeddingStep(kwargs={
-                "perplexity": n_neighbors,
-                "exaggeration": rho,
-                **(
-                    {"random_state": random_state}
-                    if random_state is not None
-                    else {}
-                ),
-            }))
+            steps.append(
+                EmbeddingStep(
+                    kwargs={
+                        "perplexity": n_neighbors,
+                        "exaggeration": rho,
+                        **({"random_state": random_state} if random_state is not None else {}),
+                    }
+                )
+            )
         else:  # pymde
-            steps.append(EmbeddingStep(kwargs={
-                "n_neighbors": n_neighbors,
-                "repulsive_fraction": 1.0 / rho,
-                "regularization": regularization,
-            }))
+            steps.append(
+                EmbeddingStep(
+                    kwargs={
+                        "n_neighbors": n_neighbors,
+                        "repulsive_fraction": 1.0 / rho,
+                        "regularization": regularization,
+                    }
+                )
+            )
 
     # ── Frame summaries ──────────────────────────────────────────────
     frame_summaries: list[str] = []
@@ -1763,9 +1739,7 @@ def aligned_umap_tour(
 
     # Default: identity relations
     if relations is None:
-        relations = [
-            {j: j for j in range(n_points)} for _ in range(n_frames - 1)
-        ]
+        relations = [{j: j for j in range(n_points)} for _ in range(n_frames - 1)]
     elif len(relations) != n_frames - 1:
         msg = (
             f"relations must have {n_frames - 1} elements "
@@ -1774,11 +1748,7 @@ def aligned_umap_tour(
         raise ValueError(msg)
 
     kw = {"n_components": 2, **(umap_kwargs or {})}
-    embeddings = list(
-        umap.AlignedUMAP(**kw).fit_transform(
-            arrays, relations=relations
-        )
-    )
+    embeddings = list(umap.AlignedUMAP(**kw).fit_transform(arrays, relations=relations))
 
     return _pack_embedding_frames(
         embeddings,
