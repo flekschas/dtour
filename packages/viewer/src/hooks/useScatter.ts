@@ -5,6 +5,7 @@ import { hexToRgb, hexToRgb255, isHexColor } from '../lib/color-utils.ts';
 import { parseEmbeddedConfig } from '../spec.ts';
 import {
   backgroundColorAtom,
+  basisTransitioningAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -39,6 +40,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const opacity = useAtomValue(pointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
   const guidedSuspended = useAtomValue(guidedSuspendedAtom);
+  const basisTransitioning = useAtomValue(basisTransitioningAtom);
   const playing = useAtomValue(tourPlayingAtom);
   const panX = useAtomValue(cameraPanXAtom);
   const panY = useAtomValue(cameraPanYAtom);
@@ -68,12 +70,13 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     scatter?.setCamera({ pan: [panX, panY], zoom });
   }, [scatter, panX, panY, zoom]);
 
-  // Forward tour position (skipped during worker-driven playback and when
-  // suspended after returning from manual/grand)
+  // Forward tour position (skipped during worker-driven playback, when
+  // suspended after returning from manual/grand, and while a basis blend is
+  // animating back to the tour projection)
   useEffect(() => {
-    if (guidedSuspended || playing) return;
+    if (guidedSuspended || playing || basisTransitioning) return;
     scatter?.setTourPosition(position);
-  }, [scatter, position, guidedSuspended, playing]);
+  }, [scatter, position, guidedSuspended, playing, basisTransitioning]);
 
   // Forward point style (size + opacity + uniform color)
   // When 2D coloring is active, only update size/opacity — don't touch color

@@ -19,6 +19,7 @@ import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { RevertCameraButton } from './components/RevertCameraButton.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
+import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
@@ -60,6 +61,7 @@ import {
   previewCountAtom,
   previewScaleAtom,
   resolvedThemeAtom,
+  resumeGuidedAtom,
   showAxesAtom,
   showFrameLoadingsAtom,
   sliderSpacingAtom,
@@ -606,25 +608,46 @@ export const DtourViewer = ({
   }, [scatter, views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
+  const { resumeWithTransition, cancelTransition, isTransitioning } = useGuidedResume(
+    scatterRef,
+    resolvedViewsRef,
+    arcLengthsRef,
+    metadataRef,
+    positionRef,
+  );
+  // Keep stable refs so the imperative wheel handler always calls the latest version.
+  const resumeWithTransitionRef = useRef(resumeWithTransition);
+  resumeWithTransitionRef.current = resumeWithTransition;
+  const isTransitioningRef = useRef(isTransitioning);
+  isTransitioningRef.current = isTransitioning;
+
+  // Publish resumeWithTransition to the store so sibling components (DtourToolbar)
+  // can call it without holding scatter refs.
+  useEffect(() => {
+    store.set(resumeGuidedAtom, { fn: resumeWithTransition });
+    return () => store.set(resumeGuidedAtom, null);
+  }, [store, resumeWithTransition]);
 
   // Slider click → animated seek to the clicked position.
   // The slider reports a visual position; convert to tour position for the GPU.
   const handlePositionSeek = useCallback(
     (visualPos: number) => {
-      setGuidedSuspended(false);
+      resumeWithTransition(300);
       setPlaying(false);
       const tourPos =
         spacingMode === 'equal' && arcLengths ? visualToTour(visualPos, arcLengths) : visualPos;
       animateTo(tourPos);
     },
-    [setGuidedSuspended, setPlaying, animateTo, spacingMode, arcLengths],
+    [resumeWithTransition, setPlaying, animateTo, spacingMode, arcLengths],
   );
 
-  // Slider drag start → cancel animation, switch to immediate updates
+  // Slider drag start → cancel any basis transition and animation, then switch
+  // to immediate updates (no transition: user is taking direct control).
   const handleDragStart = useCallback(() => {
     cancelAnimation();
+    cancelTransition();
     setGuidedSuspended(false);
-  }, [cancelAnimation, setGuidedSuspended]);
+  }, [cancelAnimation, cancelTransition, setGuidedSuspended]);
 
   // Slider drag move → send directly to GPU, update slider imperatively,
   // debounce atom write to minimize React re-renders during drag.
@@ -665,8 +688,8 @@ export const DtourViewer = ({
       // Cancel any running position animation before wheel scrub
       store.set(animationGenAtom, (g) => g + 1);
       store.set(tourPlayingAtom, false);
-      store.set(guidedSuspendedAtom, false);
-      // Send directly to GPU + slider, debounce atom write.
+      const wasSuspended = store.get(guidedSuspendedAtom);
+      // Update position + slider imperatively (always, even during transition).
       // In equal mode, scrub in visual space for perceptual uniformity.
       const al = arcLengthsRef.current;
       const mode = spacingModeRef.current;
@@ -676,17 +699,26 @@ export const DtourViewer = ({
         nextVisual = nextVisual - Math.floor(nextVisual);
         const nextTour = visualToTour(nextVisual, al);
         positionRef.current = nextTour;
-        scatterRef.current?.setTourPosition(nextTour);
         sliderRef.current?.setPosition(nextVisual);
         updateAxesRef.current(nextTour);
       } else {
         let next = positionRef.current + e.deltaY * 0.002;
         next = next - Math.floor(next);
         positionRef.current = next;
-        scatterRef.current?.setTourPosition(next);
         sliderRef.current?.setPosition(next);
         updateAxesRef.current(next);
       }
+      if (wasSuspended && !isTransitioningRef.current()) {
+        // First wheel tick after manual manipulation — blend back to the tour
+        // over 150ms; the transition rAF tick tracks positionRef each frame.
+        // Guard with !isTransitioning: guidedSuspended stays true during the
+        // blend (fix for currentBasisAtom sync), so without the guard every
+        // subsequent wheel tick would restart the 150ms countdown.
+        resumeWithTransitionRef.current(150, () => positionRef.current);
+      } else if (!wasSuspended && !isTransitioningRef.current()) {
+        scatterRef.current?.setTourPosition(positionRef.current);
+      }
+      // If transitioning: rAF tick calls setDirectBasis each frame.
       scheduleFlushRef.current();
     };
     container.addEventListener('wheel', handler, { passive: false });
@@ -887,6 +919,7 @@ export const DtourViewer = ({
             containerWidth={containerSize.width}
             containerHeight={overlayHeight}
             toolbarHeight={0}
+            onResumeGuided={resumeWithTransition}
           />
         )}
 

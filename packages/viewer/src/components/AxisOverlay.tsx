@@ -211,8 +211,10 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
     const sendBasis = useCallback(() => {
       if (!scatter || !basisRef.current) return;
       const copy = basisRef.current.slice();
-      scatter.setDirectBasis(copy);
+      // setCurrentBasis must use the data before setDirectBasis transfers copy.buffer
+      // to the GPU worker (zero-copy postMessage), which detaches copy.buffer.
       setCurrentBasis(new Float32Array(copy));
+      scatter.setDirectBasis(copy);
     }, [scatter, setCurrentBasis]);
 
     const handlePointerDown = useCallback((dimIndex: number, e: React.PointerEvent) => {

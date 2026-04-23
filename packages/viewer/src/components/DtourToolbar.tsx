@@ -36,6 +36,7 @@ import {
   pointColorAtom,
   previewCountAtom,
   previewScaleAtom,
+  resumeGuidedAtom,
   selectedKeyframeAtom,
   showAxesAtom,
   showFrameLoadingsAtom,
@@ -86,6 +87,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [zoom, setZoom] = useAtom(cameraZoomAtom);
   const metadata = useAtomValue(metadataAtom);
   const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const resumeGuided = useAtomValue(resumeGuidedAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
@@ -114,16 +116,16 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
 
   const handlePlayPause = useCallback(() => {
     cancelAnimation();
-    setGuidedSuspended(false);
+    resumeGuided?.fn(300);
     if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [playing, setPlaying, setGuidedSuspended, setSelectedKeyframe, cancelAnimation]);
+  }, [playing, setPlaying, resumeGuided, setSelectedKeyframe, cancelAnimation]);
 
   const handleReset = useCallback(() => {
-    setGuidedSuspended(false);
+    resumeGuided?.fn(300);
     setPlaying(false);
     animateTo(0);
-  }, [setPlaying, setGuidedSuspended, animateTo]);
+  }, [setPlaying, resumeGuided, animateTo]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,7 +257,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
           {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
           <div
-            className={`flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+            className={`group flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
           >
             <Button
               variant="ghost"
@@ -287,7 +289,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </TooltipProvider>
             )}
             {viewMode === 'guided' && tourBy !== 'parameter' && (
-              <>
+              <div className="flex items-center overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-200 ease-in-out">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -308,7 +310,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <span className="text-xs">PCA</span>
                 </Button>
                 <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none" />
-              </>
+              </div>
             )}
           </div>
           {/* Manual + Grand buttons (hidden for parameter tours) */}
@@ -412,7 +414,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               side="bottom"
               align="center"
               sideOffset={4}
-              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
             >
               <span className="text-xs text-center font-semibold text-dtour-text-muted">Zoom</span>
               <Slider
@@ -466,7 +468,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
               >
                 <div className="text-xs text-center font-semibold text-dtour-text-muted">Speed</div>
                 <Slider
@@ -499,7 +501,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 side="bottom"
                 align="center"
                 sideOffset={4}
-                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-surface p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
               >
                 <div className="flex flex-col gap-2">
                   <div className="text-xs text-center font-semibold text-dtour-text-muted">

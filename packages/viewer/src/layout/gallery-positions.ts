@@ -3,7 +3,9 @@ export const GAP = 32;
 /** Maximum preview size (CSS px). */
 export const MAX_SIZE = 320;
 /** Height of the loading bar below/above each preview (CSS px). */
-export const LOADING_BAR_HEIGHT = 24;
+export const LOADING_BAR_HEIGHT = 18;
+/** Space between previews and the container edges. */
+export const PREVIEW_SPACING = 8;
 /**
  * Per-edge-count ratio arrays.
  *   k=1 (4 previews)  → [1]             all same

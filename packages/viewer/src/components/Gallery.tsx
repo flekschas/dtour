@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import {
   LOADING_BAR_HEIGHT,
+  PREVIEW_SPACING,
   computeGallerySizes,
   computeLayout,
 } from '../layout/gallery-positions.ts';
@@ -14,7 +15,6 @@ import {
   currentKeyframeAtom,
   frameLoadingsAtom,
   frameSummariesAtom,
-  guidedSuspendedAtom,
   hoveredKeyframeAtom,
   previewCentersAtom,
   previewCountAtom,
@@ -36,6 +36,8 @@ export type GalleryProps = {
   containerHeight: number;
   /** Effective toolbar height in px (0 when hidden). */
   toolbarHeight: number;
+  /** Called when a preview is clicked; should animate back to guided mode. */
+  onResumeGuided: (durationMs: number) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -53,13 +55,13 @@ export const Gallery = ({
   containerWidth,
   containerHeight,
   toolbarHeight,
+  onResumeGuided,
 }: GalleryProps) => {
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
-  const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
   const showFrameNumbers = useAtomValue(showFrameNumbersAtom);
@@ -79,9 +81,9 @@ export const Gallery = ({
   const showBarSpace = loadingsVisible || summariesVisible;
 
   // Grid area = container minus its CSS insets.
-  const verticalInset = 16 + toolbarHeight / 2;
-  const gridWidth = containerWidth - 32;
-  const gridHeight = containerHeight - 2 * verticalInset;
+  const verticalInset = PREVIEW_SPACING + toolbarHeight / 2;
+  const gridWidth = containerWidth - PREVIEW_SPACING * 2;
+  const gridHeight = containerHeight - PREVIEW_SPACING * 2;
 
   const { gridTemplateColumns, gridTemplateRows, sizes } = useMemo(
     () => computeGallerySizes(gridWidth, gridHeight, previewCount, previewScale, showBarSpace),
@@ -129,12 +131,6 @@ export const Gallery = ({
     return undefined;
   };
 
-  const getBorderWidth = (i: number): number | undefined => {
-    const isActive = i === selectedKeyframe || i === currentKeyframe;
-    if (isActive) return 2;
-    return undefined;
-  };
-
   const getBoxShadow = (i: number): string => {
     if (i === selectedKeyframe)
       return '0 0 8px color-mix(in srgb, var(--color-dtour-highlight) 30%, transparent)';
@@ -146,13 +142,13 @@ export const Gallery = ({
 
   const handleClick = useCallback(
     (i: number) => {
-      setGuidedSuspended(false);
+      onResumeGuided(300);
       setSelectedKeyframe(i);
       setPlaying(false);
       const target = arcLengths && i < arcLengths.length ? arcLengths[i]! : i / previewCount;
       animateTo(target);
     },
-    [previewCount, arcLengths, setSelectedKeyframe, setPlaying, setGuidedSuspended, animateTo],
+    [previewCount, arcLengths, setSelectedKeyframe, setPlaying, onResumeGuided, animateTo],
   );
 
   const layout = useMemo(() => computeLayout(previewCount), [previewCount]);
@@ -160,7 +156,7 @@ export const Gallery = ({
   return (
     <div
       ref={galleryRef}
-      className="absolute left-4 right-4 grid gap-8 justify-between content-between pointer-events-none"
+      className="absolute left-2 right-2 grid gap-4 justify-between content-between pointer-events-none"
       style={{ top: verticalInset, bottom: verticalInset, gridTemplateColumns, gridTemplateRows }}
     >
       {previewCanvases.map((_, i) => {
@@ -208,7 +204,7 @@ export const Gallery = ({
                 onClick={visible ? () => handleClick(i) : undefined}
                 onKeyDown={undefined}
                 className={cn(
-                  'overflow-hidden border border-dtour-border transition-[border-color,border-width,box-shadow] duration-200 ease-in-out z-20 relative group',
+                  'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
                   hasLoadingPills || frameSummary
                     ? isBottomEdge
                       ? 'rounded-b'
@@ -220,7 +216,6 @@ export const Gallery = ({
                   width: visible ? sizes[i] : 0,
                   height: visible ? sizes[i] : 0,
                   borderColor: getBorderColor(i),
-                  borderWidth: getBorderWidth(i),
                   boxShadow: getBoxShadow(i),
                 }}
               >

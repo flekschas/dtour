@@ -106,6 +106,16 @@ export const viewModeAtom = atom<'guided' | 'manual' | 'grand'>('guided');
  */
 export const guidedSuspendedAtom = atom(false);
 
+/** True while a basis-blend transition is animating back to the tour projection. */
+export const basisTransitioningAtom = atom(false);
+
+/**
+ * Callback registered by DtourViewer so sibling components (e.g. DtourToolbar)
+ * can trigger a smooth guided-mode resume without holding scatter refs.
+ * Wrapped in an object to avoid jotai treating the function as an updater.
+ */
+export const resumeGuidedAtom = atom<{ fn: (durationMs: number) => void } | null>(null);
+
 /** Target mode after grand ease-out completes. null = not exiting. */
 export const grandExitTargetAtom = atom<'guided' | 'manual' | null>(null);
 
