@@ -12,4 +12,4 @@ pre-push:
   parallel: true
   commands:
     pytest:
-      run: cd packages/python && uv run pytest
+      run: cd packages/python && uv run --extra dev pytest
