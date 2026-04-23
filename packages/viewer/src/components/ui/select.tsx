@@ -54,7 +54,7 @@ export const SelectContent = ({
     <SelectPrimitive.Portal container={container}>
       <SelectPrimitive.Content
         className={cn(
-          'relative z-50 max-h-56 min-w-[8rem] overflow-hidden rounded-md border border-dtour-border bg-dtour-surface text-dtour-text shadow-md',
+          'relative z-50 max-h-56 min-w-[8rem] overflow-hidden rounded-md border border-dtour-border bg-dtour-bg text-dtour-text shadow-md',
           'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           position === 'popper' &&
             'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1',

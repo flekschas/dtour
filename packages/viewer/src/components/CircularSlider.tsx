@@ -46,8 +46,8 @@ const BASE_STROKE = 3;
 const MIN_STROKE = 1;
 const MAX_STROKE = 7;
 
-const TICK_LEN = 5; // normal tick length (outward from ring)
-const TICK_GAP = 3; // gap between ring and tick start
+const TICK_LEN = 6; // normal tick length (outward from ring)
+const TICK_GAP = 0; // gap between ring and tick start
 const ACTIVE_EXTRA = 4; // extra length for active tick
 const ACTIVE_WIDTH = 4; // stroke width for active tick
 const CP1_OFFSET = 24; // bezier control point 1 offset along radial direction
@@ -213,7 +213,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
             y1={center + r1 * Math.sin(angle)}
             x2={center + r2 * Math.cos(angle)}
             y2={center + r2 * Math.sin(angle)}
-            stroke={isActive ? 'white' : 'var(--color-dtour-text-muted)'}
+            stroke={isActive ? 'var(--color-dtour-highlight)' : 'var(--color-dtour-border)'}
             strokeWidth={isActive ? ACTIVE_WIDTH : 2}
           />
         );

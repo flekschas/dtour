@@ -7,7 +7,7 @@ import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
-import { PortalContainerContext } from './portal-container.tsx';
+import { PortalContainerContext, usePortalContainer } from './portal-container.tsx';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec, FrameLoading } from './spec.ts';
 import {
@@ -203,6 +203,30 @@ const DtourInner = ({
   useModeCycling();
   useSystemTheme();
 
+  // ── Apply theme class to portal container ──────────────────────────────
+  // Radix portals (tooltips, dropdowns, etc.) render to `document.body` by
+  // default, which sits outside any wrapper div we put `.dtour-light` on.
+  // Without this, portalled content ignores light-mode CSS variables and
+  // renders with dark defaults.  When an explicit portalContainer is
+  // provided (e.g. shadow DOM embed), apply the class there instead.
+  const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const portalContainer = usePortalContainer();
+  useEffect(() => {
+    const target = portalContainer ?? document.body;
+    if (resolvedTheme === 'light') {
+      target.classList.add('dtour-light');
+    } else {
+      target.classList.remove('dtour-light');
+    }
+    // Clean up body class on unmount to avoid leaking theme state across
+    // page lifecycles.  Consumer-provided containers are their own domain.
+    return () => {
+      if (!portalContainer) {
+        document.body.classList.remove('dtour-light');
+      }
+    };
+  }, [portalContainer, resolvedTheme]);
+
   // ── Apply embedded config from Parquet metadata ──────────────────────
   const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const store = useStore();
@@ -297,7 +321,6 @@ const DtourInner = ({
   ]);
 
   // Sync resolved theme → background color + CSS class
-  const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const setBackgroundColor = useSetAtom(backgroundColorAtom);
   useEffect(() => {
     // sRGB values matching --color-dtour-bg: dark=#000000, light=#ffffff
