@@ -13,6 +13,7 @@ import { useLongPressIndicator } from '../hooks/useLongPressIndicator.ts';
 import type { SpatialIndex } from '../hooks/useSpatialIndex.ts';
 import { isHexColor } from '../lib/color-utils.ts';
 import {
+  activeIndicesAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -242,6 +243,7 @@ export const LassoOverlay = ({
   const cameraPanX = useAtomValue(cameraPanXAtom);
   const cameraPanY = useAtomValue(cameraPanYAtom);
   const cameraZoom = useAtomValue(cameraZoomAtom);
+  const activeIndices = useAtomValue(activeIndicesAtom);
 
   const [lassoMode, setLassoMode] = useState(false);
   const [path, setPath] = useState<[number, number][]>([]);
@@ -654,6 +656,13 @@ export const LassoOverlay = ({
                 cx={cx}
                 cy={cy}
                 containerWidth={width}
+                color={color}
+                colorColumn={
+                  !color2dEnabled && typeof pointColor === 'string' && !isHexColor(pointColor)
+                    ? pointColor
+                    : null
+                }
+                activeIndices={activeIndices}
               />
             </>
           );

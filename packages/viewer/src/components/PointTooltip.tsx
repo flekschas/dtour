@@ -1,5 +1,13 @@
 import type { Metadata } from '@dtour/scatter';
 
+const hexLuminance = (hex: string): number => {
+  const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
+  const g = Number.parseInt(hex.slice(3, 5), 16) / 255;
+  const b = Number.parseInt(hex.slice(5, 7), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+
 export type HoverState = {
   pointIndex: number;
   /** Projection-space coords for stable highlight/tooltip anchoring. */
@@ -17,42 +25,95 @@ const POINT_R = 4;
 const ARROW_W = 6;
 const TOOLTIP_MAX_W = 240;
 
+type Row = { label: string; value: string; isColor: boolean };
+
 export const PointTooltip = ({
   hover,
   metadata,
   cx,
   cy,
   containerWidth,
+  color,
+  colorColumn,
+  activeIndices,
 }: {
   hover: HoverState;
   metadata: Metadata | null;
   cx: number;
   cy: number;
   containerWidth: number;
+  color?: string;
+  colorColumn?: string | null;
+  activeIndices?: number[];
 }) => {
   const { data } = hover;
 
   const gap = POINT_R + 4;
   const goRight = cx + gap + ARROW_W + TOOLTIP_MAX_W < containerWidth;
 
-  // Format tooltip rows from lazy-loaded data
-  const rows: { label: string; value: string }[] = [];
+  // Build rows in order: color dimension, other categoricals, other numericals, projection
+  const rows: Row[] = [];
   if (data && metadata) {
+    // 1. Color dimension first
+    if (colorColumn) {
+      if (metadata.categoricalColumnNames.includes(colorColumn)) {
+        const labelIdx = data.categoricalValues[colorColumn];
+        if (labelIdx !== undefined) {
+          const labels = metadata.categoricalLabels[colorColumn];
+          rows.push({
+            label: colorColumn,
+            value: labels?.[labelIdx] ?? String(labelIdx),
+            isColor: true,
+          });
+        }
+      } else {
+        const colIdx = metadata.columnNames.indexOf(colorColumn);
+        if (colIdx >= 0) {
+          const val = data.numericValues[String(colIdx)];
+          if (val !== undefined) {
+            rows.push({
+              label: colorColumn,
+              value: Number.isInteger(val) ? String(val) : val.toPrecision(4),
+              isColor: true,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Other categorical columns
     for (const catName of metadata.categoricalColumnNames) {
+      if (catName === colorColumn) continue;
       const labelIdx = data.categoricalValues[catName];
       if (labelIdx !== undefined) {
         const labels = metadata.categoricalLabels[catName];
-        rows.push({ label: catName, value: labels?.[labelIdx] ?? String(labelIdx) });
-      }
-    }
-    for (let d = 0; d < metadata.columnNames.length; d++) {
-      const val = data.numericValues[String(d)];
-      if (val !== undefined) {
         rows.push({
-          label: metadata.columnNames[d]!,
-          value: Number.isInteger(val) ? String(val) : val.toPrecision(4),
+          label: catName,
+          value: labels?.[labelIdx] ?? String(labelIdx),
+          isColor: false,
         });
       }
+    }
+
+    // 3. Projection dimensions (active in the tour), then remaining numerical
+    const activeSet = activeIndices ? new Set(activeIndices) : null;
+    const addNumRow = (d: number) => {
+      if (metadata.columnNames[d] === colorColumn) return;
+      const val = data.numericValues[String(d)];
+      if (val === undefined) return;
+      rows.push({
+        label: metadata.columnNames[d]!,
+        value: Number.isInteger(val) ? String(val) : val.toPrecision(4),
+        isColor: false,
+      });
+    };
+    if (activeSet) {
+      for (const d of activeIndices!) addNumRow(d);
+      for (let d = 0; d < metadata.columnNames.length; d++) {
+        if (!activeSet.has(d)) addNumRow(d);
+      }
+    } else {
+      for (let d = 0; d < metadata.columnNames.length; d++) addNumRow(d);
     }
   }
 
@@ -116,13 +177,23 @@ export const PointTooltip = ({
       }
     >
       {arrowSvg}
-      <div className="font-medium mb-0.5 opacity-60">Point {hover.pointIndex.toLocaleString()}</div>
       {rows.length > 0 ? (
-        <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+        <div className="flex flex-col gap-0.5">
           {rows.map((row) => (
-            <div key={row.label} className="contents">
-              <span className="opacity-60 truncate">{row.label}</span>
-              <span className="text-right font-mono truncate">{row.value}</span>
+            <div
+              key={row.label}
+              className={`flex gap-2 ${row.isColor ? 'rounded-sm px-1 -mx-1' : ''}`}
+              style={
+                row.isColor && color?.startsWith('#')
+                  ? {
+                      backgroundColor: color,
+                      color: hexLuminance(color) > 0.4 ? '#000' : '#fff',
+                    }
+                  : undefined
+              }
+            >
+              <span className={`truncate ${row.isColor ? '' : 'opacity-60'}`}>{row.label}</span>
+              <span className="ml-auto text-right font-mono truncate">{row.value}</span>
             </div>
           ))}
         </div>
