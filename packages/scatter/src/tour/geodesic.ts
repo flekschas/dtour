@@ -58,6 +58,11 @@ const gramSchmidt = (out: Float32Array, p: number): void => {
  * @param P3  - next basis (neighbor after end)
  * @param p   - number of dimensions
  * @param t   - interpolation parameter [0, 1]
+ * @param orthonormalize - when true (default), apply Gram-Schmidt after
+ *   blending. Set to false for parameter tours where bases are selectors
+ *   into a stacked embedding — skipping GS yields direct Catmull-Rom
+ *   interpolation of the 2D coordinates, avoiding the "breathing" artifact
+ *   caused by GS renormalization inflating the projection mid-transition.
  */
 export const interpolateBases = (
   out: Float32Array,
@@ -67,6 +72,7 @@ export const interpolateBases = (
   P3: Float32Array,
   p: number,
   t: number,
+  orthonormalize = true,
 ): Float32Array => {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -81,8 +87,9 @@ export const interpolateBases = (
     out[k] = c0 * P0[k]! + c1 * P1[k]! + c2 * P2[k]! + c3 * P3[k]!;
   }
 
-  // Gram-Schmidt orthonormalization
-  gramSchmidt(out, p);
+  if (orthonormalize) {
+    gramSchmidt(out, p);
+  }
 
   return out;
 };

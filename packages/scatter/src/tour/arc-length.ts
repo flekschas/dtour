@@ -17,11 +17,27 @@ const ARC_SAMPLES = 8;
  *
  * @param bases - array of p×2 column-major basis matrices
  * @param p     - number of dimensions
+ * @param orthonormalize - passed through to interpolateBases. When false,
+ *   geodesic distance is unreliable on non-orthonormal intermediates, so
+ *   uniform segment lengths are used instead.
  */
-export const computeArcLengths = (bases: Float32Array[], p: number): Float32Array => {
+export const computeArcLengths = (
+  bases: Float32Array[],
+  p: number,
+  orthonormalize = true,
+): Float32Array => {
   const n = bases.length;
   const cumulative = new Float32Array(n + 1);
   cumulative[0] = 0;
+
+  if (!orthonormalize) {
+    // Uniform segments: geodesic distance is meaningless for non-orthonormal
+    // bases (parameter tours with selector matrices).
+    for (let i = 1; i <= n; i++) {
+      cumulative[i] = i / n;
+    }
+    return cumulative;
+  }
 
   const prev = new Float32Array(p * 2);
   const cur = new Float32Array(p * 2);
@@ -103,6 +119,7 @@ export const interpolateAtPosition = (
   arcLengths: Float32Array,
   p: number,
   t: number,
+  orthonormalize = true,
 ): Float32Array => {
   const n = bases.length;
   const { segment, localT } = resolvePosition(arcLengths, t);
@@ -110,5 +127,14 @@ export const interpolateAtPosition = (
   const i1 = segment;
   const i2 = (segment + 1) % n;
   const i3 = (segment + 2) % n;
-  return interpolateBases(out, bases[i0]!, bases[i1]!, bases[i2]!, bases[i3]!, p, localT);
+  return interpolateBases(
+    out,
+    bases[i0]!,
+    bases[i1]!,
+    bases[i2]!,
+    bases[i3]!,
+    p,
+    localT,
+    orthonormalize,
+  );
 };
