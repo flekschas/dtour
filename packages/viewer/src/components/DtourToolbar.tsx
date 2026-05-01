@@ -282,7 +282,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               title="Guided"
             >
               <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />
-              <span className="ml-1 text-xs">
+              <span className="text-xs">
                 Guided
                 {viewMode === 'guided' ? (
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out">
@@ -318,7 +318,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </TooltipProvider>
             )}
             {viewMode === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
-              <div className="flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out">
+              <div className="-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -328,7 +328,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 >
                   <span className="text-xs">Dims</span>
                 </Button>
-                <span className="text-[10px] text-dtour-text-muted select-none px-1.5">/</span>
+                <span className="text-[10px] text-dtour-text-muted select-none px-1">/</span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -367,7 +367,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   title={label}
                 >
                   <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
-                  <span className="ml-1 text-xs">{label}</span>
+                  <span className="text-xs">{label}</span>
                 </Button>
               ),
             )}
@@ -640,7 +640,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
       </div>
 
       {/* Right: data info + settings */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-1">
         {metadata ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
