@@ -39,7 +39,7 @@ export type PointPipeline = {
 //   offset 80: color_min_v           (f32) — 2D colormap second column min
 //   offset 84: color_range_v         (f32) — 2D colormap second column range
 //   offset 88: color2d_map_index     (u32) — which 2D colormap (0-6)
-//   offset 92-95: padding
+//   offset 92: scale_opacity_by_zoom (f32) — 1.0 = auto (zoom² scaling), 0.0 = manual (fixed)
 const UNIFORM_SIZE = 96;
 
 // Camera layout (80 bytes — 8 scalar fields + 3×3 rotation matrix padded to 3×vec4f):
@@ -61,6 +61,7 @@ export type PointStyle = {
   pointSize: number; // NDC units, e.g. 0.01
   opacity: number; // 0-1
   color: [number, number, number]; // RGB 0-1
+  scaleOpacityByZoom: boolean; // true = auto (zoom² density scaling), false = manual (fixed)
 };
 
 /** Style as stored in worker state — may contain 'auto' for per-view resolution. */
@@ -68,6 +69,8 @@ export type RawPointStyle = {
   pointSize: number | 'auto';
   opacity: number | 'auto';
   color: [number, number, number];
+  minPointSize: number;
+  fillTarget: number;
 };
 
 /** Color mode: 0 = uniform color, 1 = continuous, 2 = categorical, 3 = 2D colormap. */
@@ -111,6 +114,7 @@ const DEFAULT_STYLE: PointStyle = {
   pointSize: 0.012,
   opacity: 0.7,
   color: [0.25, 0.5, 0.9],
+  scaleOpacityByZoom: true,
 };
 
 const DEFAULT_FLAGS: StyleFlags = {
@@ -361,7 +365,7 @@ export const writeUniforms = (
   uniformF32[20] = colorState.minV;
   uniformF32[21] = colorState.rangeV;
   uniformU32[22] = colorState.mapIndex;
-  uniformF32[23] = 0; // padding
+  uniformF32[23] = style.scaleOpacityByZoom ? 1.0 : 0.0;
   device.queue.writeBuffer(uniformBuffer, 0, uniformBuf);
 };
 

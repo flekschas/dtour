@@ -48,6 +48,7 @@ type TourState = {
   bases: Float32Array[];
   arcLengths: Float32Array;
   dims: number;
+  orthonormalize: boolean;
   position: number;
   interpolatedBasis: Float32Array;
 };
@@ -137,8 +138,6 @@ const postMain = (msg: GpuToMain, transfers?: Transferable[]): void => {
 
 // ─── Auto-style (Reusser color budget) ───────────────────────────────────
 
-const COLOR_BUDGET = 0.5;
-
 /** Compute ideal point size (NDC) and opacity for a given canvas and point count.
  *  All dimensions are physical pixels; pass dpr=1 when canvas sizes are already physical. */
 const computeAutoStyle = (
@@ -146,6 +145,8 @@ const computeAutoStyle = (
   canvasWidth: number,
   canvasHeight: number,
   dpr: number,
+  fillTarget: number,
+  minPointSizeCss: number,
 ): { pointSize: number; opacity: number } => {
   if (rowCount === 0 || canvasWidth === 0 || canvasHeight === 0) {
     return { pointSize: 0.012, opacity: 0.7 };
@@ -153,10 +154,10 @@ const computeAutoStyle = (
 
   const physW = canvasWidth * dpr;
   const physH = canvasHeight * dpr;
-  const totalBudget = physW * physH * COLOR_BUDGET;
+  const totalBudget = physW * physH * fillTarget;
   const perPoint = totalBudget / rowCount;
   const idealRadius = Math.sqrt(perPoint / Math.PI);
-  const minRadius = dpr; // 1 CSS pixel
+  const minRadius = minPointSizeCss * dpr * 0.5; // CSS px diameter → physical radius
 
   let radius: number;
   let opacity: number;
@@ -188,17 +189,27 @@ const resolveStyleForCanvas = (canvas: OffscreenCanvas): PointStyle => {
       pointSize: cssToNdc(style.pointSize, canvas.height),
       opacity: style.opacity,
       color: style.color,
+      scaleOpacityByZoom: false,
     };
   }
 
   // Canvas dimensions are physical pixels; computeAutoStyle expects CSS pixels + dpr
-  const auto = computeAutoStyle(numPoints, canvas.width / dpr, canvas.height / dpr, dpr);
+  const auto = computeAutoStyle(
+    numPoints,
+    canvas.width / dpr,
+    canvas.height / dpr,
+    dpr,
+    style.fillTarget,
+    style.minPointSize,
+  );
 
+  const opacityIsAuto = style.opacity === 'auto';
   return {
     pointSize:
       style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, canvas.height),
-    opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
+    opacity: opacityIsAuto ? auto.opacity : (style.opacity as number),
     color: style.color,
+    scaleOpacityByZoom: opacityIsAuto,
   };
 };
 
@@ -694,6 +705,7 @@ const renderMainView = (): void => {
     tour.arcLengths,
     tour.dims,
     tour.position,
+    tour.orthonormalize,
   );
   renderView(
     tour.interpolatedBasis,
@@ -1097,6 +1109,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
       bases: defaultBases,
       arcLengths: computeArcLengths(defaultBases, dims),
       dims,
+      orthonormalize: true,
       position: 0,
       interpolatedBasis: new Float32Array(dims * 2),
     };
@@ -1152,13 +1165,15 @@ const handleMessage = (msg: MainToGpu): void => {
     const { bases } = msg;
     if (bases.length === 0) return;
     const dims = bases[0]!.length / 2;
+    const orthonormalize = msg.tourMode !== 'parameter';
 
-    const arcLengths = computeArcLengths(bases, dims);
+    const arcLengths = computeArcLengths(bases, dims, orthonormalize);
 
     state.tour = {
       bases,
       arcLengths,
       dims,
+      orthonormalize,
       position: state.tour?.position ?? 0,
       interpolatedBasis: new Float32Array(dims * 2),
     };
@@ -1178,7 +1193,13 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setStyle') {
-    state.style = { pointSize: msg.pointSize, opacity: msg.opacity, color: msg.color };
+    state.style = {
+      pointSize: msg.pointSize,
+      opacity: msg.opacity,
+      color: msg.color,
+      minPointSize: msg.minPointSize ?? state.style.minPointSize,
+      fillTarget: msg.fillTarget ?? state.style.fillTarget,
+    };
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
@@ -1460,6 +1481,7 @@ const handleMessage = (msg: MainToGpu): void => {
         tour.arcLengths,
         tour.dims,
         tour.position,
+        tour.orthonormalize,
       );
       currentBasis = tour.interpolatedBasis;
     }
@@ -1572,6 +1594,7 @@ const handleMessage = (msg: MainToGpu): void => {
         tour.arcLengths,
         tour.dims,
         tour.position,
+        tour.orthonormalize,
       );
       currentBasis = tour.interpolatedBasis;
     }
@@ -1807,6 +1830,7 @@ const handleBenchmark = async (numFrames: number): Promise<void> => {
       tour.arcLengths,
       tour.dims,
       tour.position,
+      tour.orthonormalize,
     );
     ensureMainHdr();
     renderView(
@@ -1830,6 +1854,7 @@ const handleBenchmark = async (numFrames: number): Promise<void> => {
       tour.arcLengths,
       tour.dims,
       tour.position,
+      tour.orthonormalize,
     );
 
     const t0 = performance.now();
@@ -1906,7 +1931,13 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         numDims: 0,
         categoricalBuffers: new Map(),
         tour: null,
-        style: { pointSize: 'auto', opacity: 'auto', color: [0.25, 0.5, 0.9] },
+        style: {
+          pointSize: 'auto',
+          opacity: 'auto',
+          color: [0.25, 0.5, 0.9],
+          minPointSize: 2,
+          fillTarget: 0.5,
+        },
         styleFlags: { useSelectionMask: false },
         camera: {
           panX: 0,

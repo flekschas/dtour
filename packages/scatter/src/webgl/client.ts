@@ -92,10 +92,14 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     pointSize: number | 'auto';
     opacity: number | 'auto';
     color: [number, number, number];
+    minPointSize: number;
+    fillTarget: number;
   } = {
     pointSize: 'auto',
     opacity: 'auto',
     color: [0.25, 0.5, 0.9],
+    minPointSize: 2,
+    fillTarget: 0.5,
   };
   let currentCamera = {
     pan: [0, 0] as [number, number],
@@ -108,9 +112,12 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
   };
 
-  const setBases = (bases: Float32Array[]): void => {
+  const setBases = (
+    bases: Float32Array[],
+    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
+  ): void => {
     const transfers = bases.map((b) => b.buffer);
-    sendToGpu(gpuWorker, { type: 'setBases', bases }, transfers);
+    sendToGpu(gpuWorker, { type: 'setBases', bases, tourMode }, transfers);
   };
 
   const setTourPosition = (position: number): void => {
@@ -121,6 +128,8 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     pointSize?: number | 'auto';
     opacity?: number | 'auto';
     color?: [number, number, number];
+    minPointSize?: number;
+    fillTarget?: number;
   }): void => {
     currentStyle = { ...currentStyle, ...opts };
     sendToGpu(gpuWorker, {
@@ -128,6 +137,8 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
       pointSize: currentStyle.pointSize,
       opacity: currentStyle.opacity,
       color: currentStyle.color,
+      minPointSize: currentStyle.minPointSize,
+      fillTarget: currentStyle.fillTarget,
     });
   };
 
@@ -359,7 +370,9 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setMaxPoints,
     addPreviewCanvas,
     removePreviewCanvas,
-    resizePreview: () => {},
+    resizePreview: (id: number, width: number, height: number): void => {
+      sendToGpu(gpuWorker, { type: 'resizePreview', id, width, height });
+    },
     enable3d,
     disable3d,
     set3dRotation,

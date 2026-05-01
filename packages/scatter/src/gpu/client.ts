@@ -71,8 +71,13 @@ export type ScatterInstance = {
    * dims (p) is inferred as bases[0].length / 2.
    *
    * @param bases - array of basis matrices, one per tour keyframe
+   * @param tourMode - when 'parameter', skip Gram-Schmidt during
+   *   interpolation for direct coordinate blending
    */
-  setBases: (bases: Float32Array[]) => void;
+  setBases: (
+    bases: Float32Array[],
+    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
+  ) => void;
   /** Set tour position along the arc-length parameterized path [0, 1]. */
   setTourPosition: (position: number) => void;
   /** Update point rendering style. Use 'auto' for density-adaptive sizing. */
@@ -80,6 +85,8 @@ export type ScatterInstance = {
     pointSize?: number | 'auto';
     opacity?: number | 'auto';
     color?: [number, number, number];
+    minPointSize?: number;
+    fillTarget?: number;
   }) => void;
   /** Set 2D camera (pan, zoom, and optional viewport inset for toolbar offset). */
   setCamera: (options: {
@@ -279,10 +286,14 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     pointSize: number | 'auto';
     opacity: number | 'auto';
     color: [number, number, number];
+    minPointSize: number;
+    fillTarget: number;
   } = {
     pointSize: 'auto',
     opacity: 'auto',
     color: [0.25, 0.5, 0.9],
+    minPointSize: 2,
+    fillTarget: 0.5,
   };
   let currentCamera = {
     pan: [0, 0] as [number, number],
@@ -295,10 +306,13 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
   };
 
-  const setBases = (bases: Float32Array[]): void => {
+  const setBases = (
+    bases: Float32Array[],
+    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
+  ): void => {
     // Transfer ownership of basis buffers for zero-copy
     const transfers = bases.map((b) => b.buffer);
-    sendToGpu(gpuWorker, { type: 'setBases', bases }, transfers);
+    sendToGpu(gpuWorker, { type: 'setBases', bases, tourMode }, transfers);
   };
 
   const setTourPosition = (position: number): void => {
@@ -309,6 +323,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     pointSize?: number | 'auto';
     opacity?: number | 'auto';
     color?: [number, number, number];
+    minPointSize?: number;
+    fillTarget?: number;
   }): void => {
     currentStyle = { ...currentStyle, ...opts };
     sendToGpu(gpuWorker, {
@@ -316,6 +332,8 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
       pointSize: currentStyle.pointSize,
       opacity: currentStyle.opacity,
       color: currentStyle.color,
+      minPointSize: currentStyle.minPointSize,
+      fillTarget: currentStyle.fillTarget,
     });
   };
 

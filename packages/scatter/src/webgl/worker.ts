@@ -14,6 +14,7 @@ type TourState = {
   bases: Float32Array[];
   arcLengths: Float32Array;
   dims: number;
+  orthonormalize: boolean;
   position: number;
   interpolatedBasis: Float32Array;
 };
@@ -68,12 +69,18 @@ type GLState = {
   style: RawPointStyle;
   styleFlags: StyleFlags;
   // Color mapping state (LUT approach)
-  colorMode: number; // 0=uniform, 1=continuous, 2=categorical
+  colorMode: number; // 0=uniform, 1=continuous, 2=categorical, 3=2D colormap
   colorColumnIndex: number;
   colorMin: number;
   colorRange: number;
   colorNumStops: number;
   activeCatColumnName: string | null;
+  // 2D colormap state
+  colorColumnIndexV: number;
+  colorMinV: number;
+  colorRangeV: number;
+  color2dMapIndex: number;
+  color2dLut: Float32Array;
   camera: CameraState;
   // Direct basis
   directBasis: Float32Array | null;
@@ -90,12 +97,15 @@ type RawPointStyle = {
   pointSize: number | 'auto';
   opacity: number | 'auto';
   color: [number, number, number];
+  minPointSize: number;
+  fillTarget: number;
 };
 
 type PointStyle = {
   pointSize: number;
   opacity: number;
   color: [number, number, number];
+  scaleOpacityByZoom: boolean;
 };
 
 type StyleFlags = {
@@ -140,6 +150,13 @@ type PointLocations = {
   u_catIndexTex: WebGLUniformLocation;
   u_useSelectionMask: WebGLUniformLocation;
   u_selectionTex: WebGLUniformLocation;
+  // 2D colormap
+  u_colorColumnIndexV: WebGLUniformLocation;
+  u_colorMinV: WebGLUniformLocation;
+  u_colorRangeV: WebGLUniformLocation;
+  u_color2dMapIndex: WebGLUniformLocation;
+  u_color2dLut: WebGLUniformLocation;
+  u_scaleOpacityByZoom: WebGLUniformLocation;
 };
 
 type TonemapLocations = {
@@ -203,23 +220,23 @@ const getUniform = (
 
 // ─── Auto-style (Reusser color budget) ───────────────────────────────────
 
-const COLOR_BUDGET = 0.5;
-
 const computeAutoStyle = (
   rowCount: number,
   canvasWidth: number,
   canvasHeight: number,
   dpr: number,
+  fillTarget: number,
+  minPointSizeCss: number,
 ): { pointSize: number; opacity: number } => {
   if (rowCount === 0 || canvasWidth === 0 || canvasHeight === 0) {
     return { pointSize: 0.012, opacity: 0.7 };
   }
   const physW = canvasWidth * dpr;
   const physH = canvasHeight * dpr;
-  const totalBudget = physW * physH * COLOR_BUDGET;
+  const totalBudget = physW * physH * fillTarget;
   const perPoint = totalBudget / rowCount;
   const idealRadius = Math.sqrt(perPoint / Math.PI);
-  const minRadius = dpr;
+  const minRadius = minPointSizeCss * dpr * 0.5; // CSS px diameter → physical radius
 
   let radius: number;
   let opacity: number;
@@ -248,16 +265,26 @@ const resolveStyleForCanvas = (canvasWidth: number, canvasHeight: number): Point
       pointSize: cssToNdc(style.pointSize, canvasHeight),
       opacity: style.opacity,
       color: style.color,
+      scaleOpacityByZoom: false,
     };
   }
 
-  const auto = computeAutoStyle(numPoints, canvasWidth / dpr, canvasHeight / dpr, dpr);
+  const auto = computeAutoStyle(
+    numPoints,
+    canvasWidth / dpr,
+    canvasHeight / dpr,
+    dpr,
+    style.fillTarget,
+    style.minPointSize,
+  );
 
+  const opacityIsAuto = style.opacity === 'auto';
   return {
     pointSize:
       style.pointSize === 'auto' ? auto.pointSize : cssToNdc(style.pointSize, canvasHeight),
-    opacity: style.opacity === 'auto' ? auto.opacity : style.opacity,
+    opacity: opacityIsAuto ? auto.opacity : (style.opacity as number),
     color: style.color,
+    scaleOpacityByZoom: opacityIsAuto,
   };
 };
 
@@ -596,6 +623,7 @@ const renderView = (
     gl.uniform1f(pointLocs.u_opacity, resolved.opacity);
     gl.uniform4f(pointLocs.u_color, resolved.color[0], resolved.color[1], resolved.color[2], 1.0);
     gl.uniform1f(pointLocs.u_useSubtractive, useSubtractive ? 1.0 : 0.0);
+    gl.uniform1f(pointLocs.u_scaleOpacityByZoom, resolved.scaleOpacityByZoom ? 1.0 : 0.0);
     gl.uniform2f(pointLocs.u_pan, camera.panX, camera.panY);
     gl.uniform1f(pointLocs.u_zoom, camera.zoom);
     gl.uniform1f(pointLocs.u_aspect, aspect);
@@ -611,6 +639,12 @@ const renderView = (
     gl.uniform1f(pointLocs.u_colorMin, state.colorMin);
     gl.uniform1f(pointLocs.u_colorRange, state.colorRange);
     gl.uniform1i(pointLocs.u_colorNumStops, state.colorNumStops);
+    // 2D colormap uniforms
+    gl.uniform1i(pointLocs.u_colorColumnIndexV, state.colorColumnIndexV);
+    gl.uniform1f(pointLocs.u_colorMinV, state.colorMinV);
+    gl.uniform1f(pointLocs.u_colorRangeV, state.colorRangeV);
+    gl.uniform1i(pointLocs.u_color2dMapIndex, state.color2dMapIndex);
+    gl.uniform1fv(pointLocs.u_color2dLut, state.color2dLut);
     gl.uniform1f(pointLocs.u_useSelectionMask, state.styleFlags.useSelectionMask ? 1.0 : 0.0);
 
     gl.drawArrays(gl.POINTS, 0, numPoints);
@@ -630,6 +664,11 @@ const renderView = (
   gl.uniform1f(tonemapLocs.u_mode, tonemapMode);
 
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // TODO: testing — force GPU sync to diagnose preview rendering bug
+  // (small previews render with vertical streak artifacts on ANGLE/Metal).
+  // If this fixes it, the root cause is a driver sync issue with rapid FBO recycling.
+  gl.finish();
 };
 
 // ─── Deferred preview rendering ───────────────────────────────────────────
@@ -747,6 +786,7 @@ const renderMainView = (): void => {
     tour.arcLengths,
     tour.dims,
     tour.position,
+    tour.orthonormalize,
   );
   renderView(tour.interpolatedBasis, canvas.width, canvas.height, 0, state.camera);
   postMain({ type: 'rendered', viewIndex: 0 });
@@ -815,9 +855,27 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     return;
   }
 
-  // ── 2D colormap (not supported in WebGL backend) ──
+  // ── 2D colormap ──
   if (event.data.type === 'setColor2D') {
-    console.warn('2D colormaps are not supported in the WebGL backend');
+    if (event.data.dataVersion !== currentDataVersion) return;
+
+    const { columnIndexX, columnIndexY, minX, rangeX, minY, rangeY, lut, mapIndex } = event.data;
+
+    state.colorMode = 3;
+    state.colorColumnIndex = columnIndexX;
+    state.colorMin = minX;
+    state.colorRange = rangeX;
+    state.colorColumnIndexV = columnIndexY;
+    state.colorMinV = minY;
+    state.colorRangeV = rangeY;
+    state.color2dMapIndex = mapIndex;
+    state.activeCatColumnName = null;
+
+    if (lut) {
+      state.color2dLut.set(lut.subarray(0, 128));
+    }
+
+    applyColorUpdate();
     return;
   }
 
@@ -974,6 +1032,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
       bases: defaultBases,
       arcLengths: computeArcLengths(defaultBases, dims),
       dims,
+      orthonormalize: true,
       position: 0,
       interpolatedBasis: new Float32Array(dims * 2),
     };
@@ -1105,6 +1164,7 @@ const handleLassoSelect = (polygon: Float32Array): void => {
       tour.arcLengths,
       tour.dims,
       tour.position,
+      tour.orthonormalize,
     );
     currentBasis = tour.interpolatedBasis;
   }
@@ -1239,6 +1299,7 @@ const handleBenchmark = (numFrames: number): void => {
       tour.arcLengths,
       tour.dims,
       tour.position,
+      tour.orthonormalize,
     );
     renderView(
       tour.interpolatedBasis,
@@ -1260,6 +1321,7 @@ const handleBenchmark = (numFrames: number): void => {
       tour.arcLengths,
       tour.dims,
       tour.position,
+      tour.orthonormalize,
     );
 
     const t0 = performance.now();
@@ -1289,11 +1351,13 @@ const handleMessage = (msg: MainToGpu): void => {
     const { bases } = msg;
     if (bases.length === 0) return;
     const dims = bases[0]!.length / 2;
+    const orthonormalize = msg.tourMode !== 'parameter';
 
     state.tour = {
       bases,
-      arcLengths: computeArcLengths(bases, dims),
+      arcLengths: computeArcLengths(bases, dims, orthonormalize),
       dims,
+      orthonormalize,
       position: state.tour?.position ?? 0,
       interpolatedBasis: new Float32Array(dims * 2),
     };
@@ -1320,6 +1384,18 @@ const handleMessage = (msg: MainToGpu): void => {
     return;
   }
 
+  if (msg.type === 'resizePreview') {
+    const entry = state.previewCanvases.get(msg.id);
+    if (!entry) return;
+    entry.canvas.width = msg.width;
+    entry.canvas.height = msg.height;
+    // Re-render if data + tour exist
+    if (state.dataTexture && state.tour && msg.id < state.tour.bases.length) {
+      schedulePreviewRender();
+    }
+    return;
+  }
+
   if (msg.type === 'setTourPosition') {
     if (!state.tour) return;
     state.tour.position = msg.position;
@@ -1329,7 +1405,13 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setStyle') {
-    state.style = { pointSize: msg.pointSize, opacity: msg.opacity, color: msg.color };
+    state.style = {
+      pointSize: msg.pointSize,
+      opacity: msg.opacity,
+      color: msg.color,
+      minPointSize: msg.minPointSize ?? state.style.minPointSize,
+      fillTarget: msg.fillTarget ?? state.style.fillTarget,
+    };
     if ((state.tour || state.directBasis) && state.dataTexture) {
       renderAllViews();
     }
@@ -1486,6 +1568,7 @@ const handleMessage = (msg: MainToGpu): void => {
         tour.arcLengths,
         tour.dims,
         tour.position,
+        tour.orthonormalize,
       );
       currentBasis = tour.interpolatedBasis;
     }
@@ -1620,6 +1703,12 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         u_catIndexTex: getUniform(gl, pointProgram, 'u_catIndexTex'),
         u_useSelectionMask: getUniform(gl, pointProgram, 'u_useSelectionMask'),
         u_selectionTex: getUniform(gl, pointProgram, 'u_selectionTex'),
+        u_colorColumnIndexV: getUniform(gl, pointProgram, 'u_colorColumnIndexV'),
+        u_colorMinV: getUniform(gl, pointProgram, 'u_colorMinV'),
+        u_colorRangeV: getUniform(gl, pointProgram, 'u_colorRangeV'),
+        u_color2dMapIndex: getUniform(gl, pointProgram, 'u_color2dMapIndex'),
+        u_color2dLut: getUniform(gl, pointProgram, 'u_color2dLut'),
+        u_scaleOpacityByZoom: getUniform(gl, pointProgram, 'u_scaleOpacityByZoom'),
       };
 
       const tonemapProgram = linkProgram(gl, tonemapVert, tonemapFrag);
@@ -1652,7 +1741,13 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         normRanges: null,
         categoricalBuffers: new Map(),
         tour: null,
-        style: { pointSize: 'auto', opacity: 'auto', color: [0.25, 0.5, 0.9] },
+        style: {
+          pointSize: 'auto',
+          opacity: 'auto',
+          color: [0.25, 0.5, 0.9],
+          minPointSize: 2,
+          fillTarget: 0.5,
+        },
         styleFlags: { useSelectionMask: false },
         colorMode: 0,
         colorColumnIndex: 0,
@@ -1660,6 +1755,11 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         colorRange: 1,
         colorNumStops: 0,
         activeCatColumnName: null,
+        colorColumnIndexV: 0,
+        colorMinV: 0,
+        colorRangeV: 1,
+        color2dMapIndex: 0,
+        color2dLut: new Float32Array(128),
         camera: {
           panX: 0,
           panY: 0,

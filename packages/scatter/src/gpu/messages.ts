@@ -15,6 +15,9 @@ export type MainToGpu =
       // dims (p) is inferred as bases[0].length / 2.
       type: 'setBases';
       bases: Float32Array[];
+      // When 'parameter', skip Gram-Schmidt during interpolation so
+      // selector bases yield direct Catmull-Rom coordinate blending.
+      tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
     }
   | {
       // Normalized position along the tour arc [0, 1].
@@ -27,6 +30,8 @@ export type MainToGpu =
       pointSize: number | 'auto';
       opacity: number | 'auto';
       color: [number, number, number];
+      minPointSize?: number;
+      fillTarget?: number;
     }
   | {
       type: 'setCamera';
