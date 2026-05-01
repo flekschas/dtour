@@ -2,10 +2,24 @@
 
 ## v0.4.0
 
+### python
+- feat: `TourResult.from_parquet()` classmethod to extract tours from Parquet metadata
+- feat: `tour_dimensions` traitlet for explicit tour column-name support
+- refactor: rename `spectrum_tour` → `attraction_repulsion_tour`
+- fix: auto-coerce `tour_by` mismatches instead of raising errors
+
 ### scatter
+- feat: `tourMode` parameter on `setBases()` to skip orthonormalization for parameter tours
+- feat: configurable `minPointSize` and `fillTarget` for density-adaptive point sizing
+- feat: conditional zoom-based opacity scaling via `scaleOpacityByZoom`
+- feat: 2D colormap rendering in WebGL shaders (LUT and Oklab polar)
 - perf: columnar parquet streaming via `onChunk` avoids per-row object allocation for large datasets
 
 ### viewer
+- feat: predefined tour support — locks column toggles, preview count, and Dims/PCA toggle
+- feat: `expandBases()` maps subset-dimension tours into full column space
+- feat: `minPointSize` rendering control with spec sync
+- feat: zoom control reworked to percentage-based steps (25%–400%)
 - feat: smooth guided-mode resume with basis-blend projection transition
 - feat: projection-anchored hover highlight with per-point color
 - feat: hover tooltip anchored to projection space with directional arrow
@@ -16,6 +30,7 @@
 
 ### webapp
 - feat: show parsing spinner until first render after data load
+- feat: `serveDataDir` Vite plugin to serve monorepo `data/` directory in dev
 
 ## v0.3.0
 
