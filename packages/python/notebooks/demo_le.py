@@ -749,7 +749,7 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
 
 
 @app.cell
-def _(cache_dir, dtour, fisher_df, fisher_tour, phenotype_colors):
+def _(cache_dir, df, dtour, fisher_df, fisher_tour, phenotype_colors, pl, win_cols):
     fisher_json = dtour.build_dtour_metadata(
         point_color="phenotypes",
         tour_by="dimensions",
@@ -766,7 +766,28 @@ def _(cache_dir, dtour, fisher_df, fisher_tour, phenotype_colors):
         compression_level=9,
         metadata={"dtour": fisher_json},
     )
-    fisher_out_path
+
+    # Second dataset: Fisher embedding + winsorized marker expression values
+    fisher_markers_df = pl.concat([fisher_df, df.select(win_cols)], how="horizontal")
+    fd_cols = [c for c in fisher_markers_df.columns if c.startswith("FD")]
+    fisher_markers_json = dtour.build_dtour_metadata(
+        point_color="phenotypes",
+        tour_by="dimensions",
+        preview_count=min(8, fisher_tour.n_views),
+        preview_scale=0.5,
+        camera_zoom=0.5,
+        color_map=phenotype_colors,
+        tour=fisher_tour,
+        tour_dimensions=fd_cols,
+    )
+    fisher_markers_out_path = cache_dir / "mair-2022-tumor-le-fisher-markers.pq"
+    fisher_markers_df.write_parquet(
+        str(fisher_markers_out_path),
+        compression="zstd",
+        compression_level=9,
+        metadata={"dtour": fisher_markers_json},
+    )
+    fisher_markers_out_path
     return
 
 
@@ -884,6 +905,21 @@ def _(le_tour, phenotype_colors, phenotypes, plt):
     _fig.tight_layout()
     _fig
     return
+
+
+@app.cell
+def _(cache_dir, np, pl):
+    # Sanity check: FD columns must be identical between the two parquet files
+    _base = pl.read_parquet(cache_dir / "mair-2022-tumor-le-fisher.pq")
+    _markers = pl.read_parquet(cache_dir / "mair-2022-tumor-le-fisher-markers.pq")
+    _fd_cols = [c for c in _base.columns if c.startswith("FD")]
+    for _col in _fd_cols:
+        _a = _base[_col].to_numpy()
+        _b = _markers[_col].to_numpy()
+        assert np.allclose(_a, _b, atol=1e-7), (
+            f"{_col} values differ! max delta={np.max(np.abs(_a - _b))}"
+        )
+    f"✓ All {len(_fd_cols)} FD columns match between fisher.pq and fisher-markers.pq"
 
 
 if __name__ == "__main__":
