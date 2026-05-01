@@ -104,6 +104,7 @@ function csvToArrow(csvBuffer: ArrayBuffer): Promise<ArrayBuffer> {
 const urlParams = new URLSearchParams(globalThis.location?.search ?? '');
 const benchmarkMode = urlParams.has('benchmark');
 const datasetSlug = urlParams.get('dataset');
+const urlParam = urlParams.get('url');
 const rendererParam = urlParams.get('renderer') === 'webgl' ? 'webgl' : 'webgpu';
 const pointsParam = Number(urlParams.get('points')) || null;
 
@@ -309,7 +310,24 @@ const App = () => {
   // Auto-load dataset from URL parameter (for benchmark automation)
   const loadExampleRef = useRef(loadExample);
   loadExampleRef.current = loadExample;
+  const handleLoadDataRef = useRef(handleLoadData);
+  handleLoadDataRef.current = handleLoadData;
   useEffect(() => {
+    if (urlParam) {
+      setLoading(true);
+      fetch(urlParam)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then((buffer) => {
+          const name = urlParam.split('/').pop() || 'data.pq';
+          handleLoadDataRef.current(buffer, name);
+        })
+        .catch((err) => console.error('Failed to load URL:', err))
+        .finally(() => setLoading(false));
+      return;
+    }
     if (!datasetSlug) return;
     const index = DATASET_SLUGS[datasetSlug];
     if (index === undefined) {

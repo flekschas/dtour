@@ -6,17 +6,17 @@ import type { Page } from '@playwright/test';
 export type DatasetSlug = 'fashion-mnist' | 'news-headlines' | 'single-cell' | 'lorenz';
 
 export type DatasetSpec = {
-  slug: DatasetSlug;
   /** Display label used in test names and CSV output. */
   label: string;
   /** Override point count (lorenz only). */
   points?: number;
-};
+} & ({ slug: DatasetSlug; url?: undefined } | { slug?: undefined; url: string });
 
 export const DATASETS: DatasetSpec[] = [
   { slug: 'fashion-mnist', label: 'fashion-mnist' },
   { slug: 'news-headlines', label: 'news-headlines' },
   { slug: 'single-cell', label: 'single-cell' },
+  { url: '/data/arxiv-umap-default-combined.pq', label: 'arxiv' },
   { slug: 'lorenz', label: 'lorenz-1m', points: 1_000_000 },
   { slug: 'lorenz', label: 'lorenz-2m', points: 2_000_000 },
   { slug: 'lorenz', label: 'lorenz-5m', points: 5_000_000 },
@@ -54,11 +54,12 @@ export const loadDataset = async (
   dataset: DatasetSpec,
   renderer: Renderer = 'webgpu',
 ): Promise<void> => {
-  const params = new URLSearchParams({
-    dataset: dataset.slug,
-    benchmark: 'true',
-    renderer,
-  });
+  const params = new URLSearchParams({ benchmark: 'true', renderer });
+  if (dataset.url) {
+    params.set('url', dataset.url);
+  } else {
+    params.set('dataset', dataset.slug!);
+  }
   if (dataset.points) params.set('points', String(dataset.points));
   await page.goto(`/?${params}`);
   await page.waitForFunction(() => (globalThis as Record<string, unknown>).__dtourReady === true, {
