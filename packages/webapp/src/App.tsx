@@ -8,7 +8,7 @@ import { Button } from './components/ui/button.tsx';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
 import LorenzWorkerFactory from './workers/lorenz.worker.ts?worker&inline';
 
-type LogoPhase = 'drawing' | 'moving' | 'moved' | 'done';
+type LogoPhase = 'drawing' | 'moving' | 'done';
 type ThemeMode = 'light' | 'dark' | 'system';
 
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
@@ -125,9 +125,10 @@ const App = () => {
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(
     prefersReducedMotion || benchmarkMode ? 'done' : 'drawing',
   );
-  const pendingDataRef = useRef<ArrayBuffer | null>(null);
-  const pendingNameRef = useRef<string | null>(null);
   const drawCompleteRef = useRef(false);
+  const gpuReadyRef = useRef(false);
+  const logoPhaseRef = useRef(logoPhase);
+  logoPhaseRef.current = logoPhase;
   const loadIdRef = useRef(0);
 
   // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
@@ -176,77 +177,63 @@ const App = () => {
     [fileName],
   );
 
-  const loadFile = useCallback(
-    async (file: File) => {
-      setHomeOpen(false);
+  const loadFile = useCallback(async (file: File) => {
+    setHomeOpen(false);
+    const id = ++loadIdRef.current;
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    if (isCsv) setLoading(true);
+
+    try {
+      let buffer = await file.arrayBuffer();
+      if (id !== loadIdRef.current) return;
+
+      if (isCsv) {
+        buffer = await csvToArrow(buffer);
+        if (id !== loadIdRef.current) return;
+      }
+
+      metadataReceivedRef.current = false;
+      gpuReadyRef.current = false;
+      setFileName(file.name);
+      setData(buffer);
+      setParsing(true);
+    } catch (err) {
+      if (id !== loadIdRef.current) return;
+      console.error('Failed to load file:', err);
+    } finally {
+      if (isCsv && id === loadIdRef.current) setLoading(false);
+    }
+  }, []);
+
+  const handleLoadData = useCallback((buffer: ArrayBuffer, name: string) => {
+    const applyData = (b: ArrayBuffer) => {
+      metadataReceivedRef.current = false;
+      gpuReadyRef.current = false;
+      setFileName(name);
+      setData(b);
+      setParsing(true);
+    };
+
+    if (name.toLowerCase().endsWith('.csv')) {
+      setLoading(true);
       const id = ++loadIdRef.current;
-      const isCsv = file.name.toLowerCase().endsWith('.csv');
-      if (isCsv) setLoading(true);
-
-      try {
-        let buffer = await file.arrayBuffer();
-        if (id !== loadIdRef.current) return;
-
-        if (isCsv) {
-          buffer = await csvToArrow(buffer);
+      csvToArrow(buffer)
+        .then((arrowBuffer) => {
           if (id !== loadIdRef.current) return;
-        }
+          applyData(arrowBuffer);
+        })
+        .catch((err) => {
+          if (id !== loadIdRef.current) return;
+          console.error('Failed to parse CSV:', err);
+        })
+        .finally(() => {
+          if (id === loadIdRef.current) setLoading(false);
+        });
+      return;
+    }
 
-        if (logoPhase === 'done') {
-          setFileName(file.name);
-          setData(buffer);
-        } else {
-          pendingDataRef.current = buffer;
-          pendingNameRef.current = file.name;
-          if (drawCompleteRef.current) {
-            setLogoPhase('moving');
-          }
-        }
-      } catch (err) {
-        if (id !== loadIdRef.current) return;
-        console.error('Failed to load file:', err);
-      } finally {
-        if (isCsv && id === loadIdRef.current) setLoading(false);
-      }
-    },
-    [logoPhase],
-  );
-
-  const handleLoadData = useCallback(
-    (buffer: ArrayBuffer, name: string) => {
-      const applyData = (b: ArrayBuffer) => {
-        if (logoPhase === 'done') {
-          setFileName(name);
-          setData(b);
-        } else {
-          pendingDataRef.current = b;
-          pendingNameRef.current = name;
-          if (drawCompleteRef.current) setLogoPhase('moving');
-        }
-      };
-
-      if (name.toLowerCase().endsWith('.csv')) {
-        setLoading(true);
-        const id = ++loadIdRef.current;
-        csvToArrow(buffer)
-          .then((arrowBuffer) => {
-            if (id !== loadIdRef.current) return;
-            applyData(arrowBuffer);
-          })
-          .catch((err) => {
-            if (id !== loadIdRef.current) return;
-            console.error('Failed to parse CSV:', err);
-          })
-          .finally(() => {
-            if (id === loadIdRef.current) setLoading(false);
-          });
-        return;
-      }
-
-      applyData(buffer);
-    },
-    [logoPhase],
-  );
+    applyData(buffer);
+  }, []);
 
   const loadExample = useCallback(
     async (example: ExampleDataset) => {
@@ -285,16 +272,11 @@ const App = () => {
             ? `lorenz-stenflo-${pointsParam}.arrow`
             : example.fileName;
 
-        if (logoPhase === 'done') {
-          setFileName(effectiveName);
-          setData(buffer);
-        } else {
-          pendingDataRef.current = buffer;
-          pendingNameRef.current = effectiveName;
-          if (drawCompleteRef.current) {
-            setLogoPhase('moving');
-          }
-        }
+        metadataReceivedRef.current = false;
+        gpuReadyRef.current = false;
+        setFileName(effectiveName);
+        setData(buffer);
+        setParsing(true);
       } catch (err) {
         if (id !== loadIdRef.current) return;
         console.error('Failed to load example:', err);
@@ -304,7 +286,7 @@ const App = () => {
         }
       }
     },
-    [loading, logoPhase],
+    [loading],
   );
 
   // Auto-load dataset from URL parameter (for benchmark automation)
@@ -339,11 +321,6 @@ const App = () => {
     loadExampleRef.current(EXAMPLES[index]!);
   }, []);
 
-  // Start the parsing indicator whenever new data is committed to the viewer.
-  useEffect(() => {
-    if (data) setParsing(true);
-  }, [data]);
-
   // Expose readiness signal for Playwright.
   // We wait for the first 'rendered' event (not just 'metadata'), because bases
   // are installed in a later React effect and benchmark() requires state.tour.
@@ -351,15 +328,20 @@ const App = () => {
   const handleStatus = useCallback((status: { type: string }) => {
     if (status.type === 'metadata') {
       metadataReceivedRef.current = true;
-      // Don't clear parsing yet — bases are installed in a later React effect,
-      // so the canvas is still blank. Wait for the first 'rendered'.
     }
     if (status.type === 'error') {
       setParsing(false);
     }
     if (status.type === 'rendered' && metadataReceivedRef.current) {
       (globalThis as Record<string, unknown>).__dtourReady = true;
-      setParsing(false);
+      gpuReadyRef.current = true;
+      // If logo is still animating, trigger move once draw is also complete.
+      // If logo is already done (subsequent loads), just clear parsing.
+      if (logoPhaseRef.current === 'done') {
+        setParsing(false);
+      } else if (drawCompleteRef.current) {
+        setLogoPhase('moving');
+      }
     }
   }, []);
 
@@ -387,23 +369,14 @@ const App = () => {
 
   const handleDrawComplete = useCallback(() => {
     drawCompleteRef.current = true;
-    if (pendingDataRef.current) {
+    if (gpuReadyRef.current) {
       setLogoPhase('moving');
     }
   }, []);
 
   const handleMoveComplete = useCallback(() => {
-    setLogoPhase('moved');
-    // Delay data loading so toolbar can fade in first
-    setTimeout(() => {
-      if (pendingDataRef.current) {
-        setFileName(pendingNameRef.current ?? undefined);
-        setData(pendingDataRef.current);
-        pendingDataRef.current = null;
-        pendingNameRef.current = null;
-      }
-      setLogoPhase('done');
-    }, 300);
+    setParsing(false);
+    setLogoPhase('done');
   }, []);
 
   return (
@@ -430,7 +403,7 @@ const App = () => {
         hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving' || parsing}
         backend={rendererParam}
       />
-      {(!data || parsing) && logoPhase !== 'moving' && logoPhase !== 'moved' && (
+      {(!data || parsing) && logoPhase !== 'moving' && (
         <motion.div
           className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
             logoPhase !== 'done' ? 'justify-end pb-[40vh]' : 'justify-center'

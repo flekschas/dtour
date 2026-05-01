@@ -2,7 +2,7 @@ import { type Transition, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type AnimatedLogoProps = {
-  phase: 'drawing' | 'moving' | 'moved';
+  phase: 'drawing' | 'moving';
   theme: 'light' | 'dark';
   onDrawComplete: () => void;
   onMoveComplete: () => void;
@@ -132,7 +132,7 @@ export const AnimatedLogo = ({
 
   const blendClass = theme === 'light' ? 'mix-blend-multiply' : 'mix-blend-screen';
   const isMoving = phase === 'moving';
-  const atTarget = phase === 'moving' || phase === 'moved';
+  const atTarget = phase === 'moving';
   const animTarget = atTarget
     ? {
         left: targetRect.x,
