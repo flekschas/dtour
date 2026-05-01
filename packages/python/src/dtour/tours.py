@@ -1,4 +1,10 @@
-"""Tour computation helpers: little_tour, umap_little_tour, le_tour, sequential_tour."""
+"""Tour computation helpers:
+- little_tour
+- umap_little_tour
+- le_tour
+- sequential_tour
+- attraction_repulsion_tour
+"""
 
 from __future__ import annotations
 
@@ -95,6 +101,64 @@ class TourResult:
         if self.tour_frame_description is not None:
             arrays["tour_frame_description"] = np.array([self.tour_frame_description])
         np.savez_compressed(path, **arrays)
+
+    @classmethod
+    def from_parquet(cls, table_or_path: object) -> TourResult:
+        """Extract a TourResult from Parquet ``"dtour"`` metadata.
+
+        Reads the ``tour`` entry embedded by :func:`~dtour.spec.add_spec_to_parquet`
+        and reconstructs the basis matrices and associated metadata.
+
+        Parameters
+        ----------
+        table_or_path : Arrow table, str, or Path
+            An Arrow-compatible table or path to a Parquet file.
+
+        Raises
+        ------
+        ValueError
+            If no tour is found in the metadata.
+        """
+        import base64
+
+        from .spec import read_spec_from_parquet
+
+        config = read_spec_from_parquet(table_or_path)
+        if config is None or "tour" not in config:
+            raise ValueError("No embedded tour found in Parquet metadata")
+
+        t = config["tour"]
+        n_views = t["nViews"]
+        dimensions: list[str] | None = t.get("dimensions")
+
+        raw = base64.b64decode(t["views"])
+        floats = np.frombuffer(raw, dtype=np.float32)
+
+        # Derive n_dims from the actual binary data (each view is n_dims x 2
+        # column-major floats). The metadata "nDims" field can be unreliable
+        # when feature_names differs from the tour dimensionality.
+        n_dims = len(floats) // (n_views * 2)
+        stride = n_dims * 2
+        views = [
+            floats[i * stride : (i + 1) * stride].reshape(n_dims, 2, order="F")
+            for i in range(n_views)
+        ]
+
+        tour_mode = t.get("tourMode")
+        tour_description = t.get("tourDescription")
+        tour_frame_description = t.get("tourFrameDescription")
+        frame_summaries = t.get("frameSummaries")
+
+        return cls(
+            views=views,
+            n_views=n_views,
+            n_dims=n_dims,
+            feature_names=dimensions,
+            frame_summaries=frame_summaries,
+            tour_mode=tour_mode,
+            tour_description=tour_description,
+            tour_frame_description=tour_frame_description,
+        )
 
     @classmethod
     def load(cls, path: str | Path) -> TourResult:
@@ -1408,7 +1472,7 @@ def sequential_tour(
 
     This is the general-purpose building block for tours that sweep over
     different datasets (e.g. time points) or hyperparameters (e.g.
-    attraction-repulsion spectrum).  :func:`spectrum_tour` is a thin
+    attraction-repulsion spectrum).  :func:`attraction_repulsion_tour` is a thin
     wrapper around this function.
 
     Args:
@@ -1525,7 +1589,7 @@ def sequential_tour(
     )
 
 
-def spectrum_tour(
+def attraction_repulsion_tour(
     X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_frames: int = 4,
     rhos: list[float] | None = None,
@@ -1594,7 +1658,7 @@ def spectrum_tour(
         rhos = np.logspace(2, 0, n_frames).tolist()
 
     if n_frames < 2:
-        msg = "spectrum_tour requires at least 2 frames."
+        msg = "attraction_repulsion_tour requires at least 2 frames."
         raise ValueError(msg)
 
     if any(r <= 0 for r in rhos):

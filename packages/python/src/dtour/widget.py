@@ -85,6 +85,9 @@ class Widget(anywidget.AnyWidget):
         default_value="full",
     ).tag(sync=True)
 
+    # ── Projected columns ────────────────────────────────────────────────
+    tour_dimensions = t.List(t.Unicode(), default_value=[]).tag(sync=True)
+
     # ── Selection state (bidirectional) ───────────────────────────────────
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
     selected_indices = t.List(t.Int(), default_value=[]).tag(sync=True)
@@ -127,19 +130,16 @@ class Widget(anywidget.AnyWidget):
             raise t.TraitError(
                 f"tour_by must be 'dimensions', 'pca', or 'parameter'; got {value!r}"
             )
-        # Enforce consistency between tour_by and the active tour's tour_mode
+        # Auto-coerce to match the active tour's mode.  This handles stale
+        # state round-tripped from the frontend (e.g. Marimo sends back the
+        # initial "dimensions" default after set_tour already switched to
+        # "parameter").
         tour = getattr(self, "_tour", None)
         if tour is not None:
             if value == "parameter" and tour.tour_mode != "parameter":
-                raise t.TraitError(
-                    "tour_by='parameter' requires a parameter tour; "
-                    f"the active tour has tour_mode={tour.tour_mode!r}"
-                )
+                return "dimensions"
             if value != "parameter" and tour.tour_mode == "parameter":
-                raise t.TraitError(
-                    f"tour_by={value!r} is not allowed when the active tour is a "
-                    "parameter tour; tour_by must be 'parameter'"
-                )
+                return "parameter"
         return value
 
     @t.validate("view_mode")
@@ -231,6 +231,10 @@ class Widget(anywidget.AnyWidget):
 
         # Cache the full TourResult for save_spec_to_parquet
         self._tour = tour
+
+        # Auto-set tour_dimensions from the tour's feature names
+        if tour.feature_names is not None:
+            self.tour_dimensions = tour.feature_names
 
     def set_metrics(self, metric_result: MetricResult) -> None:
         """Send quality metrics to the JS frontend for radial chart display."""
@@ -327,6 +331,10 @@ class Widget(anywidget.AnyWidget):
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme != "dark":
             kwargs["theme_mode"] = self.theme
+
+        # Tour dimensions (written inside tour.dimensions by build_dtour_metadata)
+        if self.tour_dimensions:
+            kwargs["tour_dimensions"] = list(self.tour_dimensions)
 
         # Color map
         if self.color_map:

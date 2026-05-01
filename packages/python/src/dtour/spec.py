@@ -46,15 +46,25 @@ _CAMEL_TO_SNAKE: dict[str, str] = {v: k for k, v in _SNAKE_TO_CAMEL.items()}
 _SPEC_KEYS = set(_SNAKE_TO_CAMEL.values())
 
 
-def _encode_tour(tour: TourResult) -> dict[str, Any]:
+def _encode_tour(
+    tour: TourResult,
+    tour_dimensions: list[str] | None = None,
+) -> dict[str, Any]:
     """Encode a TourResult as a JSON-serializable dict with base64 views."""
     raw_bytes = tour.views_raw
     b64 = base64.b64encode(raw_bytes).decode("ascii")
+
+    # dimensions is the canonical source; nDims is deprecated (kept for old readers).
+    dims = tour_dimensions or tour.feature_names
     result: dict[str, Any] = {
-        "nDims": tour.n_dims,
         "nViews": tour.n_views,
         "views": b64,
     }
+    if dims is not None:
+        result["dimensions"] = dims
+        result["nDims"] = len(dims)
+    else:
+        result["nDims"] = tour.n_dims
 
     if tour.tour_mode is not None:
         result["tourMode"] = tour.tour_mode
@@ -111,6 +121,7 @@ def build_dtour_metadata(
     slider_spacing: str | None = None,
     theme_mode: str | None = None,
     color_map: dict[str, str] | None = None,
+    tour_dimensions: list[str] | None = None,
     tour: TourResult | None = None,
 ) -> str:
     """Build a JSON string for the Parquet ``dtour`` key_value_metadata.
@@ -163,6 +174,11 @@ def build_dtour_metadata(
         ``"light"``, ``"dark"``, or ``"system"``.
     color_map : dict, optional
         Label → hex color string mapping.
+    tour_dimensions : list[str], optional
+        Numeric column names that participate in the tour. Written as
+        ``tour.dimensions`` in the JSON metadata. When omitted and a
+        *tour* with ``feature_names`` is provided, those names are used
+        automatically.
     tour : TourResult, optional
         Tour result to embed (views are base64-encoded).
 
@@ -207,7 +223,7 @@ def build_dtour_metadata(
         config["colorMap"] = color_map
 
     if tour is not None:
-        config["tour"] = _encode_tour(tour)
+        config["tour"] = _encode_tour(tour, tour_dimensions)
 
     return json.dumps(config, separators=(",", ":"))
 

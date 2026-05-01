@@ -11,10 +11,10 @@ from dtour.tours import (
     _nystroem_extend,
     _procrustes_align,
     aligned_umap_tour,
+    attraction_repulsion_tour,
     le_tour,
     little_tour,
     sequential_tour,
-    spectrum_tour,
 )
 
 
@@ -1004,7 +1004,7 @@ def test_aligned_umap_tour_wrong_relations_length():
         aligned_umap_tour(data=slices, relations=[{0: 0}])
 
 
-# ── spectrum_tour (attraction-repulsion parameter tour) ─────────────────
+# ── attraction_repulsion_tour (attraction-repulsion parameter tour) ─────
 
 
 def test_procrustes_align_identity():
@@ -1026,10 +1026,10 @@ def test_procrustes_align_rotation():
     np.testing.assert_allclose(aligned, target, atol=1e-4)
 
 
-def test_spectrum_tour_basic():
-    """spectrum_tour with default params should produce valid TourResult."""
+def test_attraction_repulsion_tour_basic():
+    """attraction_repulsion_tour with default params should produce valid TourResult."""
     X = make_data(n=200, p=10)
-    result = spectrum_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
+    result = attraction_repulsion_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
     assert isinstance(result, TourResult)
     assert result.tour_mode == "parameter"
     assert result.n_views == 2
@@ -1040,10 +1040,10 @@ def test_spectrum_tour_basic():
         assert basis.dtype == np.float32
 
 
-def test_spectrum_tour_frame_summaries():
+def test_attraction_repulsion_tour_frame_summaries():
     """Frame summaries should include rho values and landmarks."""
     X = make_data(n=200, p=10)
-    result = spectrum_tour(X, rhos=[100, 4, 1], n_neighbors=10, random_state=42)
+    result = attraction_repulsion_tour(X, rhos=[100, 4, 1], n_neighbors=10, random_state=42)
     assert result.frame_summaries is not None
     assert len(result.frame_summaries) == 3
     assert "rho=100" in result.frame_summaries[0]
@@ -1052,39 +1052,41 @@ def test_spectrum_tour_frame_summaries():
     assert "t-SNE" in result.frame_summaries[2]
 
 
-def test_spectrum_tour_custom_rhos_override_n_frames():
+def test_attraction_repulsion_tour_custom_rhos_override_n_frames():
     """Explicit rhos should override n_frames."""
     X = make_data(n=200, p=10)
-    result = spectrum_tour(X, n_frames=99, rhos=[10, 5, 2, 1], n_neighbors=10, random_state=42)
+    result = attraction_repulsion_tour(
+        X, n_frames=99, rhos=[10, 5, 2, 1], n_neighbors=10, random_state=42
+    )
     assert result.n_views == 4
 
 
-def test_spectrum_tour_pca_init():
-    """spectrum_tour with init='pca' should work."""
+def test_attraction_repulsion_tour_pca_init():
+    """attraction_repulsion_tour with init='pca' should work."""
     X = make_data(n=200, p=10)
-    result = spectrum_tour(X, rhos=[4, 1], n_neighbors=10, init="pca", random_state=42)
+    result = attraction_repulsion_tour(X, rhos=[4, 1], n_neighbors=10, init="pca", random_state=42)
     assert isinstance(result, TourResult)
     assert result.n_views == 2
 
 
-def test_spectrum_tour_invalid_init():
+def test_attraction_repulsion_tour_invalid_init():
     """Invalid init should raise ValueError."""
     X = make_data(n=50, p=5)
     with pytest.raises(ValueError, match="init must be"):
-        spectrum_tour(X, rhos=[4, 1], init="bogus")
+        attraction_repulsion_tour(X, rhos=[4, 1], init="bogus")
 
 
-def test_spectrum_tour_too_few_frames():
+def test_attraction_repulsion_tour_too_few_frames():
     """Fewer than 2 frames should raise ValueError."""
     X = make_data(n=50, p=5)
     with pytest.raises(ValueError, match="at least 2 frames"):
-        spectrum_tour(X, n_frames=1)
+        attraction_repulsion_tour(X, n_frames=1)
 
 
-def test_spectrum_tour_pymde_basic():
-    """spectrum_tour with method='pymde' should produce valid TourResult."""
+def test_attraction_repulsion_tour_pymde_basic():
+    """attraction_repulsion_tour with method='pymde' should produce valid TourResult."""
     X = make_data(n=200, p=10)
-    result = spectrum_tour(
+    result = attraction_repulsion_tour(
         X,
         rhos=[4, 1],
         n_neighbors=10,
@@ -1097,11 +1099,11 @@ def test_spectrum_tour_pymde_basic():
     assert result.embedding.shape == (200, 4)
 
 
-def test_spectrum_tour_pymde_regularization():
+def test_attraction_repulsion_tour_pymde_regularization():
     """Higher regularization should produce less movement between frames."""
     X = make_data(n=200, p=10)
 
-    result_free = spectrum_tour(
+    result_free = attraction_repulsion_tour(
         X,
         rhos=[4, 1],
         n_neighbors=10,
@@ -1109,7 +1111,7 @@ def test_spectrum_tour_pymde_regularization():
         regularization=0.0,
         random_state=42,
     )
-    result_reg = spectrum_tour(
+    result_reg = attraction_repulsion_tour(
         X,
         rhos=[4, 1],
         n_neighbors=10,
@@ -1131,17 +1133,62 @@ def test_spectrum_tour_pymde_regularization():
     )
 
 
-def test_spectrum_tour_invalid_method():
+def test_attraction_repulsion_tour_invalid_method():
     """Invalid method should raise ValueError."""
     X = make_data(n=50, p=5)
     with pytest.raises(ValueError, match="method must be"):
-        spectrum_tour(X, rhos=[4, 1], method="bogus")
+        attraction_repulsion_tour(X, rhos=[4, 1], method="bogus")
 
 
-def test_spectrum_tour_negative_rho():
+def test_attraction_repulsion_tour_negative_rho():
     """Negative or zero rho values should raise ValueError."""
     X = make_data(n=50, p=5)
     with pytest.raises(ValueError, match="positive"):
-        spectrum_tour(X, rhos=[4, 0, 1])
+        attraction_repulsion_tour(X, rhos=[4, 0, 1])
     with pytest.raises(ValueError, match="positive"):
-        spectrum_tour(X, rhos=[-1, 1])
+        attraction_repulsion_tour(X, rhos=[-1, 1])
+
+
+# ── TourResult.from_parquet ─────────────────────────────────────────────
+
+
+def test_from_parquet_roundtrip(tmp_path):
+    """Embedding a tour in Parquet metadata and reading it back should preserve views."""
+    import arro3.core as ac
+    import arro3.io
+    from dtour.spec import add_spec_to_parquet
+
+    X = make_data(n=200, p=5)
+    original = le_tour(
+        X,
+        n_components=3,
+        n_neighbors=10,
+        feature_names=["a", "b", "c", "d", "e"],
+    )
+
+    # Create a dummy table, embed the tour, and write to parquet
+    table = ac.Table.from_pydict({"x": ac.Array.from_numpy(np.zeros(200, dtype=np.float32))})
+    annotated = add_spec_to_parquet(table, tour=original)
+
+    path = tmp_path / "tour.pq"
+    arro3.io.write_parquet(annotated, str(path))
+
+    # Read back
+    restored = TourResult.from_parquet(path)
+
+    assert restored.n_views == original.n_views
+    assert restored.n_dims == original.n_dims
+    assert restored.feature_names == original.feature_names
+    assert restored.tour_mode == original.tour_mode
+    assert restored.frame_summaries == original.frame_summaries
+    for orig_v, rest_v in zip(original.views, restored.views):
+        np.testing.assert_allclose(rest_v, orig_v, atol=1e-6)
+
+
+def test_from_parquet_no_tour_raises():
+    """from_parquet should raise ValueError when no tour is embedded."""
+    import arro3.core as ac
+
+    table = ac.Table.from_pydict({"x": ac.Array.from_numpy(np.zeros(10, dtype=np.float32))})
+    with pytest.raises(ValueError, match="No embedded tour"):
+        TourResult.from_parquet(table)

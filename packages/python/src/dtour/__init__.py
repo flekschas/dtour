@@ -7,10 +7,10 @@ from .tours import (
     EmbeddingStep,
     TourResult,
     aligned_umap_tour,
+    attraction_repulsion_tour,
     le_tour,
     little_tour,
     sequential_tour,
-    spectrum_tour,
     umap_little_tour,
 )
 from .widget import Widget
@@ -22,6 +22,7 @@ __all__ = [
     "Widget",
     "add_spec_to_parquet",
     "aligned_umap_tour",
+    "attraction_repulsion_tour",
     "build_color_map",
     "build_dtour_metadata",
     "compute_metrics",
@@ -29,6 +30,5 @@ __all__ = [
     "little_tour",
     "read_spec_from_parquet",
     "sequential_tour",
-    "spectrum_tour",
     "umap_little_tour",
 ]
