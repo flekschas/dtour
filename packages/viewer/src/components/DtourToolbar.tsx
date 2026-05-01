@@ -6,7 +6,7 @@ import {
   CursorIcon,
   GaugeIcon,
   ImageSquareIcon,
-  MagnifyingGlassMinusIcon,
+  MagnifyingGlassIcon,
   MonitorIcon,
   MoonIcon,
   PaintBrushIcon,
@@ -33,7 +33,10 @@ import {
   guidedSuspendedAtom,
   legendVisibleAtom,
   metadataAtom,
+  minPointSizeAtom,
   pointColorAtom,
+  pointOpacityAtom,
+  predefinedTourAtom,
   previewCountAtom,
   previewScaleAtom,
   resumeGuidedAtom,
@@ -104,10 +107,15 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const hasFrameLoadings = useAtomValue(frameLoadingsAtom) !== null;
   const hasTourDescription = useAtomValue(tourDescriptionAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
+  const predefinedTour = useAtomValue(predefinedTourAtom);
+  const isPredefinedTour = predefinedTour !== null;
+  const predefinedViewCount = predefinedTour?.viewCount ?? null;
   const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
   const [color2dEnabled, setColor2dEnabled] = useAtom(color2dEnabledAtom);
   const [color2dColumns, setColor2dColumns] = useAtom(color2dColumnsAtom);
+  const [minPointSize, setMinPointSize] = useAtom(minPointSizeAtom);
+  const [pointOpacity, setPointOpacity] = useAtom(pointOpacityAtom);
 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -274,7 +282,16 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               title="Guided"
             >
               <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />
-              <span className="ml-1 text-xs">Guided{viewMode === 'guided' ? ':' : ''}</span>
+              <span className="ml-1 text-xs">
+                Guided
+                {viewMode === 'guided' ? (
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out">
+                    :
+                  </span>
+                ) : (
+                  ''
+                )}
+              </span>
             </Button>
             {viewMode === 'guided' && tourBy === 'parameter' && (
               <TooltipProvider>
@@ -288,8 +305,20 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 </Tooltip>
               </TooltipProvider>
             )}
-            {viewMode === 'guided' && tourBy !== 'parameter' && (
-              <div className="flex items-center overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-200 ease-in-out">
+            {viewMode === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-dtour-highlight cursor-default px-1">
+                      Planned
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">This tour was precomputed</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {viewMode === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
+              <div className="flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -347,66 +376,111 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
 
       {/* Center: playback controls (guided mode) / speed (grand mode) */}
       <div className="flex items-center gap-1">
-        {viewMode === 'guided' && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" title="Tour settings">
-                <SlidersHorizontalIcon size={16} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center">
-              <DropdownMenuItem
-                className="gap-4"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal');
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" title="Settings">
+              <SlidersHorizontalIcon size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" className="w-56">
+            <DropdownMenuLabel className="text-xs font-semibold">Rendering</DropdownMenuLabel>
+            <DropdownMenuItem
+              className="flex flex-col items-start gap-1"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="text-xs">Min point size</span>
+                <span className="text-xs font-medium text-dtour-highlight">{minPointSize}px</span>
+              </div>
+              <Slider
+                min={1}
+                max={20}
+                step={1}
+                value={[minPointSize]}
+                onValueChange={([v]: number[]) => {
+                  if (v !== undefined) setMinPointSize(v);
                 }}
-              >
-                <span className="flex-1 text-xs">Geodesic spacing</span>
-                <Checkbox
-                  checked={sliderSpacing === 'geodesic'}
-                  onCheckedChange={() =>
-                    setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')
-                  }
-                />
-              </DropdownMenuItem>
-              {hasFrameLoadings && (
+                className="w-full"
+              />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="flex flex-col items-start gap-1"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="text-xs">Point opacity</span>
+                <span className="text-xs font-medium text-dtour-highlight">
+                  {pointOpacity === 'auto' ? 'Auto' : `${Math.round(pointOpacity * 100)}%`}
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={20}
+                step={1}
+                value={[pointOpacity === 'auto' ? 0 : Math.round(pointOpacity * 20)]}
+                onValueChange={([v]: number[]) => {
+                  if (v !== undefined) setPointOpacity(v === 0 ? 'auto' : v / 20);
+                }}
+                className="w-full"
+              />
+            </DropdownMenuItem>
+            {viewMode === 'guided' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-semibold">Tour</DropdownMenuLabel>
                 <DropdownMenuItem
                   className="gap-4"
                   onSelect={(e) => {
                     e.preventDefault();
-                    setShowFrameLoadings((v) => !v);
+                    setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal');
                   }}
                 >
-                  <span className="flex-1 text-xs">Feature correlations</span>
+                  <span className="flex-1 text-xs">Geodesic spacing</span>
                   <Checkbox
-                    checked={showFrameLoadings}
-                    onCheckedChange={() => setShowFrameLoadings((v) => !v)}
+                    checked={sliderSpacing === 'geodesic'}
+                    onCheckedChange={() =>
+                      setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')
+                    }
                   />
                 </DropdownMenuItem>
-              )}
-              {hasTourDescription && (
-                <DropdownMenuItem
-                  className="gap-4"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setShowTourDescription((v) => !v);
-                  }}
-                >
-                  <span className="flex-1 text-xs">Tour description</span>
-                  <Checkbox
-                    checked={showTourDescription}
-                    onCheckedChange={() => setShowTourDescription((v) => !v)}
-                  />
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                {hasFrameLoadings && (
+                  <DropdownMenuItem
+                    className="gap-4"
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setShowFrameLoadings((v) => !v);
+                    }}
+                  >
+                    <span className="flex-1 text-xs">Feature correlations</span>
+                    <Checkbox
+                      checked={showFrameLoadings}
+                      onCheckedChange={() => setShowFrameLoadings((v) => !v)}
+                    />
+                  </DropdownMenuItem>
+                )}
+                {hasTourDescription && (
+                  <DropdownMenuItem
+                    className="gap-4"
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setShowTourDescription((v) => !v);
+                    }}
+                  >
+                    <span className="flex-1 text-xs">Tour description</span>
+                    <Checkbox
+                      checked={showTourDescription}
+                      onCheckedChange={() => setShowTourDescription((v) => !v)}
+                    />
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Popover.Root>
           <Popover.Trigger asChild>
-            <Button variant="ghost" size="icon" title={`Zoom: ${zoomToDistance(zoom)}x`}>
-              <MagnifyingGlassMinusIcon size={16} />
+            <Button variant="ghost" size="icon" title={`Zoom: ${Math.round(zoom * 100)}%`}>
+              <MagnifyingGlassIcon size={16} />
             </Button>
           </Popover.Trigger>
           <Popover.Portal container={portalContainer}>
@@ -420,17 +494,17 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               <Slider
                 orientation="vertical"
                 min={0}
-                max={DISTANCE_STEPS.length - 1}
+                max={ZOOM_STEPS.length - 1}
                 step={1}
-                ticks={DISTANCE_STEPS.length}
-                value={[distanceToStep(zoomToDistance(zoom))]}
+                ticks={ZOOM_STEPS.length}
+                value={[zoomToStep(zoom)]}
                 onValueChange={([step]: number[]) => {
-                  if (step !== undefined) setZoom(1 / stepToDistance(step));
+                  if (step !== undefined) setZoom(stepToZoom(step));
                 }}
                 className="h-[120px]"
               />
               <span className="text-xs font-medium text-dtour-highlight">
-                {zoomToDistance(zoom)}x
+                {Math.round(zoom * 100)}%
               </span>
             </Popover.Content>
           </Popover.Portal>
@@ -510,11 +584,19 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center gap-2">
                       <span className="text-xs text-dtour-text-muted">Count</span>
-                      <PreviewStepSlider
-                        steps={PREVIEW_COUNT_STEPS}
-                        value={previewCount}
-                        onCommit={setPreviewCount}
-                      />
+                      {isPredefinedTour ? (
+                        <div className="h-[120px] flex items-center">
+                          <span className="text-xs font-medium text-dtour-highlight">
+                            {predefinedViewCount}
+                          </span>
+                        </div>
+                      ) : (
+                        <PreviewStepSlider
+                          steps={PREVIEW_COUNT_STEPS}
+                          value={previewCount}
+                          onCommit={setPreviewCount}
+                        />
+                      )}
                     </div>
                     <div className="flex flex-col items-center gap-2">
                       <span className="text-xs text-dtour-text-muted">Size</span>
@@ -620,8 +702,10 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                         name={col}
                         dtype="num"
                         checked={isActive}
-                        onCheckedChange={() => handleToggleColumn(index)}
-                        disabled={isActive && activeCount <= 2}
+                        onCheckedChange={
+                          isPredefinedTour ? undefined : () => handleToggleColumn(index)
+                        }
+                        disabled={isPredefinedTour || (isActive && activeCount <= 2)}
                         isColorActive={color2dEnabled ? !!isColor2d : activeColorColumn === col}
                         onToggleColor={() => toggleColorBy(col)}
                       />
@@ -728,10 +812,9 @@ const ColumnRow = ({
 }) => (
   <DropdownMenuCheckboxItem
     onSelect={(e) => e.preventDefault()}
-    className="flex items-center gap-2 pr-1"
+    className={`flex items-center gap-2 pr-1${disabled ? ' cursor-default opacity-60 data-highlighted:bg-transparent' : ''}`}
     checked={checked ?? false}
-    {...(onCheckedChange ? { onCheckedChange } : {})}
-    {...(disabled ? { disabled } : {})}
+    onCheckedChange={disabled ? undefined : onCheckedChange}
   >
     <span className="flex-1 truncate text-xs">{name}</span>
     <button
@@ -740,7 +823,7 @@ const ColumnRow = ({
         e.stopPropagation();
         onToggleColor();
       }}
-      className={`shrink-0 cursor-pointer rounded p-1 transition-[color,transform] active:scale-[0.85] ${
+      className={`shrink-0 cursor-pointer rounded p-1 opacity-100 transition-[color,transform] active:scale-[0.85] ${
         isColorActive
           ? 'bg-dtour-highlight text-dtour-bg'
           : 'text-dtour-text-muted hover:text-dtour-highlight'
@@ -824,27 +907,14 @@ const speedToStep = (speed: number): number => {
 
 const stepToSpeed = (step: number): number => SPEED_STEPS[step] ?? 1;
 
-const DISTANCE_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4] as const;
+// Sorted ascending: zoom < 1 = zoom out, zoom > 1 = zoom in
+const ZOOM_STEPS = [0.25, 0.4, 0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5, 4] as const;
 
-const zoomToDistance = (zoom: number): number => {
-  const d = 1 / zoom;
+const zoomToStep = (zoom: number): number => {
   let best = 0;
-  let bestDist = Math.abs(d - DISTANCE_STEPS[0]!);
-  for (let i = 1; i < DISTANCE_STEPS.length; i++) {
-    const dist = Math.abs(d - DISTANCE_STEPS[i]!);
-    if (dist < bestDist) {
-      best = i;
-      bestDist = dist;
-    }
-  }
-  return DISTANCE_STEPS[best]!;
-};
-
-const distanceToStep = (distance: number): number => {
-  let best = 0;
-  let bestDist = Math.abs(distance - DISTANCE_STEPS[0]!);
-  for (let i = 1; i < DISTANCE_STEPS.length; i++) {
-    const dist = Math.abs(distance - DISTANCE_STEPS[i]!);
+  let bestDist = Math.abs(zoom - ZOOM_STEPS[0]!);
+  for (let i = 1; i < ZOOM_STEPS.length; i++) {
+    const dist = Math.abs(zoom - ZOOM_STEPS[i]!);
     if (dist < bestDist) {
       best = i;
       bestDist = dist;
@@ -853,4 +923,4 @@ const distanceToStep = (distance: number): number => {
   return best;
 };
 
-const stepToDistance = (step: number): number => DISTANCE_STEPS[step] ?? 1.25;
+const stepToZoom = (step: number): number => ZOOM_STEPS[step] ?? 1;

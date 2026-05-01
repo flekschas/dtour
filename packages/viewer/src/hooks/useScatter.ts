@@ -18,6 +18,7 @@ import {
   legendClearGenAtom,
   legendSelectionAtom,
   metadataAtom,
+  minPointSizeAtom,
   paletteAtom,
   pointColorAtom,
   pointOpacityAtom,
@@ -39,6 +40,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const pointSize = useAtomValue(pointSizeAtom);
   const opacity = useAtomValue(pointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
+  const minPointSize = useAtomValue(minPointSizeAtom);
   const guidedSuspended = useAtomValue(guidedSuspendedAtom);
   const basisTransitioning = useAtomValue(basisTransitioningAtom);
   const playing = useAtomValue(tourPlayingAtom);
@@ -86,25 +88,25 @@ export const useScatter = (scatter: ScatterInstance | null) => {
 
     if (color2dEnabled) {
       // 2D mode: only forward size/opacity, color is managed by the 2D effect
-      scatter.setStyle({ pointSize, opacity });
+      scatter.setStyle({ pointSize, opacity, minPointSize });
       return;
     }
 
     if (Array.isArray(color)) {
       // RGB tuple — uniform color; clear any per-point encoding
       scatter.clearColor();
-      scatter.setStyle({ pointSize, opacity, color });
+      scatter.setStyle({ pointSize, opacity, color, minPointSize });
     } else if (isHexColor(color)) {
       // Hex string — parse to RGB uniform color
       scatter.clearColor();
-      scatter.setStyle({ pointSize, opacity, color: hexToRgb(color) });
+      scatter.setStyle({ pointSize, opacity, color: hexToRgb(color), minPointSize });
     } else {
       // Column name — encode per-point colors via data worker.
       // Skip until metadata is available: the data worker only knows column
       // names after it has parsed the dataset, so encodeColor sent before
       // that point would silently no-op.  Including metadata in the deps
       // ensures we re-send once data is ready.
-      scatter.setStyle({ pointSize, opacity });
+      scatter.setStyle({ pointSize, opacity, minPointSize });
       if (!metadata) return;
       // Resolve theme-aware colorMap to Record<string, [r,g,b]> for the scatter worker
       let resolvedColorMap: Record<string, [number, number, number]> | undefined;
@@ -127,6 +129,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     rawColorMap,
     metadata,
     color2dEnabled,
+    minPointSize,
   ]);
 
   // Forward 2D color encoding (overrides 1D color when active).

@@ -16,6 +16,7 @@ import {
   frameLoadingsAtom,
   frameSummariesAtom,
   hoveredKeyframeAtom,
+  predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
@@ -57,7 +58,9 @@ export const Gallery = ({
   toolbarHeight,
   onResumeGuided,
 }: GalleryProps) => {
-  const previewCount = useAtomValue(previewCountAtom);
+  const basePreviewCount = useAtomValue(previewCountAtom);
+  const predefinedTour = useAtomValue(predefinedTourAtom);
+  const previewCount = predefinedTour?.viewCount ?? basePreviewCount;
   const previewScale = useAtomValue(previewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
@@ -102,9 +105,10 @@ export const Gallery = ({
   }, [previewCanvases]);
 
   // Measure preview center positions relative to the container center.
+  const canvasCount = previewCanvases.length;
   useEffect(() => {
     const galleryEl = galleryRef.current;
-    if (!galleryEl) return;
+    if (!galleryEl || canvasCount < previewCount) return;
     const galleryRect = galleryEl.getBoundingClientRect();
     const centers: { x: number; y: number; size: number }[] = [];
     for (let i = 0; i < previewCount; i++) {
@@ -123,7 +127,15 @@ export const Gallery = ({
       });
     }
     setPreviewCenters(centers);
-  }, [containerWidth, containerHeight, previewCount, sizes, verticalInset, setPreviewCenters]);
+  }, [
+    containerWidth,
+    containerHeight,
+    previewCount,
+    canvasCount,
+    sizes,
+    verticalInset,
+    setPreviewCenters,
+  ]);
 
   const getBorderColor = (i: number): string | undefined => {
     const isActive = i === selectedKeyframe || i === currentKeyframe;

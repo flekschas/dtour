@@ -7,6 +7,7 @@ import {
   basisTransitioningAtom,
   currentBasisAtom,
   guidedSuspendedAtom,
+  tourModeAtom,
   tourPositionAtom,
   viewModeAtom,
 } from '../state/atoms.ts';
@@ -85,6 +86,7 @@ export const useGuidedResume = (
       // interpolation while the blend is still active.
 
       const readPos = getPosition ?? (() => store.get(tourPositionAtom));
+      const ortho = store.get(tourModeAtom) !== 'parameter';
       const startTime = performance.now();
       const scratch = new Float32Array(dims * 2);
 
@@ -94,7 +96,7 @@ export const useGuidedResume = (
         const t = Math.min(1, (now - startTime) / durationMs);
         const eased = easeOut(t);
 
-        interpolateAtPosition(scratch, rv, al, dims, readPos());
+        interpolateAtPosition(scratch, rv, al, dims, readPos(), ortho);
 
         for (let i = 0; i < scratch.length; i++) {
           scratch[i] = start[i]! + (scratch[i]! - start[i]!) * eased;
