@@ -41,6 +41,7 @@ struct Uniforms {
   color_min_v: f32,
   color_range_v: f32,
   color2d_map_index: u32,     // 0-5 = LUT-based, 6 = oklab_polar
+  scale_opacity_by_zoom: f32, // 1.0 = auto (zoom² density scaling), 0.0 = manual (fixed)
 }
 
 struct Camera {
@@ -251,9 +252,10 @@ fn vs_main(
   let offset = vec2f(q.x / camera.aspect, q.y) * (point_size * 0.5);
 
   // Scale opacity by zoom² to keep constant visual fill density (Reusser).
-  // Zooming out compresses points → more overlap → must reduce opacity.
+  // Only applied for auto-computed opacity; manual values are used as-is.
   let z = camera.zoom * camera.inset_zoom;
-  let eff_opacity = uni.opacity * z * z;
+  let zoom_scale = select(1.0, z * z, uni.scale_opacity_by_zoom > 0.5);
+  let eff_opacity = uni.opacity * zoom_scale;
 
   // Resolve per-point color from LUT
   var col: vec4f;

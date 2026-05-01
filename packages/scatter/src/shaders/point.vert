@@ -33,6 +33,7 @@ uniform float u_pointSize;    // NDC units
 uniform float u_opacity;
 uniform vec4 u_color;          // uniform point color (RGBA 0-1)
 uniform float u_useSubtractive;
+uniform float u_scaleOpacityByZoom; // 1.0 = auto (zoom² density scaling), 0.0 = manual
 
 // Camera
 uniform vec2 u_pan;
@@ -53,7 +54,7 @@ uniform int u_maxPoints;
 uniform int u_texWidth;
 
 // Color mapping — tiny LUT replaces N-element packed color texture
-// 0 = uniform color, 1 = continuous, 2 = categorical
+// 0 = uniform color, 1 = continuous, 2 = categorical, 3 = 2D colormap
 uniform int u_colorMode;
 uniform int u_colorColumnIndex;   // which data column to read (continuous only)
 uniform float u_colorMin;
@@ -61,6 +62,13 @@ uniform float u_colorRange;
 uniform int u_colorNumStops;      // LUT size
 uniform usampler2D u_colorLutTex; // packed RGBA u32 LUT (width=numStops, height=1)
 uniform usampler2D u_catIndexTex; // categorical indices (R32UI, tiled like data tex)
+
+// 2D colormap params (used when u_colorMode == 3)
+uniform int u_colorColumnIndexV;  // second data column
+uniform float u_colorMinV;
+uniform float u_colorRangeV;
+uniform int u_color2dMapIndex;    // 0-5 = LUT-based, 6 = oklab_polar
+uniform float u_color2dLut[128];  // SVD rank-1 LUT curves (8 × 16 entries)
 
 // Selection mask (bit-packed u32 in R32UI texture, width = ceil(N/32), height = 1)
 uniform float u_useSelectionMask;
@@ -91,6 +99,62 @@ uint pcg_hash(uint v) {
 
 float random_float(uint seed) {
   return float(pcg_hash(seed)) / 4294967295.0;
+}
+
+// ── 2D colormap helpers ──
+
+// Linearly interpolate within a 16-entry LUT curve starting at base offset.
+float lut2d_interp(int base, float t) {
+  float pos = t * 15.0;
+  int lo = min(int(floor(pos)), 14);
+  int hi = lo + 1;
+  return mix(u_color2dLut[base + lo], u_color2dLut[base + hi], fract(pos));
+}
+
+// Reconstruct 2D color from SVD rank-1 LUT curves.
+// Layout: R_X[16] R_Y[16] G_X[16] G_Y[16] B_X[16] B_Y[16] B_X2[16] B_Y2[16]
+vec3 colormap2d_lut(float u, float v) {
+  float r = lut2d_interp(0, u) * lut2d_interp(16, v);
+  float g = lut2d_interp(32, u) * lut2d_interp(48, v);
+  float b = lut2d_interp(64, u) * lut2d_interp(80, v)
+          + lut2d_interp(96, u) * lut2d_interp(112, v);
+  return clamp(vec3(r, g, b), vec3(0.0), vec3(1.0));
+}
+
+// Oklab → linear sRGB conversion
+vec3 oklabToLinear(vec3 lab) {
+  float l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
+  float m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
+  float s_ = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
+  float l = l_ * l_ * l_;
+  float m = m_ * m_ * m_;
+  float s = s_ * s_ * s_;
+  return vec3(
+     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+  );
+}
+
+// Oklab polar 2D colormap: hue = angle, chroma = radius, lightness varies
+vec3 colormap2d_oklab_polar(float u, float v) {
+  float cx = u - 0.5;
+  float cy = v - 0.5;
+  float radius = min(length(vec2(cx, cy)) * 2.0, 1.0);
+  float angle = atan(cy, cx);
+  float chroma = radius * 0.25;
+  float L = mix(0.3, 0.85, 1.0 - radius);
+  float a = chroma * cos(angle);
+  float b = chroma * sin(angle);
+  vec3 linear = oklabToLinear(vec3(L, a, b));
+  return pow(clamp(linear, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
+}
+
+vec3 colormap2d(int mapIndex, float u, float v) {
+  if (mapIndex == 6) {
+    return colormap2d_oklab_polar(u, v);
+  }
+  return colormap2d_lut(u, v);
 }
 
 void main() {
@@ -143,9 +207,11 @@ void main() {
   // gl_PointSize is in physical pixels, convert from NDC
   gl_PointSize = ps * u_viewportHeight * 0.5;
 
-  // Effective opacity: scale by zoom^2 for constant visual fill density (Reusser)
+  // Scale opacity by zoom^2 for constant visual fill density (Reusser).
+  // Only applied for auto-computed opacity; manual values are used as-is.
   float z = u_zoom * u_insetZoom;
-  v_effOpacity = u_opacity * z * z;
+  float zoomScale = u_scaleOpacityByZoom > 0.5 ? z * z : 1.0;
+  v_effOpacity = u_opacity * zoomScale;
 
   // Resolve per-point color from LUT
   if (u_colorMode == 1) {
@@ -165,6 +231,16 @@ void main() {
     uint catIdx = texelFetch(u_catIndexTex, ivec2(tx, tileRow), 0).r;
     int lutIdx = int(catIdx) % u_colorNumStops;
     v_color = unpackColor(texelFetch(u_colorLutTex, ivec2(lutIdx, 0), 0).r);
+  } else if (u_colorMode == 3) {
+    // 2D colormap: read two columns, normalize to UV, look up from 2D colormap
+    float rawU = texelFetch(u_data, ivec2(tx, u_colorColumnIndex * tileRows + tileRow), 0).r;
+    float rawV = texelFetch(u_data, ivec2(tx, u_colorColumnIndexV * tileRows + tileRow), 0).r;
+    float invRangeU = u_colorRange > 0.0 ? 1.0 / u_colorRange : 0.0;
+    float invRangeV = u_colorRangeV > 0.0 ? 1.0 / u_colorRangeV : 0.0;
+    float uVal = clamp((rawU - u_colorMin) * invRangeU, 0.0, 1.0);
+    float vVal = clamp((rawV - u_colorMinV) * invRangeV, 0.0, 1.0);
+    vec3 rgb2d = colormap2d(u_color2dMapIndex, uVal, vVal);
+    v_color = vec4(rgb2d, 1.0);
   } else {
     v_color = u_color;
   }
