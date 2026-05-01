@@ -36,6 +36,7 @@ export const dtourSpecSchema = z.object({
   previewPadding: z.number().nonnegative().optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
+  minPointSize: z.number().min(1).max(20).optional(),
   pointColor: z.union([z.tuple([z.number(), z.number(), z.number()]), z.string()]).optional(),
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
@@ -60,6 +61,10 @@ export type EmbeddedConfig = {
   spec: DtourSpec;
   colorMap?: Record<string, string>;
   tour?: {
+    /** Numeric column names that participate in the tour. When absent,
+     *  resolved later from metadata.columnNames (all numeric columns). */
+    dimensions?: string[];
+    /** @deprecated Use `dimensions.length` instead. Kept as fallback for old files. */
     nDims: number;
     nViews: number;
     views: Float32Array[];
@@ -121,6 +126,7 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
   let tour: EmbeddedConfig['tour'] | undefined;
   if (obj.tour && typeof obj.tour === 'object') {
     const t = obj.tour as Record<string, unknown>;
+    // dimensions.length is the canonical source; nDims is a deprecated fallback.
     const nDims = typeof t.nDims === 'number' ? t.nDims : 0;
     const nViews = typeof t.nViews === 'number' ? t.nViews : 0;
     const viewsB64 = typeof t.views === 'string' ? t.views : '';
@@ -139,6 +145,14 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
             views.push(floats.slice(v * stride, (v + 1) * stride));
           }
           tour = { nDims, nViews, views };
+
+          // Parse dimensions (column names participating in the tour)
+          if (Array.isArray(t.dimensions)) {
+            const dims = t.dimensions as unknown[];
+            if (dims.every((s) => typeof s === 'string')) {
+              tour.dimensions = dims as string[];
+            }
+          }
 
           // Parse tourMode
           if (
@@ -203,6 +217,7 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
       colorMap: colorMap ? `${Object.keys(colorMap).length} entries` : undefined,
       tour: tour
         ? {
+            dimensions: tour.dimensions,
             nDims: tour.nDims,
             nViews: tour.nViews,
             tourMode: tour.tourMode,
@@ -228,6 +243,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   previewPadding: 12,
   pointSize: 'auto',
   pointOpacity: 'auto',
+  minPointSize: 2,
   pointColor: [0.25, 0.5, 0.9],
   cameraPanX: 0,
   cameraPanY: 0,

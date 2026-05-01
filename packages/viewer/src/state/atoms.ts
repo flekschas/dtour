@@ -64,6 +64,7 @@ export const currentKeyframeAtom = atom((get) => {
 export const pointSizeAtom = atom<number | 'auto'>('auto');
 export const pointOpacityAtom = atom<number | 'auto'>('auto');
 export const pointColorAtom = atom<[number, number, number] | string>([0.25, 0.5, 0.9]);
+export const minPointSizeAtom = atom(2);
 export const paletteAtom = atom<'viridis' | 'magma'>('viridis');
 
 /** Per-label color overrides. Values are hex strings or theme-aware {light, dark} objects. */
@@ -204,6 +205,19 @@ export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
 
 /** Tour mode: null (vanilla), "signed", "discriminative", or "parameter". */
 export const tourModeAtom = atom<'signed' | 'discriminative' | 'parameter' | null>(null);
+
+// ---------------------------------------------------------------------------
+// Predefined tour — locks column selection, preview count, and Dims/PCA toggle
+// ---------------------------------------------------------------------------
+
+/** Info about the active predefined tour, or null for auto-generated tours.
+ *  When non-null, column toggles, preview count slider, and Dims/PCA toggle are disabled. */
+export const predefinedTourAtom = atom<{
+  /** Numeric column names that participate in the tour. */
+  dimensions: string[];
+  /** Number of keyframe views in the tour. */
+  viewCount: number;
+} | null>(null);
 
 /** Per-frame text summaries (e.g. "rho=100 (LE-like)"). Shown below previews. */
 export const frameSummariesAtom = atom<string[] | null>(null);

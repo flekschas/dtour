@@ -33,6 +33,41 @@ export const createDefaultViews = (
 };
 
 /**
+ * Expand basis matrices from a tour's dimension space to the full dataset
+ * column space. Each input basis is `nDims × 2` (the tour's dim count);
+ * each output basis is `totalDims × 2` with weights placed at the column
+ * indices that correspond to `tourDimNames` in `allColumnNames`.
+ *
+ * No-op when the bases already span the full dataset (nDims === totalDims).
+ */
+export const expandBases = (
+  bases: Float32Array[],
+  tourDimNames: string[],
+  allColumnNames: string[],
+  totalDims: number,
+): Float32Array[] => {
+  const nDims = tourDimNames.length;
+  if (nDims === totalDims) return bases;
+
+  // Map tour dim index → dataset column index
+  const indexMap: number[] = [];
+  for (const name of tourDimNames) {
+    indexMap.push(allColumnNames.indexOf(name));
+  }
+
+  return bases.map((basis) => {
+    const expanded = new Float32Array(totalDims * 2);
+    for (let d = 0; d < nDims; d++) {
+      const col = indexMap[d]!;
+      if (col < 0) continue;
+      expanded[col] = basis[d]!;
+      expanded[totalDims + col] = basis[nDims + d]!;
+    }
+    return expanded;
+  });
+};
+
+/**
  * Create tour views from PCA eigenvectors.
  * Cycles through consecutive PC pairs: [PC1,PC2], [PC2,PC3], ..., wrapping.
  *

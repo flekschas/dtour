@@ -42,6 +42,7 @@ export {
   pointOpacityAtom,
   pointColorAtom,
   colorMapAtom,
+  minPointSizeAtom,
   // Camera
   cameraPanXAtom,
   cameraPanYAtom,
@@ -60,6 +61,8 @@ export {
   frameSummariesAtom,
   tourModeAtom,
   legendVisibleAtom,
+  // Predefined tour
+  predefinedTourAtom,
   // Theme
   themeModeAtom,
   resolvedThemeAtom,

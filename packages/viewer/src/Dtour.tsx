@@ -11,6 +11,7 @@ import { PortalContainerContext, usePortalContainer } from './portal-container.t
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import type { DtourSpec, FrameLoading } from './spec.ts';
 import {
+  activeColumnsAtom,
   backgroundColorAtom,
   colorMapAtom,
   embeddedConfigAtom,
@@ -20,6 +21,7 @@ import {
   legendVisibleAtom,
   metadataAtom,
   pointColorAtom,
+  predefinedTourAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
   tourByAtom,
@@ -331,6 +333,29 @@ const DtourInner = ({
   const legendSelection = useAtomValue(legendSelectionAtom);
   const pointColor = useAtomValue(pointColorAtom);
   const metadata = useAtomValue(metadataAtom);
+
+  // Apply tour.dimensions → activeColumnsAtom so the toolbar shows which
+  // numeric columns participate in the predefined tour. When dimensions
+  // is absent (old files), falls back to all numeric columns (null).
+  const setActiveColumns = useSetAtom(activeColumnsAtom);
+  const setPredefinedTour = useSetAtom(predefinedTourAtom);
+  useEffect(() => {
+    if (!metadata) return;
+    const tourDims = embeddedConfig?.tour?.dimensions;
+    if (!tourDims || tourDims.length === 0) {
+      // No explicit dimensions — assume all numeric columns participate
+      setActiveColumns(null);
+      return;
+    }
+    const indices = new Set<number>();
+    for (const name of tourDims) {
+      const idx = metadata.columnNames.indexOf(name);
+      if (idx !== -1) indices.add(idx);
+    }
+    if (indices.size >= 2) {
+      setActiveColumns(indices);
+    }
+  }, [metadata, embeddedConfig, setActiveColumns]);
 
   useEffect(() => {
     if (!onSelectionChange) return;

@@ -46,6 +46,7 @@ import {
   arcLengthsAtom,
   cameraZoomAtom,
   canvasSizeAtom,
+  colorMapAtom,
   currentBasisAtom,
   currentKeyframeAtom,
   embeddedConfigAtom,
@@ -57,6 +58,7 @@ import {
   legendSelectionAtom,
   metadataAtom,
   pointColorAtom,
+  predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
@@ -66,11 +68,12 @@ import {
   showFrameLoadingsAtom,
   sliderSpacingAtom,
   tourByAtom,
+  tourModeAtom,
   tourPlayingAtom,
   tourPositionAtom,
   viewModeAtom,
 } from './state/atoms.ts';
-import { createDefaultViews, createPCAViews } from './views.ts';
+import { createDefaultViews, createPCAViews, expandBases } from './views.ts';
 
 export type DtourViewerProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
@@ -178,6 +181,7 @@ export const DtourViewer = ({
 
   const setCurrentBasis = useSetAtom(currentBasisAtom);
   const tourBy = useAtomValue(tourByAtom);
+  const tourMode = useAtomValue(tourModeAtom);
   const [pcaResult, setPcaResult] = useState<{
     eigenvectors: Float32Array[];
     numDims: number;
@@ -196,11 +200,32 @@ export const DtourViewer = ({
 
   // Resolve views (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
-  // Embedded tour views from Parquet metadata (only when nDims matches the dataset)
+  // Embedded tour views from Parquet metadata.
   const embeddedViews =
-    embeddedConfig?.tour && metadata && embeddedConfig.tour.nDims === metadata.dimCount
+    embeddedConfig?.tour && metadata && embeddedConfig.tour.views.length > 0
       ? embeddedConfig.tour.views
       : null;
+
+  // Track whether the active tour is predefined (externally computed) vs auto-generated.
+  // Predefined tours lock down column toggles, preview count, and the Dims/PCA selector.
+  const setPredefinedTour = useSetAtom(predefinedTourAtom);
+  useEffect(() => {
+    const predefinedViews = views ?? embeddedViews;
+    if (predefinedViews && predefinedViews.length > 0 && metadata) {
+      // Resolve dimensions: use tour.dimensions if available, fall back
+      // to the first nDims column names (derived from basis matrix size).
+      const tourNDims = predefinedViews[0]!.length / 2;
+      const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
+      setPredefinedTour({ dimensions: dims, viewCount: predefinedViews.length });
+    } else {
+      setPredefinedTour(null);
+    }
+  }, [views, embeddedViews, metadata, embeddedConfig, setPredefinedTour]);
+
+  // Effective preview count: predefined tours use their own view count,
+  // auto-generated tours use the user-configurable previewCount atom.
+  const predefinedTour = useAtomValue(predefinedTourAtom);
+  const effectivePreviewCount = predefinedTour?.viewCount ?? previewCount;
 
   const { resolvedViews, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
@@ -212,12 +237,31 @@ export const DtourViewer = ({
     } else if (views && views.length > 0) {
       rb = views.map((b) => new Float32Array(b));
     } else if (!views && embeddedViews) {
-      rb = embeddedViews.map((b) => new Float32Array(b));
+      const tourNDims = embeddedViews[0]!.length / 2;
+      if (tourNDims < dims) {
+        // Tour spans fewer dims than the dataset — expand bases to full width.
+        // Use tour.dimensions if available, otherwise assume the first nDims columns.
+        const tourDims =
+          embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
+        rb = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
+      } else {
+        rb = embeddedViews.map((b) => new Float32Array(b));
+      }
     } else {
       rb = createDefaultViews(dims, previewCount, activeIndices);
     }
-    return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims) };
-  }, [views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+    return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims, tourMode !== 'parameter') };
+  }, [
+    views,
+    embeddedViews,
+    embeddedConfig,
+    metadata,
+    previewCount,
+    activeIndices,
+    tourBy,
+    tourMode,
+    pcaResult,
+  ]);
 
   // Sync arcLengths atom so Gallery and other components can access it
   useEffect(() => {
@@ -234,6 +278,9 @@ export const DtourViewer = ({
   resolvedViewsRef.current = resolvedViews;
   const metadataRef = useRef(metadata);
   metadataRef.current = metadata;
+  const orthonormalize = tourMode !== 'parameter';
+  const orthonormalizeRef = useRef(orthonormalize);
+  orthonormalizeRef.current = orthonormalize;
   // Pre-allocated scratch buffer for imperative basis interpolation
   const basisScratchRef = useRef(new Float32Array(0));
 
@@ -249,7 +296,7 @@ export const DtourViewer = ({
     if (basisScratchRef.current.length !== p * 2) {
       basisScratchRef.current = new Float32Array(p * 2);
     }
-    interpolateAtPosition(basisScratchRef.current, rv, al, p, tourPos);
+    interpolateAtPosition(basisScratchRef.current, rv, al, p, tourPos, orthonormalizeRef.current);
     axisOverlayRef.current.setBasis(basisScratchRef.current);
   }, []);
   const updateAxesRef = useRef(updateAxesImperative);
@@ -268,9 +315,18 @@ export const DtourViewer = ({
     if (!resolvedViews || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
     const out = new Float32Array(dims * 2);
-    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position);
+    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position, orthonormalize);
     setCurrentBasis(out);
-  }, [viewMode, guidedSuspended, resolvedViews, arcLengths, metadata, position, setCurrentBasis]);
+  }, [
+    viewMode,
+    guidedSuspended,
+    resolvedViews,
+    arcLengths,
+    metadata,
+    position,
+    orthonormalize,
+    setCurrentBasis,
+  ]);
 
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(() => {
@@ -282,6 +338,7 @@ export const DtourViewer = ({
   const legendSelection = useAtomValue(legendSelectionAtom);
   const pointColor = useAtomValue(pointColorAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
+  const rawColorMap = useAtomValue(colorMapAtom);
 
   const coloredTracks = useMemo(() => {
     if (parsedTracks.length === 0) return parsedTracks;
@@ -298,13 +355,20 @@ export const DtourViewer = ({
     ) {
       const selectedIndex = legendSelection.values().next().value as number;
       const labels = metadata.categoricalLabels[pointColor] ?? [];
-      const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
-      const colors =
-        labels.length <= OKABE_ITO.length
-          ? OKABE_ITO
-          : ([...OKABE_ITO, ...glasbey] as [number, number, number][]);
-      const [r, g, b] = colors[selectedIndex % colors.length]!;
-      confusionColor = `rgb(${r},${g},${b})`;
+      const selectedLabel = labels[selectedIndex];
+
+      if (selectedLabel && rawColorMap?.[selectedLabel]) {
+        const v = rawColorMap[selectedLabel]!;
+        confusionColor = typeof v === 'string' ? v : v[resolvedTheme];
+      } else {
+        const glasbey = resolvedTheme === 'light' ? GLASBEY_LIGHT : GLASBEY_DARK;
+        const colors =
+          labels.length <= OKABE_ITO.length
+            ? OKABE_ITO
+            : ([...OKABE_ITO, ...glasbey] as [number, number, number][]);
+        const [r, g, b] = colors[selectedIndex % colors.length]!;
+        confusionColor = `rgb(${r},${g},${b})`;
+      }
     }
 
     const currentTrack = parsedTracks[confusionIdx]!;
@@ -313,7 +377,7 @@ export const DtourViewer = ({
     const result = [...parsedTracks];
     result[confusionIdx] = { ...currentTrack, color: confusionColor };
     return result;
-  }, [parsedTracks, legendSelection, pointColor, metadata, resolvedTheme]);
+  }, [parsedTracks, legendSelection, pointColor, metadata, resolvedTheme, rawColorMap]);
 
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatter);
@@ -395,7 +459,7 @@ export const DtourViewer = ({
       computeSelectorSize(
         containerSize.width,
         containerSize.height - effectiveToolbarHeight,
-        previewCount,
+        effectivePreviewCount,
         0,
         SELECTOR_PADDING,
         previewScale,
@@ -405,7 +469,7 @@ export const DtourViewer = ({
     [
       containerSize.width,
       containerSize.height,
-      previewCount,
+      effectivePreviewCount,
       effectiveToolbarHeight,
       previewScale,
       coloredTracks.length,
@@ -505,12 +569,12 @@ export const DtourViewer = ({
   }, []);
 
   // Effect B — Preview canvas lifecycle: add/remove preview canvases dynamically.
-  // Runs when scatter instance or previewCount changes.
+  // Uses effectivePreviewCount so predefined tours create the right number of canvases.
   useEffect(() => {
     if (!scatter) return;
 
     const previews: HTMLCanvasElement[] = [];
-    for (let i = 0; i < previewCount; i++) {
+    for (let i = 0; i < effectivePreviewCount; i++) {
       const c = document.createElement('canvas');
       c.width = PREVIEW_INITIAL_SIZE;
       c.height = PREVIEW_INITIAL_SIZE;
@@ -550,7 +614,7 @@ export const DtourViewer = ({
       }
       setPreviewCanvases([]);
     };
-  }, [scatter, previewCount]);
+  }, [scatter, effectivePreviewCount]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {
@@ -583,29 +647,44 @@ export const DtourViewer = ({
     scatter.computePCA();
   }, [tourBy, metadata, scatter]);
 
-  // Set views when available (from props, PCA, embedded, or auto-generated from metadata)
+  // Set views when available (from props, PCA, embedded, or auto-generated from metadata).
+  // Predefined tours (views prop, embeddedViews) are used as-is — column selection
+  // only affects auto-generated views (createDefaultViews).
   useEffect(() => {
-    if (!scatter) return;
-    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2 && metadata) {
-      const pcaBases = createPCAViews(
-        pcaResult.eigenvectors,
-        metadata.dimCount,
-        pcaResult.numDims,
-        previewCount,
-      );
-      scatter.setBases(pcaBases);
+    if (!scatter || !metadata || metadata.dimCount < 2) return;
+    if (activeIndices.length < 2) return;
+    const dims = metadata.dimCount;
+    let bases: Float32Array[];
+    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
+      bases = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
     } else if (views && views.length > 0) {
-      scatter.setBases(views.map((b) => new Float32Array(b)));
+      bases = views.map((b) => new Float32Array(b));
     } else if (!views && embeddedViews) {
-      scatter.setBases(embeddedViews.map((b) => new Float32Array(b)));
-    } else if (metadata && metadata.dimCount >= 2 && activeIndices.length >= 2) {
-      const defaultViews = createDefaultViews(metadata.dimCount, previewCount, activeIndices);
-      scatter.setBases(defaultViews);
+      const tourNDims = embeddedViews[0]!.length / 2;
+      if (tourNDims < dims) {
+        const tourDims =
+          embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
+        bases = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
+      } else {
+        bases = embeddedViews.map((b) => new Float32Array(b));
+      }
+    } else {
+      bases = createDefaultViews(dims, previewCount, activeIndices);
     }
-    // Safety: explicitly request a full re-render after views are set,
-    // ensuring all preview canvases get painted even if messages race.
+    scatter.setBases(bases, tourMode);
     scatter.render();
-  }, [scatter, views, embeddedViews, metadata, previewCount, activeIndices, tourBy, pcaResult]);
+  }, [
+    scatter,
+    views,
+    embeddedViews,
+    embeddedConfig,
+    metadata,
+    previewCount,
+    activeIndices,
+    tourBy,
+    tourMode,
+    pcaResult,
+  ]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
   const { resumeWithTransition, cancelTransition, isTransitioning } = useGuidedResume(
@@ -678,8 +757,8 @@ export const DtourViewer = ({
         store.set(cameraZoomAtom, (prev) => {
           // deltaY > 0 = scroll down = zoom out (smaller zoom value)
           const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
-          // Clamp to distance range [1x, 4x] → zoom range [0.25, 1]
-          return Math.min(1, Math.max(0.25, prev * factor));
+          // Clamp zoom range [0.25, 4] (4x zoom out to 4x zoom in)
+          return Math.min(4, Math.max(0.25, prev * factor));
         });
         return;
       }
