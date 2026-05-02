@@ -1,11 +1,9 @@
 import {
-  ArrowCounterClockwiseIcon,
   CaretDownIcon,
   ChartScatterIcon,
   CompassIcon,
   CursorIcon,
   GaugeIcon,
-  ImageSquareIcon,
   MagnifyingGlassIcon,
   MonitorIcon,
   MoonIcon,
@@ -120,7 +118,25 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { animateTo, cancelAnimation } = useAnimatePosition();
+  const [isMedium, setIsMedium] = useState(false);
+  const [isWide, setIsWide] = useState(false);
+  useEffect(() => {
+    const mqlMed = window.matchMedia('(min-width: 720px)');
+    const mqlWide = window.matchMedia('(min-width: 960px)');
+    const update = () => {
+      setIsMedium(mqlMed.matches);
+      setIsWide(mqlWide.matches);
+    };
+    update();
+    mqlMed.addEventListener('change', update);
+    mqlWide.addEventListener('change', update);
+    return () => {
+      mqlMed.removeEventListener('change', update);
+      mqlWide.removeEventListener('change', update);
+    };
+  }, []);
+
+  const { cancelAnimation } = useAnimatePosition();
 
   const handlePlayPause = useCallback(() => {
     cancelAnimation();
@@ -128,12 +144,6 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
     if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
   }, [playing, setPlaying, resumeGuided, setSelectedKeyframe, cancelAnimation]);
-
-  const handleReset = useCallback(() => {
-    resumeGuided?.fn(300);
-    setPlaying(false);
-    animateTo(0);
-  }, [setPlaying, resumeGuided, animateTo]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,7 +248,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
       )}
 
       {/* Left: branding + mode switcher */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {onLogoClick ? (
           <Button
             variant="ghost"
@@ -262,10 +272,10 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             </div>
           </div>
         )}
-        <div className="ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
+        <div className="group/modes ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
           {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
           <div
-            className={`group flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+            className={`group flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'} ${!isMedium && viewMode !== 'guided' ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out' : ''}`}
           >
             <Button
               variant="ghost"
@@ -281,7 +291,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               }}
               title="Guided"
             >
-              <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />
+              {isWide && <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />}
               <span className="text-xs">
                 Guided
                 {viewMode === 'guided' ? (
@@ -306,19 +316,25 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </TooltipProvider>
             )}
             {viewMode === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-xs text-dtour-highlight cursor-default px-1">
-                      Planned
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">This tour was precomputed</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div
+                className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
+              >
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-xs text-dtour-highlight cursor-default px-1">
+                        Planned
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">This tour was precomputed</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             )}
             {viewMode === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
-              <div className="-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out">
+              <div
+                className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
+              >
                 <Button
                   variant="ghost"
                   size="sm"
@@ -346,36 +362,45 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           {tourBy !== 'parameter' &&
             MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
               ({ mode, label, icon: Icon }) => (
-                <Button
+                <div
                   key={mode}
-                  variant="ghost"
-                  size="sm"
-                  className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-                  onClick={() => {
-                    if (viewMode === 'grand') {
-                      if (mode === 'grand') {
-                        setGrandExitTarget(null);
-                        return;
-                      }
-                      setGrandExitTarget(mode);
-                    } else {
-                      if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
-                      if (mode === 'grand') setGrandExitTarget(null);
-                      setViewMode(mode);
-                    }
-                  }}
-                  title={label}
+                  className={
+                    !isMedium && viewMode !== mode
+                      ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out'
+                      : ''
+                  }
                 >
-                  <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />
-                  <span className="text-xs">{label}</span>
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                    onClick={() => {
+                      if (viewMode === 'grand') {
+                        if (mode === 'grand') {
+                          setGrandExitTarget(null);
+                          return;
+                        }
+                        setGrandExitTarget(mode);
+                      } else {
+                        if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
+                        if (mode === 'grand') setGrandExitTarget(null);
+                        setViewMode(mode);
+                      }
+                    }}
+                    title={label}
+                  >
+                    {isWide && <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />}
+                    <span className="text-xs">{label}</span>
+                  </Button>
+                </div>
               ),
             )}
         </div>
       </div>
 
-      {/* Center: playback controls (guided mode) / speed (grand mode) */}
+      {/* Center: Settings | Play | Zoom (+ Speed & Axes at ≥960px) */}
       <div className="flex items-center gap-1">
+        {/* Settings dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" title="Settings">
@@ -424,6 +449,45 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 className="w-full"
               />
             </DropdownMenuItem>
+            {!isWide && viewMode === 'guided' && (
+              <DropdownMenuItem
+                className="gap-4"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setShowAxes((v) => !v);
+                }}
+              >
+                <span className="flex-1 text-xs">Show axes</span>
+                <Checkbox checked={showAxes} onCheckedChange={() => setShowAxes((v) => !v)} />
+              </DropdownMenuItem>
+            )}
+
+            {!isWide && (viewMode === 'guided' || viewMode === 'grand') && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-semibold">Playback</DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="flex flex-col items-start gap-1"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-xs">Speed</span>
+                    <span className="text-xs font-medium text-dtour-highlight">{speed}x</span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={SPEED_STEPS.length - 1}
+                    step={1}
+                    value={[speedToStep(speed)]}
+                    onValueChange={([step]: number[]) => {
+                      if (step !== undefined) setSpeed(stepToSpeed(step));
+                    }}
+                    className="w-full"
+                  />
+                </DropdownMenuItem>
+              </>
+            )}
+
             {viewMode === 'guided' && (
               <>
                 <DropdownMenuSeparator />
@@ -475,62 +539,75 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 )}
               </>
             )}
+
+            {viewMode === 'guided' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-semibold">Previews</DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="flex flex-col items-start gap-1"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-xs">Count</span>
+                    <span className="text-xs font-medium text-dtour-highlight">
+                      {isPredefinedTour ? predefinedViewCount : previewCount}
+                    </span>
+                  </div>
+                  {!isPredefinedTour && (
+                    <Slider
+                      min={0}
+                      max={PREVIEW_COUNT_STEPS.length - 1}
+                      step={1}
+                      value={[PREVIEW_COUNT_STEPS.indexOf(previewCount)]}
+                      onValueChange={([step]: number[]) => {
+                        if (step !== undefined) setPreviewCount(PREVIEW_COUNT_STEPS[step]!);
+                      }}
+                      className="w-full"
+                    />
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex flex-col items-start gap-1"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-xs">Size</span>
+                    <span className="text-xs font-medium text-dtour-highlight">
+                      {SCALE_LABELS[previewScale] ?? previewScale}
+                    </span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={PREVIEW_SCALE_STEPS.length - 1}
+                    step={1}
+                    value={[PREVIEW_SCALE_STEPS.indexOf(previewScale)]}
+                    onValueChange={([step]: number[]) => {
+                      if (step !== undefined) setPreviewScale(PREVIEW_SCALE_STEPS[step]!);
+                    }}
+                    className="w-full"
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="gap-4"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setShowFrameNumbers((v) => !v);
+                  }}
+                >
+                  <span className="flex-1 text-xs">Numbers</span>
+                  <Checkbox
+                    checked={showFrameNumbers}
+                    onCheckedChange={() => setShowFrameNumbers((v) => !v)}
+                  />
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <Button variant="ghost" size="icon" title={`Zoom: ${Math.round(zoom * 100)}%`}>
-              <MagnifyingGlassIcon size={16} />
-            </Button>
-          </Popover.Trigger>
-          <Popover.Portal container={portalContainer}>
-            <Popover.Content
-              side="bottom"
-              align="center"
-              sideOffset={4}
-              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
-            >
-              <span className="text-xs text-center font-semibold text-dtour-text-muted">Zoom</span>
-              <Slider
-                orientation="vertical"
-                min={0}
-                max={ZOOM_STEPS.length - 1}
-                step={1}
-                ticks={ZOOM_STEPS.length}
-                value={[zoomToStep(zoom)]}
-                onValueChange={([step]: number[]) => {
-                  if (step !== undefined) setZoom(stepToZoom(step));
-                }}
-                className="h-[120px]"
-              />
-              <span className="text-xs font-medium text-dtour-highlight">
-                {Math.round(zoom * 100)}%
-              </span>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
 
-        {viewMode === 'guided' && (
-          <>
-            <Button variant="ghost" size="icon" onClick={handleReset} title="Reset to start">
-              <ArrowCounterClockwiseIcon size={16} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePlayPause}
-              title={playing ? 'Pause' : 'Play'}
-            >
-              {playing ? (
-                <PauseIcon size={16} weight="fill" />
-              ) : (
-                <PlayIcon size={16} weight="fill" />
-              )}
-            </Button>
-          </>
-        )}
-
-        {(viewMode === 'guided' || viewMode === 'grand') && (
+        {/* Speed popover — standalone at ≥960px */}
+        {isWide && (viewMode === 'guided' || viewMode === 'grand') && (
           <Popover.Root>
             <Popover.Trigger asChild>
               <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>
@@ -563,70 +640,20 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           </Popover.Root>
         )}
 
+        {/* Play/Pause — guided only */}
         {viewMode === 'guided' && (
-          <Popover.Root>
-            <Popover.Trigger asChild>
-              <Button variant="ghost" size="icon" title={`Previews: ${previewCount}`}>
-                <ImageSquareIcon size={16} />
-              </Button>
-            </Popover.Trigger>
-            <Popover.Portal container={portalContainer}>
-              <Popover.Content
-                side="bottom"
-                align="center"
-                sideOffset={4}
-                className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
-              >
-                <div className="flex flex-col gap-2">
-                  <div className="text-xs text-center font-semibold text-dtour-text-muted">
-                    Preview
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-xs text-dtour-text-muted">Count</span>
-                      {isPredefinedTour ? (
-                        <div className="h-[120px] flex items-center">
-                          <span className="text-xs font-medium text-dtour-highlight">
-                            {predefinedViewCount}
-                          </span>
-                        </div>
-                      ) : (
-                        <PreviewStepSlider
-                          steps={PREVIEW_COUNT_STEPS}
-                          value={previewCount}
-                          onCommit={setPreviewCount}
-                        />
-                      )}
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-xs text-dtour-text-muted">Size</span>
-                      <PreviewStepSlider
-                        steps={PREVIEW_SCALE_STEPS}
-                        value={previewScale}
-                        onCommit={setPreviewScale}
-                        formatLabel={SCALE_LABELS}
-                      />
-                    </div>
-                  </div>
-                  <div className="my-1 h-px bg-dtour-border" />
-                  <div
-                    className="flex items-center gap-4 cursor-pointer select-none"
-                    onClick={() => setShowFrameNumbers((v) => !v)}
-                    onKeyDown={undefined}
-                  >
-                    <span className="flex-1 text-xs text-dtour-text-muted">Numbers</span>
-                    <Checkbox
-                      checked={showFrameNumbers}
-                      onCheckedChange={() => setShowFrameNumbers((v) => !v)}
-                    />
-                  </div>
-                </div>
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePlayPause}
+            title={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? <PauseIcon size={16} weight="fill" /> : <PlayIcon size={16} weight="fill" />}
+          </Button>
         )}
 
-        {viewMode === 'guided' && (
+        {/* Axes toggle — standalone at ≥960px, guided only */}
+        {isWide && viewMode === 'guided' && (
           <Button
             variant="ghost"
             size="icon"
@@ -637,6 +664,40 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             <ChartScatterIcon size={16} weight={showAxes ? 'fill' : 'regular'} />
           </Button>
         )}
+
+        {/* Zoom popover */}
+        <Popover.Root>
+          <Popover.Trigger asChild>
+            <Button variant="ghost" size="icon" title={`Zoom: ${Math.round(zoom * 100)}%`}>
+              <MagnifyingGlassIcon size={16} />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Portal container={portalContainer}>
+            <Popover.Content
+              side="bottom"
+              align="center"
+              sideOffset={4}
+              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
+            >
+              <span className="text-xs text-center font-semibold text-dtour-text-muted">Zoom</span>
+              <Slider
+                orientation="vertical"
+                min={0}
+                max={ZOOM_STEPS.length - 1}
+                step={1}
+                ticks={ZOOM_STEPS.length}
+                value={[zoomToStep(zoom)]}
+                onValueChange={([step]: number[]) => {
+                  if (step !== undefined) setZoom(stepToZoom(step));
+                }}
+                className="h-[120px]"
+              />
+              <span className="text-xs font-medium text-dtour-highlight">
+                {Math.round(zoom * 100)}%
+              </span>
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
       </div>
 
       {/* Right: data info + settings */}
@@ -645,10 +706,16 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
-                {metadata.rowCount.toLocaleString()} pts &times;{' '}
-                {activeCount === metadata.dimCount
-                  ? `${metadata.dimCount} dims`
-                  : `${activeCount}/${metadata.dimCount} dims`}
+                {isWide ? (
+                  <>
+                    {metadata.rowCount.toLocaleString()} pts &times;{' '}
+                    {activeCount === metadata.dimCount
+                      ? `${metadata.dimCount} dims`
+                      : `${activeCount}/${metadata.dimCount} dims`}
+                  </>
+                ) : (
+                  'Data'
+                )}
                 <CaretDownIcon size={12} />
               </Button>
             </DropdownMenuTrigger>
@@ -835,56 +902,9 @@ const ColumnRow = ({
   </DropdownMenuCheckboxItem>
 );
 
-// ---------------------------------------------------------------------------
-// Preview step slider — generic discrete slider with local drag state
-// ---------------------------------------------------------------------------
-
 const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];
 const SCALE_LABELS: Record<number, string> = { 1: 'L', 0.75: 'M', 0.5: 'S' };
-
-function PreviewStepSlider<T extends number>({
-  steps,
-  value,
-  onCommit,
-  formatLabel,
-}: {
-  steps: T[];
-  value: T;
-  onCommit: (v: T) => void;
-  formatLabel?: Record<number, string>;
-}) {
-  const [localStep, setLocalStep] = useState(() => steps.indexOf(value));
-
-  // Resync local state when value changes externally (e.g. restored settings, spec updates)
-  useEffect(() => {
-    const idx = steps.indexOf(value);
-    if (idx !== -1) setLocalStep(idx);
-  }, [value, steps]);
-
-  const display = formatLabel?.[steps[localStep]!] ?? String(steps[localStep] ?? value);
-
-  return (
-    <>
-      <Slider
-        orientation="vertical"
-        min={0}
-        max={steps.length - 1}
-        step={1}
-        ticks={steps.length}
-        value={[localStep]}
-        onValueChange={([step]: number[]) => {
-          if (step !== undefined) setLocalStep(step);
-        }}
-        onValueCommit={([step]: number[]) => {
-          if (step !== undefined) onCommit(steps[step]!);
-        }}
-        className="h-[120px]"
-      />
-      <span className="text-xs font-medium text-dtour-highlight">{display}</span>
-    </>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Speed / distance step helpers
