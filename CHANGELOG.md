@@ -23,7 +23,9 @@
 - feat: smooth guided-mode resume with basis-blend projection transition
 - feat: projection-anchored hover highlight with per-point color
 - feat: hover tooltip anchored to projection space with directional arrow
+- feat: show color in point tooltip
 - fix: clear hover highlight and tooltip on projection change
+- refactor: make toolbar design more responsive
 - fix: apply resolved theme class to Radix portal container for light-mode support
 - style: unify tooltip, popover, and dropdown backgrounds
 - perf: spatial index rebuilds use imperative subscriptions to avoid 60fps re-renders in guided mode
