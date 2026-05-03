@@ -40,6 +40,8 @@ export type CircularSliderProps = {
   hoveredKeyframe?: number | null;
   /** Preview center positions relative to the container center, with sizes. */
   previewCenters?: PreviewCenter[];
+  /** Whether to show the center origin dot (e.g. when axes are visible). */
+  showOriginDot?: boolean;
 };
 
 const BASE_STROKE = 3;
@@ -66,6 +68,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       currentKeyframe,
       hoveredKeyframe,
       previewCenters,
+      showOriginDot,
     },
     ref,
   ) => {
@@ -354,14 +357,16 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           strokeLinecap="round"
           className="pointer-events-none"
         />
-        {/* Center dot */}
-        <circle
-          cx={center}
-          cy={center}
-          r="3"
-          fill="var(--color-dtour-text-muted)"
-          className="pointer-events-none"
-        />
+        {/* Center dot — only shown when axes are visible */}
+        {showOriginDot && (
+          <circle
+            cx={center}
+            cy={center}
+            r="3"
+            fill="var(--color-dtour-text-muted)"
+            className="pointer-events-none"
+          />
+        )}
         {/* Transparent hit area for handle — larger for easier grabbing */}
         <circle
           ref={hitAreaRef}

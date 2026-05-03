@@ -41,6 +41,7 @@
 - feat: show color in point tooltip
 - fix: clear hover highlight and tooltip on projection change
 - refactor: make toolbar design more responsive
+- refactor: hide origin dot until axes are shown
 - fix: apply resolved theme class to Radix portal container for light-mode support
 - style: unify tooltip, popover, and dropdown backgrounds
 - perf: spatial index rebuilds use imperative subscriptions to avoid 60fps re-renders in guided mode

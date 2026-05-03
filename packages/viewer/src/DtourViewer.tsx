@@ -1073,6 +1073,7 @@ export const DtourViewer = ({
                 currentKeyframe={currentKeyframe}
                 hoveredKeyframe={hoveredKeyframe}
                 previewCenters={previewCenters}
+                showOriginDot={showAxes}
               />
             </div>
           </div>
