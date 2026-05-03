@@ -11,7 +11,6 @@ import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLongPressIndicator } from '../hooks/useLongPressIndicator.ts';
 import type { SpatialIndex } from '../hooks/useSpatialIndex.ts';
-import { isHexColor } from '../lib/color-utils.ts';
 import {
   activeIndicesAtom,
   cameraPanXAtom,
@@ -25,8 +24,9 @@ import {
   metadataAtom,
   paletteAtom,
   pointColorAtom,
+  pointColorByAtom,
   resolvedThemeAtom,
-  viewModeAtom,
+  tourTraversalAtom,
 } from '../state/atoms.ts';
 import { type HoverState, PointTooltip } from './PointTooltip.tsx';
 
@@ -148,7 +148,8 @@ const samplePalette = (pal: [number, number, number][], t: number): string => {
 };
 
 const resolveHoverColor = (
-  pointColor: [number, number, number] | string,
+  pointColor: [number, number, number],
+  pointColorBy: string | null,
   hoverData: {
     numericValues: Record<string, number>;
     categoricalValues: Record<string, number>;
@@ -158,20 +159,18 @@ const resolveHoverColor = (
   palette: 'viridis' | 'magma',
   theme: 'light' | 'dark',
 ): string => {
-  // Uniform RGB tuple (0–1 range)
-  if (Array.isArray(pointColor)) {
+  // No column encoding — uniform RGB tuple (0–1 range)
+  if (!pointColorBy) {
     return rgb255ToHex(
       Math.round(pointColor[0] * 255),
       Math.round(pointColor[1] * 255),
       Math.round(pointColor[2] * 255),
     );
   }
-  // Uniform hex string
-  if (isHexColor(pointColor)) return pointColor;
   // Column-encoded color — need lazy data to resolve
   if (!hoverData || !metadata) return 'white';
 
-  const colName = pointColor;
+  const colName = pointColorBy;
 
   // Categorical
   if (metadata.categoricalColumnNames.includes(colName)) {
@@ -230,12 +229,13 @@ export const LassoOverlay = ({
   insetOffsetY,
   insetZoom,
 }: LassoOverlayProps) => {
-  const viewMode = useAtomValue(viewModeAtom);
+  const tourTraversal = useAtomValue(tourTraversalAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setLegendSelection = useSetAtom(legendSelectionAtom);
   const store = useStore();
   const metadata = useAtomValue(metadataAtom);
   const pointColor = useAtomValue(pointColorAtom);
+  const pointColorBy = useAtomValue(pointColorByAtom);
   const color2dEnabled = useAtomValue(color2dEnabledAtom);
   const colorMap = useAtomValue(colorMapAtom);
   const palette = useAtomValue(paletteAtom);
@@ -494,12 +494,11 @@ export const LassoOverlay = ({
                   if (e.altKey) {
                     // Alt+click: select all points with same category/band
                     scatter.getPointData(bestIdx).then((result) => {
-                      const color = pointColor;
-                      if (typeof color !== 'string' || isHexColor(color)) return;
+                      if (!pointColorBy) return;
 
                       // Categorical
-                      if (metadata.categoricalColumnNames.includes(color)) {
-                        const labelIdx = result.categoricalValues[color];
+                      if (metadata.categoricalColumnNames.includes(pointColorBy)) {
+                        const labelIdx = result.categoricalValues[pointColorBy];
                         if (labelIdx !== undefined) {
                           setLegendSelection(new Set([labelIdx]));
                         }
@@ -507,7 +506,7 @@ export const LassoOverlay = ({
                       }
 
                       // Continuous
-                      const colIndex = metadata.columnNames.indexOf(color);
+                      const colIndex = metadata.columnNames.indexOf(pointColorBy);
                       if (colIndex !== -1) {
                         const val = result.numericValues[String(colIndex)];
                         if (val !== undefined) {
@@ -566,7 +565,7 @@ export const LassoOverlay = ({
       hideIndicator,
       setLegendSelection,
       metadata,
-      pointColor,
+      pointColorBy,
     ],
   );
 
@@ -579,7 +578,7 @@ export const LassoOverlay = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (viewMode === 'grand') {
+        if (tourTraversal === 'grand') {
           // In grand mode, route through the exit atom so the ease-out
           // animation completes before the mode switch.
           setGrandExitTarget('guided');
@@ -594,7 +593,7 @@ export const LassoOverlay = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scatter, clearLongPress, viewMode, setGrandExitTarget, setLegendSelection]);
+  }, [scatter, clearLongPress, tourTraversal, setGrandExitTarget, setLegendSelection]);
 
   // Build path string for SVG polygon
   const pathStr = path.map(([x, y]) => `${x},${y}`).join(' ');
@@ -646,7 +645,15 @@ export const LassoOverlay = ({
           );
           const color = color2dEnabled
             ? 'white'
-            : resolveHoverColor(pointColor, hover.data, metadata, colorMap, palette, theme);
+            : resolveHoverColor(
+                pointColor,
+                pointColorBy,
+                hover.data,
+                metadata,
+                colorMap,
+                palette,
+                theme,
+              );
           return (
             <>
               <HoverHighlight cx={cx} cy={cy} color={color} />
@@ -657,11 +664,7 @@ export const LassoOverlay = ({
                 cy={cy}
                 containerWidth={width}
                 color={color}
-                colorColumn={
-                  !color2dEnabled && typeof pointColor === 'string' && !isHexColor(pointColor)
-                    ? pointColor
-                    : null
-                }
+                colorColumn={!color2dEnabled && pointColorBy ? pointColorBy : null}
                 activeIndices={activeIndices}
               />
             </>

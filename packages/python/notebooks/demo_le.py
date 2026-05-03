@@ -549,7 +549,7 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
         tour=le_tour,
         preview_count=8,
         preview_size="small",
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
@@ -562,11 +562,11 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
 @app.cell
 def _(cache_dir, dtour, le_df, le_tour, phenotype_colors):
     dtour_json = dtour.build_dtour_metadata(
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         tour_by="dimensions",
         preview_count=8,
         camera_zoom=0.5,
-        color_map=phenotype_colors,
+        point_color_map=phenotype_colors,
         tour=le_tour,
     )
     out_path = cache_dir / "mair-2022-tumor-le-8d.pq"
@@ -627,7 +627,7 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
         tour=signed_tour,
         preview_count=min(8, signed_tour.n_views),
         preview_size="small",
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
@@ -640,11 +640,11 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
 @app.cell
 def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
     signed_json = dtour.build_dtour_metadata(
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         tour_by="dimensions",
         preview_count=min(8, signed_tour.n_views),
         camera_zoom=0.5,
-        color_map=phenotype_colors,
+        point_color_map=phenotype_colors,
         tour=signed_tour,
     )
     signed_out_path = cache_dir / "mair-2022-tumor-le-signed.pq"
@@ -738,7 +738,7 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
         tour=fisher_tour,
         preview_count=min(8, fisher_tour.n_views),
         preview_size="small",
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
@@ -751,12 +751,12 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
 @app.cell
 def _(cache_dir, df, dtour, fisher_df, fisher_tour, phenotype_colors, pl, win_cols):
     fisher_json = dtour.build_dtour_metadata(
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         tour_by="dimensions",
         preview_count=min(8, fisher_tour.n_views),
         preview_scale=0.5,
         camera_zoom=0.5,
-        color_map=phenotype_colors,
+        point_color_map=phenotype_colors,
         tour=fisher_tour,
     )
     fisher_out_path = cache_dir / "mair-2022-tumor-le-fisher.pq"
@@ -771,12 +771,12 @@ def _(cache_dir, df, dtour, fisher_df, fisher_tour, phenotype_colors, pl, win_co
     fisher_markers_df = pl.concat([fisher_df, df.select(win_cols)], how="horizontal")
     fd_cols = [c for c in fisher_markers_df.columns if c.startswith("FD")]
     fisher_markers_json = dtour.build_dtour_metadata(
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         tour_by="dimensions",
         preview_count=min(8, fisher_tour.n_views),
         preview_scale=0.5,
         camera_zoom=0.5,
-        color_map=phenotype_colors,
+        point_color_map=phenotype_colors,
         tour=fisher_tour,
         tour_dimensions=fd_cols,
     )

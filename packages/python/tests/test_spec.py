@@ -28,14 +28,14 @@ def test_build_spec_fields():
     result = json.loads(
         build_dtour_metadata(
             point_size=3,
-            point_color="label",
+            point_color_by="label",
             camera_zoom=0.5,
             tour_by="pca",
             theme_mode="light",
         )
     )
     assert result["pointSize"] == 3
-    assert result["pointColor"] == "label"
+    assert result["pointColorBy"] == "label"
     assert result["cameraZoom"] == 0.5
     assert result["tourBy"] == "pca"
     assert result["themeMode"] == "light"
@@ -45,8 +45,8 @@ def test_build_spec_fields():
 
 def test_build_color_map():
     cm = {"A": "#ff0000", "B": "#00ff00"}
-    result = json.loads(build_dtour_metadata(color_map=cm))
-    assert result["colorMap"] == cm
+    result = json.loads(build_dtour_metadata(point_color_map=cm))
+    assert result["pointColorMap"] == cm
 
 
 def test_build_tour():
@@ -73,16 +73,17 @@ def test_build_snake_to_camel_all_keys():
         "point_size": 4,
         "point_opacity": 0.8,
         "point_color": "col",
+        "point_color_map": {"A": "#ff0000"},
         "camera_pan_x": 0.1,
         "camera_pan_y": -0.1,
         "camera_zoom": 1.5,
-        "view_mode": "manual",
+        "tour_traversal": "manual",
         "show_legend": False,
         "show_axes": True,
         "show_frame_numbers": True,
         "show_frame_loadings": False,
         "show_tour_description": True,
-        "slider_spacing": "equal",
+        "tour_slider_spacing": "equal",
         "theme_mode": "light",
     }
     result = json.loads(build_dtour_metadata(**kwargs))
@@ -114,7 +115,7 @@ def test_add_spec_preserves_existing_metadata():
     table = _make_table()
     schema_with_meta = table.schema.with_metadata({"existing_key": "existing_value"})
     table = table.with_schema(schema_with_meta)
-    result = add_spec_to_parquet(table, point_color="label")
+    result = add_spec_to_parquet(table, point_color_by="label")
     meta = result.schema.metadata_str
     assert meta["existing_key"] == "existing_value"
     assert "dtour" in meta
@@ -147,13 +148,13 @@ def test_read_from_table():
 
 
 def test_read_from_file():
-    table = add_spec_to_parquet(_make_table(), point_color="label")
+    table = add_spec_to_parquet(_make_table(), point_color_by="label")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "test.parquet"
         arro3.io.write_parquet(table, str(path))
         result = read_spec_from_parquet(path)
     assert result is not None
-    assert result["pointColor"] == "label"
+    assert result["pointColorBy"] == "label"
 
 
 def test_read_returns_none_for_missing():
@@ -176,8 +177,8 @@ def test_round_trip_spec_and_color_map():
     table = add_spec_to_parquet(
         _make_table(),
         point_size=3,
-        point_color="label",
-        color_map=cm,
+        point_color_by="label",
+        point_color_map=cm,
     )
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "rt.parquet"
@@ -185,8 +186,8 @@ def test_round_trip_spec_and_color_map():
         result = read_spec_from_parquet(path)
     assert result is not None
     assert result["pointSize"] == 3
-    assert result["pointColor"] == "label"
-    assert result["colorMap"] == cm
+    assert result["pointColorBy"] == "label"
+    assert result["pointColorMap"] == cm
 
 
 def test_round_trip_tour():

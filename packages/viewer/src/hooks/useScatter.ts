@@ -1,7 +1,7 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { useEffect, useRef } from 'react';
-import { hexToRgb, hexToRgb255, isHexColor } from '../lib/color-utils.ts';
+import { hexToRgb255 } from '../lib/color-utils.ts';
 import { parseEmbeddedConfig } from '../spec.ts';
 import {
   backgroundColorAtom,
@@ -21,6 +21,7 @@ import {
   minPointSizeAtom,
   paletteAtom,
   pointColorAtom,
+  pointColorByAtom,
   pointOpacityAtom,
   pointSizeAtom,
   resolvedThemeAtom,
@@ -40,6 +41,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const pointSize = useAtomValue(pointSizeAtom);
   const opacity = useAtomValue(pointOpacityAtom);
   const color = useAtomValue(pointColorAtom);
+  const colorBy = useAtomValue(pointColorByAtom);
   const minPointSize = useAtomValue(minPointSizeAtom);
   const guidedSuspended = useAtomValue(guidedSuspendedAtom);
   const basisTransitioning = useAtomValue(basisTransitioningAtom);
@@ -92,15 +94,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
       return;
     }
 
-    if (Array.isArray(color)) {
-      // RGB tuple — uniform color; clear any per-point encoding
-      scatter.clearColor();
-      scatter.setStyle({ pointSize, opacity, color, minPointSize });
-    } else if (isHexColor(color)) {
-      // Hex string — parse to RGB uniform color
-      scatter.clearColor();
-      scatter.setStyle({ pointSize, opacity, color: hexToRgb(color), minPointSize });
-    } else {
+    if (colorBy) {
       // Column name — encode per-point colors via data worker.
       // Skip until metadata is available: the data worker only knows column
       // names after it has parsed the dataset, so encodeColor sent before
@@ -117,13 +111,18 @@ export const useScatter = (scatter: ScatterInstance | null) => {
           resolvedColorMap[label] = hexToRgb255(hex);
         }
       }
-      scatter.encodeColor(color, palette, resolvedTheme, resolvedColorMap);
+      scatter.encodeColor(colorBy, palette, resolvedTheme, resolvedColorMap);
+    } else {
+      // RGB tuple — uniform color; clear any per-point encoding
+      scatter.clearColor();
+      scatter.setStyle({ pointSize, opacity, color, minPointSize });
     }
   }, [
     scatter,
     pointSize,
     opacity,
     color,
+    colorBy,
     palette,
     resolvedTheme,
     rawColorMap,
@@ -145,8 +144,8 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     if (!scatter || !metadata || legendSelection === null || legendSelection.size === 0) return;
 
     // Determine the active color column
-    if (typeof color !== 'string' || isHexColor(color)) return;
-    const column = color;
+    if (!colorBy) return;
+    const column = colorBy;
 
     const isCategorical = metadata.categoricalColumnNames.includes(column);
 
@@ -172,7 +171,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
 
       scatter.selectByColumn(column, { valueRanges: new Float32Array(ranges) });
     }
-  }, [scatter, legendSelection, color, metadata]);
+  }, [scatter, legendSelection, colorBy, metadata]);
 
   // Clear scatter selection when legend explicitly deselects (gen bumped by ColorLegend)
   useEffect(() => {
@@ -181,14 +180,14 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   }, [scatter, legendClearGen]);
 
   // Reset legend selection and clear GPU selection mask when color column changes
-  const prevColorRef = useRef(color);
+  const prevColorByRef = useRef(colorBy);
   useEffect(() => {
-    if (prevColorRef.current !== color) {
-      prevColorRef.current = color;
+    if (prevColorByRef.current !== colorBy) {
+      prevColorByRef.current = colorBy;
       setLegendSelection(null);
       scatter?.clearSelection();
     }
-  }, [scatter, color, setLegendSelection]);
+  }, [scatter, colorBy, setLegendSelection]);
 
   // Subscribe to scatter status events and update metadata atom.
   // Use a ref so the setMetadata closure never goes stale.

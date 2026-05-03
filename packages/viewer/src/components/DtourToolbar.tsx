@@ -26,13 +26,13 @@ import {
   cameraZoomAtom,
   color2dColumnsAtom,
   color2dEnabledAtom,
-  frameLoadingsAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
+  keyframeLoadingsAtom,
   legendVisibleAtom,
   metadataAtom,
   minPointSizeAtom,
-  pointColorAtom,
+  pointColorByAtom,
   pointOpacityAtom,
   predefinedTourAtom,
   previewCountAtom,
@@ -40,17 +40,17 @@ import {
   resumeGuidedAtom,
   selectedKeyframeAtom,
   showAxesAtom,
-  showFrameLoadingsAtom,
-  showFrameNumbersAtom,
+  showKeyframeLoadingsAtom,
+  showKeyframeNumbersAtom,
   showLegendAtom,
   showTourDescriptionAtom,
-  sliderSpacingAtom,
   themeModeAtom,
   tourByAtom,
   tourDescriptionAtom,
   tourPlayingAtom,
+  tourSliderSpacingAtom,
   tourSpeedAtom,
-  viewModeAtom,
+  tourTraversalAtom,
 } from '../state/atoms.ts';
 import { Logo } from './Logo.tsx';
 import { Button } from './ui/button.tsx';
@@ -75,8 +75,6 @@ const MODE_CONFIG: { mode: ViewMode; label: string; icon: typeof PathIcon }[] = 
   { mode: 'grand', label: 'Grand', icon: CompassIcon },
 ];
 
-const DEFAULT_COLOR: [number, number, number] = [0.25, 0.5, 0.9];
-
 export type DtourToolbarProps = {
   onLoadData?: ((data: ArrayBuffer, fileName: string) => void) | undefined;
   onLogoClick?: (() => void) | undefined;
@@ -87,12 +85,12 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
   const [zoom, setZoom] = useAtom(cameraZoomAtom);
   const metadata = useAtomValue(metadataAtom);
-  const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
   const resumeGuided = useAtomValue(resumeGuidedAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
-  const [pointColor, setPointColor] = useAtom(pointColorAtom);
+  const [pointColorBy, setPointColorBy] = useAtom(pointColorByAtom);
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
   const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
@@ -100,15 +98,15 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
   const [showAxes, setShowAxes] = useAtom(showAxesAtom);
-  const [showFrameNumbers, setShowFrameNumbers] = useAtom(showFrameNumbersAtom);
-  const [showFrameLoadings, setShowFrameLoadings] = useAtom(showFrameLoadingsAtom);
-  const hasFrameLoadings = useAtomValue(frameLoadingsAtom) !== null;
+  const [showKeyframeNumbers, setShowKeyframeNumbers] = useAtom(showKeyframeNumbersAtom);
+  const [showKeyframeLoadings, setShowKeyframeLoadings] = useAtom(showKeyframeLoadingsAtom);
+  const hasKeyframeLoadings = useAtomValue(keyframeLoadingsAtom) !== null;
   const hasTourDescription = useAtomValue(tourDescriptionAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const predefinedTour = useAtomValue(predefinedTourAtom);
   const isPredefinedTour = predefinedTour !== null;
-  const predefinedViewCount = predefinedTour?.viewCount ?? null;
-  const [sliderSpacing, setSliderSpacing] = useAtom(sliderSpacingAtom);
+  const predefinedViewCount = predefinedTour?.keyframeCount ?? null;
+  const [tourSliderSpacing, setTourSliderSpacing] = useAtom(tourSliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
   const [color2dEnabled, setColor2dEnabled] = useAtom(color2dEnabledAtom);
   const [color2dColumns, setColor2dColumns] = useAtom(color2dColumnsAtom);
@@ -159,8 +157,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
     fileInputRef.current?.click();
   }, []);
 
-  // Determine active color-by column (string = column name, array = uniform)
-  const activeColorColumn = typeof pointColor === 'string' ? pointColor : null;
+  // Determine active color-by column
+  const activeColorColumn = pointColorBy;
 
   const toggleColorBy = useCallback(
     (columnName: string, isCategorical?: boolean) => {
@@ -168,7 +166,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         // Clicking a categorical column exits 2D mode and applies 1D coloring
         setColor2dEnabled(false);
         setColor2dColumns(null);
-        setPointColor(columnName);
+        setPointColorBy(columnName);
         return;
       }
       if (color2dEnabled) {
@@ -188,17 +186,17 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           return [prev[1], columnName];
         });
       } else {
-        setPointColor((prev) => (prev === columnName ? DEFAULT_COLOR : columnName));
+        setPointColorBy((prev) => (prev === columnName ? null : columnName));
       }
     },
-    [setPointColor, color2dEnabled, setColor2dEnabled, setColor2dColumns],
+    [setPointColorBy, color2dEnabled, setColor2dEnabled, setColor2dColumns],
   );
 
   const toggle2dMode = useCallback(() => {
     setColor2dEnabled((prev) => {
       if (!prev) {
         // Entering 2D mode: clear 1D color and auto-select first two numerical columns
-        setPointColor(DEFAULT_COLOR);
+        setPointColorBy(null);
         const cols = metadata?.columnNames;
         if (cols && cols.length >= 2) {
           setColor2dColumns([cols[0]!, cols[1]!]);
@@ -209,7 +207,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
       }
       return !prev;
     });
-  }, [setColor2dEnabled, setPointColor, setColor2dColumns, metadata]);
+  }, [setColor2dEnabled, setPointColorBy, setColor2dColumns, metadata]);
 
   const activeCount =
     activeColumns === null ? (metadata?.columnNames.length ?? 0) : activeColumns.size;
@@ -275,26 +273,28 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         <div className="group/modes ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
           {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
           <div
-            className={`group flex gap-0 items-center ${viewMode === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'} ${!isMedium && viewMode !== 'guided' ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out' : ''}`}
+            className={`group flex gap-0 items-center ${tourTraversal === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'} ${!isMedium && tourTraversal !== 'guided' ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out' : ''}`}
           >
             <Button
               variant="ghost"
               size="sm"
-              className={`rounded-none ${viewMode === 'guided' ? 'text-dtour-highlight' : ''}`}
+              className={`rounded-none ${tourTraversal === 'guided' ? 'text-dtour-highlight' : ''}`}
               onClick={() => {
-                if (viewMode === 'grand') {
+                if (tourTraversal === 'grand') {
                   setGrandExitTarget('guided');
-                } else if (viewMode !== 'guided') {
+                } else if (tourTraversal !== 'guided') {
                   setGuidedSuspended(true);
-                  setViewMode('guided');
+                  setTourTraversal('guided');
                 }
               }}
               title="Guided"
             >
-              {isWide && <PathIcon size={14} weight={viewMode === 'guided' ? 'fill' : 'regular'} />}
+              {isWide && (
+                <PathIcon size={14} weight={tourTraversal === 'guided' ? 'fill' : 'regular'} />
+              )}
               <span className="text-xs">
                 Guided
-                {viewMode === 'guided' ? (
+                {tourTraversal === 'guided' ? (
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out">
                     :
                   </span>
@@ -303,7 +303,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 )}
               </span>
             </Button>
-            {viewMode === 'guided' && tourBy === 'parameter' && (
+            {tourTraversal === 'guided' && tourBy === 'parameter' && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -315,7 +315,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 </Tooltip>
               </TooltipProvider>
             )}
-            {viewMode === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
+            {tourTraversal === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
               <div
                 className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
               >
@@ -331,7 +331,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 </TooltipProvider>
               </div>
             )}
-            {viewMode === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
+            {tourTraversal === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
               <div
                 className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
               >
@@ -365,7 +365,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 <div
                   key={mode}
                   className={
-                    !isMedium && viewMode !== mode
+                    !isMedium && tourTraversal !== mode
                       ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out'
                       : ''
                   }
@@ -373,23 +373,25 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`rounded-none ${viewMode === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                    className={`rounded-none ${tourTraversal === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
                     onClick={() => {
-                      if (viewMode === 'grand') {
+                      if (tourTraversal === 'grand') {
                         if (mode === 'grand') {
                           setGrandExitTarget(null);
                           return;
                         }
                         setGrandExitTarget(mode);
                       } else {
-                        if (mode !== 'guided' && viewMode === 'guided') setPlaying(false);
+                        if (mode !== 'guided' && tourTraversal === 'guided') setPlaying(false);
                         if (mode === 'grand') setGrandExitTarget(null);
-                        setViewMode(mode);
+                        setTourTraversal(mode);
                       }
                     }}
                     title={label}
                   >
-                    {isWide && <Icon size={14} weight={viewMode === mode ? 'fill' : 'regular'} />}
+                    {isWide && (
+                      <Icon size={14} weight={tourTraversal === mode ? 'fill' : 'regular'} />
+                    )}
                     <span className="text-xs">{label}</span>
                   </Button>
                 </div>
@@ -449,7 +451,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 className="w-full"
               />
             </DropdownMenuItem>
-            {!isWide && viewMode === 'guided' && (
+            {!isWide && tourTraversal === 'guided' && (
               <DropdownMenuItem
                 className="gap-4"
                 onSelect={(e) => {
@@ -462,7 +464,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </DropdownMenuItem>
             )}
 
-            {!isWide && (viewMode === 'guided' || viewMode === 'grand') && (
+            {!isWide && (tourTraversal === 'guided' || tourTraversal === 'grand') && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Playback</DropdownMenuLabel>
@@ -488,7 +490,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </>
             )}
 
-            {viewMode === 'guided' && (
+            {tourTraversal === 'guided' && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Tour</DropdownMenuLabel>
@@ -496,29 +498,29 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   className="gap-4"
                   onSelect={(e) => {
                     e.preventDefault();
-                    setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal');
+                    setTourSliderSpacing(tourSliderSpacing === 'equal' ? 'geodesic' : 'equal');
                   }}
                 >
                   <span className="flex-1 text-xs">Geodesic spacing</span>
                   <Checkbox
-                    checked={sliderSpacing === 'geodesic'}
+                    checked={tourSliderSpacing === 'geodesic'}
                     onCheckedChange={() =>
-                      setSliderSpacing(sliderSpacing === 'equal' ? 'geodesic' : 'equal')
+                      setTourSliderSpacing(tourSliderSpacing === 'equal' ? 'geodesic' : 'equal')
                     }
                   />
                 </DropdownMenuItem>
-                {hasFrameLoadings && (
+                {hasKeyframeLoadings && (
                   <DropdownMenuItem
                     className="gap-4"
                     onSelect={(e) => {
                       e.preventDefault();
-                      setShowFrameLoadings((v) => !v);
+                      setShowKeyframeLoadings((v) => !v);
                     }}
                   >
                     <span className="flex-1 text-xs">Feature correlations</span>
                     <Checkbox
-                      checked={showFrameLoadings}
-                      onCheckedChange={() => setShowFrameLoadings((v) => !v)}
+                      checked={showKeyframeLoadings}
+                      onCheckedChange={() => setShowKeyframeLoadings((v) => !v)}
                     />
                   </DropdownMenuItem>
                 )}
@@ -540,7 +542,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </>
             )}
 
-            {viewMode === 'guided' && (
+            {tourTraversal === 'guided' && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Previews</DropdownMenuLabel>
@@ -592,13 +594,13 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   className="gap-4"
                   onSelect={(e) => {
                     e.preventDefault();
-                    setShowFrameNumbers((v) => !v);
+                    setShowKeyframeNumbers((v) => !v);
                   }}
                 >
                   <span className="flex-1 text-xs">Numbers</span>
                   <Checkbox
-                    checked={showFrameNumbers}
-                    onCheckedChange={() => setShowFrameNumbers((v) => !v)}
+                    checked={showKeyframeNumbers}
+                    onCheckedChange={() => setShowKeyframeNumbers((v) => !v)}
                   />
                 </DropdownMenuItem>
               </>
@@ -607,7 +609,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         </DropdownMenu>
 
         {/* Speed popover — standalone at ≥960px */}
-        {isWide && (viewMode === 'guided' || viewMode === 'grand') && (
+        {isWide && (tourTraversal === 'guided' || tourTraversal === 'grand') && (
           <Popover.Root>
             <Popover.Trigger asChild>
               <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>
@@ -641,7 +643,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         )}
 
         {/* Play/Pause — guided only */}
-        {viewMode === 'guided' && (
+        {tourTraversal === 'guided' && (
           <Button
             variant="ghost"
             size="icon"
@@ -653,7 +655,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         )}
 
         {/* Axes toggle — standalone at ≥960px, guided only */}
-        {isWide && viewMode === 'guided' && (
+        {isWide && tourTraversal === 'guided' && (
           <Button
             variant="ghost"
             size="icon"

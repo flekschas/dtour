@@ -1,7 +1,7 @@
 """Helpers for embedding dtour configuration into Parquet file metadata.
 
 The ``dtour`` key in Parquet key_value_metadata stores a JSON object with
-DtourSpec fields (camelCase), an optional ``colorMap``, and an optional
+DtourSpec fields (camelCase), an optional ``pointColorMap``, and an optional
 ``tour`` with base64-encoded Float32 view matrices.
 """
 
@@ -28,16 +28,18 @@ _SNAKE_TO_CAMEL: dict[str, str] = {
     "point_size": "pointSize",
     "point_opacity": "pointOpacity",
     "point_color": "pointColor",
+    "point_color_by": "pointColorBy",
+    "point_color_map": "pointColorMap",
     "camera_pan_x": "cameraPanX",
     "camera_pan_y": "cameraPanY",
     "camera_zoom": "cameraZoom",
-    "view_mode": "viewMode",
+    "tour_traversal": "tourTraversal",
     "show_legend": "showLegend",
     "show_axes": "showAxes",
-    "show_frame_numbers": "showFrameNumbers",
-    "show_frame_loadings": "showFrameLoadings",
+    "show_keyframe_numbers": "showKeyframeNumbers",
+    "show_keyframe_loadings": "showKeyframeLoadings",
     "show_tour_description": "showTourDescription",
-    "slider_spacing": "sliderSpacing",
+    "tour_slider_spacing": "tourSliderSpacing",
     "theme_mode": "themeMode",
 }
 
@@ -54,44 +56,47 @@ def _encode_tour(
     raw_bytes = tour.views_raw
     b64 = base64.b64encode(raw_bytes).decode("ascii")
 
-    # dimensions is the canonical source; nDims is deprecated (kept for old readers).
     dims = tour_dimensions or tour.feature_names
+    if dims is None:
+        raise ValueError(
+            "Cannot encode tour: dimensions are required. "
+            "Provide tour_dimensions or set feature_names on the TourResult."
+        )
+
+    family = tour.tour_family or "hyperdimensional"
+
+    # nViews/nDims are only needed by the parser to decode the base64 blob.
     result: dict[str, Any] = {
         "nViews": tour.n_views,
+        "nDims": len(dims),
         "views": b64,
+        "family": family,
+        "dimensions": dims,
     }
-    if dims is not None:
-        result["dimensions"] = dims
-        result["nDims"] = len(dims)
-    else:
-        result["nDims"] = tour.n_dims
 
-    if tour.tour_mode is not None:
-        result["tourMode"] = tour.tour_mode
+    if tour.description is not None:
+        result["description"] = tour.description
 
-    if tour.tour_description is not None:
-        result["tourDescription"] = tour.tour_description
-
-    if tour.tour_frame_description is not None:
-        result["tourFrameDescription"] = tour.tour_frame_description
-
-    if tour.frame_summaries is not None:
-        result["frameSummaries"] = tour.frame_summaries
+    if tour.keyframe_descriptions is not None:
+        result["keyframeDescriptions"] = tour.keyframe_descriptions
 
     if tour.feature_loadings is not None and tour.feature_names is not None:
         loadings = tour.feature_loadings  # (n_components, n_features)
         n_eigenvectors = loadings.shape[0]
-        frame_loadings: list[list[list[Any]]] = []
+        keyframe_loadings: list[dict[str, list[Any]]] = []
         for i in range(tour.n_views):
             ev_idx = min(i + 1, n_eigenvectors - 1)
             row = loadings[ev_idx]
             top_k = abs(row).argsort()[::-1][:2]
-            pairs: list[list[Any]] = []
-            for j in top_k:
-                name = tour.feature_names[j].rstrip("_")
-                pairs.append([name, round(float(row[j]), 6)])
-            frame_loadings.append(pairs)
-        result["frameLoadings"] = frame_loadings
+            names = [tour.feature_names[j].rstrip("_") for j in top_k]
+            coeffs = [round(float(row[j]), 6) for j in top_k]
+            keyframe_loadings.append(
+                {
+                    "primary": [names[0], coeffs[0]],
+                    "secondary": [names[1], coeffs[1]],
+                }
+            )
+        result["keyframeLoadings"] = keyframe_loadings
 
     return result
 
@@ -108,19 +113,20 @@ def build_dtour_metadata(
     preview_padding: float | None = None,
     point_size: float | str | None = None,
     point_opacity: float | str | None = None,
-    point_color: str | list[float] | None = None,
+    point_color: list[float] | None = None,
+    point_color_by: str | None = None,
     camera_pan_x: float | None = None,
     camera_pan_y: float | None = None,
     camera_zoom: float | None = None,
-    view_mode: str | None = None,
+    tour_traversal: str | None = None,
     show_legend: bool | None = None,
     show_axes: bool | None = None,
-    show_frame_numbers: bool | None = None,
-    show_frame_loadings: bool | None = None,
+    show_keyframe_numbers: bool | None = None,
+    show_keyframe_loadings: bool | None = None,
     show_tour_description: bool | None = None,
-    slider_spacing: str | None = None,
+    tour_slider_spacing: str | None = None,
     theme_mode: str | None = None,
-    color_map: dict[str, str] | None = None,
+    point_color_map: dict[str, str] | None = None,
     tour_dimensions: list[str] | None = None,
     tour: TourResult | None = None,
 ) -> str:
@@ -148,31 +154,33 @@ def build_dtour_metadata(
         Point size in pixels, or ``"auto"`` for density-adaptive.
     point_opacity : float or str, optional
         Point opacity 0-1, or ``"auto"``.
-    point_color : str or list[float], optional
-        Column name for color encoding, or ``[r, g, b]`` tuple (0-1).
+    point_color : list[float], optional
+        Uniform point color as ``[r, g, b]`` tuple (0-1).
+    point_color_by : str, optional
+        Column name for per-point color encoding.
     camera_pan_x : float, optional
         Horizontal camera pan.
     camera_pan_y : float, optional
         Vertical camera pan.
     camera_zoom : float, optional
         Camera zoom level.
-    view_mode : str, optional
+    tour_traversal : str, optional
         ``"guided"``, ``"manual"``, or ``"grand"``.
     show_legend : bool, optional
         Whether the legend panel is visible.
     show_axes : bool, optional
         Whether the axis biplot is visible in guided mode.
-    show_frame_numbers : bool, optional
-        Whether frame numbers are shown on preview thumbnails.
-    show_frame_loadings : bool, optional
+    show_keyframe_numbers : bool, optional
+        Whether keyframe numbers are shown on preview thumbnails.
+    show_keyframe_loadings : bool, optional
         Whether feature loading pills are shown on preview thumbnails.
     show_tour_description : bool, optional
         Whether the tour description sub-bar is visible.
-    slider_spacing : str, optional
+    tour_slider_spacing : str, optional
         ``"equal"`` or ``"geodesic"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
-    color_map : dict, optional
+    point_color_map : dict, optional
         Label → hex color string mapping.
     tour_dimensions : list[str], optional
         Numeric column names that participate in the tour. Written as
@@ -201,16 +209,18 @@ def build_dtour_metadata(
         "point_size": point_size,
         "point_opacity": point_opacity,
         "point_color": point_color,
+        "point_color_by": point_color_by,
+        "point_color_map": point_color_map,
         "camera_pan_x": camera_pan_x,
         "camera_pan_y": camera_pan_y,
         "camera_zoom": camera_zoom,
-        "view_mode": view_mode,
+        "tour_traversal": tour_traversal,
         "show_legend": show_legend,
         "show_axes": show_axes,
-        "show_frame_numbers": show_frame_numbers,
-        "show_frame_loadings": show_frame_loadings,
+        "show_keyframe_numbers": show_keyframe_numbers,
+        "show_keyframe_loadings": show_keyframe_loadings,
         "show_tour_description": show_tour_description,
-        "slider_spacing": slider_spacing,
+        "tour_slider_spacing": tour_slider_spacing,
         "theme_mode": theme_mode,
     }
 
@@ -218,9 +228,6 @@ def build_dtour_metadata(
         if value is not None:
             camel_key = _SNAKE_TO_CAMEL[snake_key]
             config[camel_key] = value
-
-    if color_map is not None:
-        config["colorMap"] = color_map
 
     if tour is not None:
         config["tour"] = _encode_tour(tour, tour_dimensions)

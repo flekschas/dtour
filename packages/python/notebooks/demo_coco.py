@@ -74,7 +74,7 @@ def _(le_signed_table):
     le_widget = dtour.Widget(
         data=le_signed_table,
         tour=le_tour,
-        point_color="coco_label_idf",
+        point_color_by="coco_label_idf",
         point_opacity=0.5,
         preview_size="small",
         theme="light",
@@ -97,7 +97,7 @@ def _(df_4d, df_labels, dtour, pa, pd):
 
     umap_widget = dtour.Widget(
         data=pa.Table.from_pandas(_df_tour),
-        point_color="coco_label_idf",
+        point_color_by="coco_label_idf",
         point_opacity=0.5,
         tour_by="dimensions",
         preview_size="small",

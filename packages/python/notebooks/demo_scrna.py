@@ -77,7 +77,7 @@ def _(class_cmap, df, dtour, pa, pc_cols):
 
     tour_widget = dtour.Widget(
         data=pa.Table.from_pandas(_df_tour),
-        point_color="Class",
+        point_color_by="Class",
         point_opacity=0.5,
         color_map=class_cmap,
         tour_by="dimensions",

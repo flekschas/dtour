@@ -26,56 +26,60 @@ const previewCountSchema = z.union([
  * The Zod schema is the single source of truth; the TS type is inferred.
  */
 export const dtourSpecSchema = z.object({
+  tourTraversal: z.enum(['guided', 'manual', 'grand']).optional(),
   tourBy: z.enum(['dimensions', 'pca', 'parameter']).optional(),
   tourPosition: z.number().min(0).max(1).optional(),
   tourPlaying: z.boolean().optional(),
   tourSpeed: z.number().min(0.1).max(5).optional(),
   tourDirection: z.enum(['forward', 'backward']).optional(),
+  tourSliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   previewCount: previewCountSchema.optional(),
   previewScale: z.union([z.literal(1), z.literal(0.75), z.literal(0.5)]).optional(),
   previewPadding: z.number().nonnegative().optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
   minPointSize: z.number().min(1).max(20).optional(),
-  pointColor: z.union([z.tuple([z.number(), z.number(), z.number()]), z.string()]).optional(),
+  pointColor: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  pointColorBy: z.string().nullable().optional(),
+  pointColorMap: z.record(z.string(), z.string()).optional(),
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
   cameraZoom: z.number().positive().optional(),
-  viewMode: z.enum(['guided', 'manual', 'grand']).optional(),
   showLegend: z.boolean().optional(),
   showAxes: z.boolean().optional(),
-  showFrameNumbers: z.boolean().optional(),
-  showFrameLoadings: z.boolean().optional(),
+  showKeyframeNumbers: z.boolean().optional(),
+  showKeyframeLoadings: z.boolean().optional(),
   showTourDescription: z.boolean().optional(),
-  sliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
 
-/** Per-frame top-2 feature correlations: [featureName, pearsonR] pairs. */
-export type FrameLoading = [string, number];
+/** Per-keyframe feature loading: primary and secondary feature with their correlation coefficients. */
+export interface KeyframeLoading {
+  primary: [string, number];
+  secondary: [string, number];
+}
 
 /** Parsed contents of the Parquet "dtour" key_value_metadata entry. */
 export type EmbeddedConfig = {
   spec: DtourSpec;
-  colorMap?: Record<string, string>;
   tour?: {
-    /** Numeric column names that participate in the tour. When absent,
-     *  resolved later from metadata.columnNames (all numeric columns). */
-    dimensions?: string[];
-    /** @deprecated Use `dimensions.length` instead. Kept as fallback for old files. */
-    nDims: number;
-    nViews: number;
-    views: Float32Array[];
-    tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
-    frameLoadings?: FrameLoading[][];
-    /** Per-frame text summaries (e.g. "rho=100 (LE-like)"). */
-    frameSummaries?: string[];
-    /** Human-readable description of the tour (shown in description sub-bar). */
-    tourDescription?: string;
-    /** Template for per-frame tooltip, with {dim1}, {dim2}, {relation} placeholders. */
-    tourFrameDescription?: string;
+    /** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
+    family: 'hyperdimensional' | 'sequential';
+    /** Projection matrices — one per keyframe. Each is a column-major Float32Array of size nDims*2. */
+    keyframes: Float32Array[];
+    /** Numeric column names that participate in the tour. */
+    dimensions: string[];
+    /** Human-readable description of the tour. When absent, no description is shown. */
+    description?: string;
+    /** Per-keyframe descriptions: a string[] of literals, or a single template string
+     *  with {primary}, {secondary}, {relation} placeholders (requires keyframeLoadings).
+     *  When absent, no per-keyframe descriptions are shown. */
+    keyframeDescriptions?: string | string[];
+    /** Per-keyframe feature loadings for the loading pills UI.
+     *  When absent, no loading pills are shown. */
+    keyframeLoadings?: KeyframeLoading[];
   };
 };
 
@@ -107,30 +111,15 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
     if (result.success) spec[key] = result.data;
   }
 
-  // Extract colorMap (label → hex string)
-  let colorMap: Record<string, string> | undefined;
-  if (obj.colorMap && typeof obj.colorMap === 'object' && !Array.isArray(obj.colorMap)) {
-    const cm = obj.colorMap as Record<string, unknown>;
-    const valid: Record<string, string> = {};
-    let hasEntries = false;
-    for (const [k, v] of Object.entries(cm)) {
-      if (typeof v === 'string') {
-        valid[k] = v;
-        hasEntries = true;
-      }
-    }
-    if (hasEntries) colorMap = valid;
-  }
-
-  // Extract tour views (base64 float32 column-major)
+  // Extract tour data
   let tour: EmbeddedConfig['tour'] | undefined;
   if (obj.tour && typeof obj.tour === 'object') {
     const t = obj.tour as Record<string, unknown>;
-    // dimensions.length is the canonical source; nDims is a deprecated fallback.
+    // nDims and nViews are only needed for decoding the base64 blob
     const nDims = typeof t.nDims === 'number' ? t.nDims : 0;
-    const nViews = typeof t.nViews === 'number' ? t.nViews : 0;
+    const nKeyframes = typeof t.nViews === 'number' ? t.nViews : 0;
     const viewsB64 = typeof t.views === 'string' ? t.views : '';
-    if (nDims >= 2 && nViews >= 2 && viewsB64) {
+    if (nDims >= 2 && nKeyframes >= 2 && viewsB64) {
       try {
         const binary = atob(viewsB64);
         const bytes = new Uint8Array(binary.length);
@@ -139,69 +128,74 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
         }
         const floats = new Float32Array(bytes.buffer);
         const stride = nDims * 2;
-        if (floats.length === nViews * stride) {
-          const views: Float32Array[] = [];
-          for (let v = 0; v < nViews; v++) {
-            views.push(floats.slice(v * stride, (v + 1) * stride));
-          }
-          tour = { nDims, nViews, views };
+        // Validate dimensions (required) and keyframe count
+        const rawDims = Array.isArray(t.dimensions) ? (t.dimensions as unknown[]) : null;
+        const dimensions = rawDims?.every((s) => typeof s === 'string')
+          ? (rawDims as string[])
+          : null;
 
-          // Parse dimensions (column names participating in the tour)
-          if (Array.isArray(t.dimensions)) {
-            const dims = t.dimensions as unknown[];
-            if (dims.every((s) => typeof s === 'string')) {
-              tour.dimensions = dims as string[];
+        const family =
+          t.family === 'sequential'
+            ? 'sequential'
+            : t.family === 'hyperdimensional'
+              ? 'hyperdimensional'
+              : null;
+
+        if (floats.length === nKeyframes * stride && dimensions && family) {
+          const keyframes: Float32Array[] = [];
+          for (let v = 0; v < nKeyframes; v++) {
+            keyframes.push(floats.slice(v * stride, (v + 1) * stride));
+          }
+          tour = { family, keyframes, dimensions };
+
+          if (typeof t.description === 'string') {
+            tour.description = t.description;
+          }
+
+          if (Array.isArray(t.keyframeDescriptions)) {
+            const kd = t.keyframeDescriptions as unknown[];
+            if (kd.every((s) => typeof s === 'string')) {
+              tour.keyframeDescriptions = kd as string[];
             }
+          } else if (typeof t.keyframeDescriptions === 'string') {
+            tour.keyframeDescriptions = t.keyframeDescriptions;
           }
 
-          // Parse tourMode
-          if (
-            t.tourMode === 'signed' ||
-            t.tourMode === 'discriminative' ||
-            t.tourMode === 'parameter'
-          ) {
-            tour.tourMode = t.tourMode;
-          }
-
-          // Parse tourDescription and tourFrameDescription
-          if (typeof t.tourDescription === 'string') {
-            tour.tourDescription = t.tourDescription;
-          }
-          if (typeof t.tourFrameDescription === 'string') {
-            tour.tourFrameDescription = t.tourFrameDescription;
-          }
-
-          // Parse frameSummaries: array of strings, one per view
-          if (Array.isArray(t.frameSummaries)) {
-            const fs = t.frameSummaries as unknown[];
-            if (fs.every((s) => typeof s === 'string')) {
-              tour.frameSummaries = fs as string[];
-            }
-          }
-
-          // Parse frameLoadings: array of [[name, coeff], [name, coeff]] per view
-          if (Array.isArray(t.frameLoadings)) {
-            const fl: FrameLoading[][] = [];
+          if (Array.isArray(t.keyframeLoadings)) {
+            const kl: KeyframeLoading[] = [];
             let valid = true;
-            for (const frame of t.frameLoadings as unknown[][]) {
-              if (!Array.isArray(frame)) {
+            for (const entry of t.keyframeLoadings as unknown[]) {
+              if (
+                entry &&
+                typeof entry === 'object' &&
+                'primary' in entry &&
+                'secondary' in entry
+              ) {
+                const e = entry as { primary: unknown; secondary: unknown };
+                if (
+                  Array.isArray(e.primary) &&
+                  e.primary.length === 2 &&
+                  typeof e.primary[0] === 'string' &&
+                  typeof e.primary[1] === 'number' &&
+                  Array.isArray(e.secondary) &&
+                  e.secondary.length === 2 &&
+                  typeof e.secondary[0] === 'string' &&
+                  typeof e.secondary[1] === 'number'
+                ) {
+                  kl.push({
+                    primary: [e.primary[0], e.primary[1]],
+                    secondary: [e.secondary[0], e.secondary[1]],
+                  });
+                } else {
+                  valid = false;
+                  break;
+                }
+              } else {
                 valid = false;
                 break;
               }
-              const pairs: FrameLoading[] = [];
-              for (const pair of frame) {
-                if (
-                  Array.isArray(pair) &&
-                  pair.length === 2 &&
-                  typeof pair[0] === 'string' &&
-                  typeof pair[1] === 'number'
-                ) {
-                  pairs.push([pair[0] as string, pair[1] as number]);
-                }
-              }
-              fl.push(pairs);
             }
-            if (valid && fl.length > 0) tour.frameLoadings = fl;
+            if (valid && kl.length > 0) tour.keyframeLoadings = kl;
           }
         }
       } catch {
@@ -210,21 +204,18 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
     }
   }
 
-  const result = { spec: spec as DtourSpec, colorMap, tour };
+  const result = { spec: spec as DtourSpec, tour };
   if (import.meta.env.DEV) {
     console.log('[dtour] parseEmbeddedConfig:', {
       spec,
-      colorMap: colorMap ? `${Object.keys(colorMap).length} entries` : undefined,
       tour: tour
         ? {
             dimensions: tour.dimensions,
-            nDims: tour.nDims,
-            nViews: tour.nViews,
-            tourMode: tour.tourMode,
-            tourDescription: tour.tourDescription,
-            tourFrameDescription: tour.tourFrameDescription,
-            frameSummaries: tour.frameSummaries,
-            frameLoadings: tour.frameLoadings?.length ?? null,
+            keyframes: tour.keyframes.length,
+            family: tour.family,
+            description: tour.description,
+            keyframeDescriptions: tour.keyframeDescriptions,
+            keyframeLoadings: tour.keyframeLoadings?.length ?? null,
           }
         : undefined,
     });
@@ -245,15 +236,17 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   pointOpacity: 'auto',
   minPointSize: 2,
   pointColor: [0.25, 0.5, 0.9],
+  pointColorBy: null,
+  pointColorMap: {},
   cameraPanX: 0,
   cameraPanY: 0,
   cameraZoom: 1 / 1.5,
-  viewMode: 'guided',
+  tourTraversal: 'guided',
   showLegend: true,
   showAxes: false,
-  showFrameNumbers: false,
-  showFrameLoadings: true,
+  showKeyframeNumbers: false,
+  showKeyframeLoadings: true,
   showTourDescription: false,
-  sliderSpacing: 'equal',
+  tourSliderSpacing: 'equal',
   themeMode: 'dark',
 };

@@ -2,7 +2,12 @@ import type { ScatterInstance } from '@dtour/scatter';
 import { useAtomValue, useStore } from 'jotai';
 import KDBush from 'kdbush';
 import { useEffect, useRef } from 'react';
-import { currentBasisAtom, metadataAtom, tourPlayingAtom, viewModeAtom } from '../state/atoms.ts';
+import {
+  currentBasisAtom,
+  metadataAtom,
+  tourPlayingAtom,
+  tourTraversalAtom,
+} from '../state/atoms.ts';
 import type { BuildResult } from '../workers/spatial-index.worker.ts';
 import SpatialIndexWorkerFactory from '../workers/spatial-index.worker.ts?worker&inline';
 
@@ -86,8 +91,8 @@ export const useSpatialIndex = (
   useEffect(() => {
     const scheduleRebuild = () => {
       const isPlaying = store.get(tourPlayingAtom);
-      const viewMode = store.get(viewModeAtom);
-      const isAnimating = isPlaying || viewMode === 'grand';
+      const tourTraversal = store.get(tourTraversalAtom);
+      const isAnimating = isPlaying || tourTraversal === 'grand';
 
       indexRef.current = null;
       generationRef.current++;
@@ -117,7 +122,7 @@ export const useSpatialIndex = (
     // Use scheduleRebuild (not a separate invalidate) so that the transition
     // from animating → idle also schedules a rebuild, not just a null-out.
     const unsubPlaying = store.sub(tourPlayingAtom, scheduleRebuild);
-    const unsubViewMode = store.sub(viewModeAtom, scheduleRebuild);
+    const unsubViewMode = store.sub(tourTraversalAtom, scheduleRebuild);
 
     // Trigger initial build if basis is already set when the hook mounts
     const initialBasis = store.get(currentBasisAtom);

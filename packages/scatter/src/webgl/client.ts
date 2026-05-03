@@ -114,10 +114,10 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
 
   const setBases = (
     bases: Float32Array[],
-    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
+    tourFamily?: 'hyperdimensional' | 'sequential',
   ): void => {
     const transfers = bases.map((b) => b.buffer);
-    sendToGpu(gpuWorker, { type: 'setBases', bases, tourMode }, transfers);
+    sendToGpu(gpuWorker, { type: 'setBases', bases, tourFamily }, transfers);
   };
 
   const setTourPosition = (position: number): void => {

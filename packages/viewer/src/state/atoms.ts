@@ -1,6 +1,6 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
-import type { EmbeddedConfig, FrameLoading, PreviewCount } from '../spec.ts';
+import type { EmbeddedConfig, KeyframeLoading, PreviewCount } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -15,7 +15,7 @@ export const tourSpeedAtom = atom(1);
 export const tourDirectionAtom = atom<1 | -1>(1);
 
 /** Slider spacing mode: 'equal' = uniform tick spacing, 'geodesic' = arc-length proportional. */
-export const sliderSpacingAtom = atom<'equal' | 'geodesic'>('equal');
+export const tourSliderSpacingAtom = atom<'equal' | 'geodesic'>('equal');
 
 /** Cumulative arc-lengths for the current tour bases. null when no tour is loaded. */
 export const arcLengthsAtom = atom<Float32Array | null>(null);
@@ -63,7 +63,8 @@ export const currentKeyframeAtom = atom((get) => {
 
 export const pointSizeAtom = atom<number | 'auto'>('auto');
 export const pointOpacityAtom = atom<number | 'auto'>('auto');
-export const pointColorAtom = atom<[number, number, number] | string>([0.25, 0.5, 0.9]);
+export const pointColorAtom = atom<[number, number, number]>([0.25, 0.5, 0.9]);
+export const pointColorByAtom = atom<string | null>(null);
 export const minPointSizeAtom = atom(2);
 export const paletteAtom = atom<'viridis' | 'magma'>('viridis');
 
@@ -94,10 +95,10 @@ export const cameraPanYAtom = atom(0);
 export const cameraZoomAtom = atom(1 / 1.5);
 
 // ---------------------------------------------------------------------------
-// View mode — controls which UI is shown (guided, manual, grand)
+// Tour traversal — controls which UI is shown (guided, manual, grand)
 // ---------------------------------------------------------------------------
 
-export const viewModeAtom = atom<'guided' | 'manual' | 'grand'>('guided');
+export const tourTraversalAtom = atom<'guided' | 'manual' | 'grand'>('guided');
 
 /**
  * When true, `useScatter` skips `setTourPosition` messages.
@@ -191,20 +192,20 @@ export const showLegendAtom = atom(true);
 /** User preference for showing axis biplot in guided mode. */
 export const showAxesAtom = atom(false);
 
-/** User preference for showing frame numbers on preview thumbnails. */
-export const showFrameNumbersAtom = atom(false);
+/** User preference for showing keyframe numbers on preview thumbnails. */
+export const showKeyframeNumbersAtom = atom(false);
 
 /** User preference for showing feature loading pills on preview thumbnails. */
-export const showFrameLoadingsAtom = atom(true);
+export const showKeyframeLoadingsAtom = atom(true);
 
 /** User preference for showing the tour description sub-bar. */
 export const showTourDescriptionAtom = atom(false);
 
-/** Per-frame top-2 feature correlations from embedded tour config. */
-export const frameLoadingsAtom = atom<FrameLoading[][] | null>(null);
+/** Per-keyframe feature loadings from embedded tour config. */
+export const keyframeLoadingsAtom = atom<KeyframeLoading[] | null>(null);
 
-/** Tour mode: null (vanilla), "signed", "discriminative", or "parameter". */
-export const tourModeAtom = atom<'signed' | 'discriminative' | 'parameter' | null>(null);
+/** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
+export const tourFamilyAtom = atom<'hyperdimensional' | 'sequential'>('hyperdimensional');
 
 // ---------------------------------------------------------------------------
 // Predefined tour — locks column selection, preview count, and Dims/PCA toggle
@@ -215,18 +216,16 @@ export const tourModeAtom = atom<'signed' | 'discriminative' | 'parameter' | nul
 export const predefinedTourAtom = atom<{
   /** Numeric column names that participate in the tour. */
   dimensions: string[];
-  /** Number of keyframe views in the tour. */
-  viewCount: number;
+  /** Number of keyframes in the tour. */
+  keyframeCount: number;
 } | null>(null);
 
-/** Per-frame text summaries (e.g. "rho=100 (LE-like)"). Shown below previews. */
-export const frameSummariesAtom = atom<string[] | null>(null);
+/** Per-keyframe descriptions: string[] of literals, or a template string with
+ *  {primary}, {secondary}, {relation} placeholders. */
+export const keyframeDescriptionsAtom = atom<string | string[] | null>(null);
 
 /** Tour description string from embedded config (shown in description sub-bar). */
 export const tourDescriptionAtom = atom<string | null>(null);
-
-/** Per-frame tooltip template from embedded config, with {dim1}, {dim2}, {relation} placeholders. */
-export const tourFrameDescriptionAtom = atom<string | null>(null);
 
 /**
  * Derived: legend is visible only when showLegend is true, metadata is loaded,
@@ -239,9 +238,9 @@ export const legendVisibleAtom = atom((get) => {
   // 2D color mode has its own legend (only when both columns are selected)
   const cols2d = get(color2dColumnsAtom);
   if (get(color2dEnabledAtom) && cols2d && cols2d[1]) return true;
-  const color = get(pointColorAtom);
-  if (typeof color !== 'string') return false;
-  return meta.columnNames.includes(color) || meta.categoricalColumnNames.includes(color);
+  const colorBy = get(pointColorByAtom);
+  if (!colorBy) return false;
+  return meta.columnNames.includes(colorBy) || meta.categoricalColumnNames.includes(colorBy);
 });
 
 // ---------------------------------------------------------------------------

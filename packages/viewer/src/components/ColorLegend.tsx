@@ -21,7 +21,7 @@ import {
   legendSelectionAtom,
   metadataAtom,
   paletteAtom,
-  pointColorAtom,
+  pointColorByAtom,
   resolvedThemeAtom,
 } from '../state/atoms.ts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.tsx';
@@ -69,7 +69,7 @@ const handleSwatchClick = (
 
 export const ColorLegend = () => {
   const metadata = useAtomValue(metadataAtom);
-  const pointColor = useAtomValue(pointColorAtom);
+  const pointColorBy = useAtomValue(pointColorByAtom);
   const [palette, setPalette] = useAtom(paletteAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const rawColorMap = useAtomValue(colorMapAtom);
@@ -98,8 +98,8 @@ export const ColorLegend = () => {
     );
   }
 
-  if (typeof pointColor !== 'string' || !metadata) return null;
-  const column = pointColor;
+  if (!pointColorBy || !metadata) return null;
+  const column = pointColorBy;
 
   const isCategorical = metadata.categoricalColumnNames.includes(column);
   const hasSelection = legendSelection !== null;

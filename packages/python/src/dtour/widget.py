@@ -68,16 +68,14 @@ class Widget(anywidget.AnyWidget):
         [t.Float(), t.Unicode()],
         default_value="auto",
     ).tag(sync=True)
-    point_color = t.Union(
-        [t.List(t.Float()), t.Unicode()],
-        default_value=[0.25, 0.5, 0.9],
-    ).tag(sync=True)
+    point_color = t.List(t.Float(), default_value=[0.25, 0.5, 0.9]).tag(sync=True)
+    point_color_by = t.Unicode(allow_none=True, default_value=None).tag(sync=True)
     camera_pan_x = t.Float(0.0).tag(sync=True)
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
-    view_mode = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
+    tour_traversal = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
-    show_frame_loadings = t.Bool(True).tag(sync=True)
+    show_keyframe_loadings = t.Bool(True).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     metric_bar_width = t.Union(
@@ -136,17 +134,19 @@ class Widget(anywidget.AnyWidget):
         # "parameter").
         tour = getattr(self, "_tour", None)
         if tour is not None:
-            if value == "parameter" and tour.tour_mode != "parameter":
+            if value == "parameter" and tour.tour_family != "sequential":
                 return "dimensions"
-            if value != "parameter" and tour.tour_mode == "parameter":
+            if value != "parameter" and tour.tour_family == "sequential":
                 return "parameter"
         return value
 
-    @t.validate("view_mode")
-    def _validate_view_mode(self, proposal: t.Bunch) -> str:
+    @t.validate("tour_traversal")
+    def _validate_tour_traversal(self, proposal: t.Bunch) -> str:
         value = proposal["value"]
         if value not in ("guided", "manual", "grand"):
-            raise t.TraitError(f"view_mode must be 'guided', 'manual', or 'grand'; got {value!r}")
+            raise t.TraitError(
+                f"tour_traversal must be 'guided', 'manual', or 'grand'; got {value!r}"
+            )
         return value
 
     @t.validate("theme")
@@ -197,34 +197,36 @@ class Widget(anywidget.AnyWidget):
 
         msg: dict = {"type": "views", "n_dims": self._n_dims}
 
-        if tour.tour_mode is not None:
-            msg["tour_mode"] = tour.tour_mode
-        if tour.tour_description is not None:
-            msg["tour_description"] = tour.tour_description
-        if tour.tour_frame_description is not None:
-            msg["tour_frame_description"] = tour.tour_frame_description
-        if tour.frame_summaries is not None:
-            msg["frame_summaries"] = tour.frame_summaries
+        if tour.tour_family is not None:
+            msg["tour_family"] = tour.tour_family
+        if tour.description is not None:
+            msg["tour_description"] = tour.description
+        if tour.keyframe_descriptions is not None:
+            msg["keyframe_descriptions"] = tour.keyframe_descriptions
 
-        # Encode frame loadings (top-2 per frame) if available
+        # Encode keyframe loadings (top-2 per keyframe) if available
         if tour.feature_loadings is not None and tour.feature_names is not None:
             loadings = tour.feature_loadings
             n_eigenvectors = loadings.shape[0]
-            frame_loadings = []
+            keyframe_loadings = []
             for i in range(tour.n_views):
                 ev_idx = min(i + 1, n_eigenvectors - 1)
                 row = loadings[ev_idx]
                 top_k = abs(row).argsort()[::-1][:2]
-                pairs = [
-                    [tour.feature_names[j].rstrip("_"), round(float(row[j]), 6)] for j in top_k
-                ]
-                frame_loadings.append(pairs)
-            msg["frame_loadings"] = frame_loadings
+                names = [tour.feature_names[j].rstrip("_") for j in top_k]
+                coeffs = [round(float(row[j]), 6) for j in top_k]
+                keyframe_loadings.append(
+                    {
+                        "primary": [names[0], coeffs[0]],
+                        "secondary": [names[1], coeffs[1]],
+                    }
+                )
+            msg["keyframe_loadings"] = keyframe_loadings
 
         self.send(msg, buffers=[self._views_buf])
 
         # Auto-switch tour_by to match the tour type
-        if tour.tour_mode == "parameter":
+        if tour.tour_family == "sequential":
             self.tour_by = "parameter"
         elif self.tour_by == "parameter":
             self.tour_by = "dimensions"
@@ -283,7 +285,6 @@ class Widget(anywidget.AnyWidget):
         -------
         >>> annotated = widget.save_spec_to_parquet(table)
         """
-        import numpy as np
 
         from .spec import add_spec_to_parquet
 
@@ -315,18 +316,20 @@ class Widget(anywidget.AnyWidget):
             kwargs["point_opacity"] = self.point_opacity
         if self.point_color != [0.25, 0.5, 0.9]:
             kwargs["point_color"] = self.point_color
+        if self.point_color_by:
+            kwargs["point_color_by"] = self.point_color_by
         if self.camera_pan_x != 0.0:
             kwargs["camera_pan_x"] = self.camera_pan_x
         if self.camera_pan_y != 0.0:
             kwargs["camera_pan_y"] = self.camera_pan_y
         if self.camera_zoom != 1 / 1.5:
             kwargs["camera_zoom"] = self.camera_zoom
-        if self.view_mode != "guided":
-            kwargs["view_mode"] = self.view_mode
+        if self.tour_traversal != "guided":
+            kwargs["tour_traversal"] = self.tour_traversal
         if not self.show_legend:
             kwargs["show_legend"] = self.show_legend
-        if not self.show_frame_loadings:
-            kwargs["show_frame_loadings"] = self.show_frame_loadings
+        if not self.show_keyframe_loadings:
+            kwargs["show_keyframe_loadings"] = self.show_keyframe_loadings
         if self.show_tour_description:
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme != "dark":
@@ -345,26 +348,11 @@ class Widget(anywidget.AnyWidget):
                 elif isinstance(value, dict) and "dark" in value:
                     simple_cm[label] = value["dark"]
             if simple_cm:
-                kwargs["color_map"] = simple_cm
+                kwargs["point_color_map"] = simple_cm
 
         # Embed tour if available (use cached TourResult to preserve metadata)
         if hasattr(self, "_tour") and self._tour is not None:
             kwargs["tour"] = self._tour
-        elif self._views_buf is not None and self._n_dims > 0:
-            from .tours import TourResult
-
-            floats = np.frombuffer(self._views_buf, dtype=np.float32)
-            stride = self._n_dims * 2
-            n_views = len(floats) // stride
-            views = [
-                floats[i * stride : (i + 1) * stride].reshape(self._n_dims, 2)
-                for i in range(n_views)
-            ]
-            kwargs["tour"] = TourResult(
-                views=views,
-                n_views=n_views,
-                n_dims=self._n_dims,
-            )
 
         return add_spec_to_parquet(table, **kwargs)
 

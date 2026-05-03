@@ -2,6 +2,21 @@
 
 ## v0.4.0
 
+### BREAKING CHANGES
+
+- **Embedded config**: `EmbeddedConfig.tour` fields renamed — `views` → `keyframes`, `tourMode` → `family` (`'hyperdimensional' | 'sequential'`), `tourDescription` → `description`, `frameSummaries`/`tourFrameDescription` → `keyframeDescriptions`, `frameLoadings` → `keyframeLoadings` (now `KeyframeLoading[]` with `{primary, secondary}` shape instead of `[string, number][][]`)
+- **Embedded config**: `nViews` and `nDims` removed from `EmbeddedConfig` type (only used internally during parsing)
+- **Embedded config**: `tour.family` and `tour.dimensions` are now required — tours without valid values are rejected by the parser
+- **DtourSpec**: `viewMode` → `tourTraversal`, `showFrameNumbers` → `showKeyframeNumbers`, `showFrameLoadings` → `showKeyframeLoadings`, `sliderSpacing` → `tourSliderSpacing`, `colorMap` → `pointColorMap`
+- **Atoms**: `viewModeAtom` → `tourTraversalAtom`, `tourModeAtom` → `tourFamilyAtom`, `frameLoadingsAtom` → `keyframeLoadingsAtom`, `frameSummariesAtom`/`tourFrameDescriptionAtom` → `keyframeDescriptionsAtom`, `showFrameNumbersAtom` → `showKeyframeNumbersAtom`, `showFrameLoadingsAtom` → `showKeyframeLoadingsAtom`, `sliderSpacingAtom` → `tourSliderSpacingAtom`
+- **Component props**: `tourMode` → `tourFamily`, `tourFrameDescription`/`frameSummaries` → `keyframeDescriptions`, `frameLoadings` → `keyframeLoadings`
+- **Scatter API**: `setBases(bases, tourMode)` → `setBases(bases, tourFamily)` where `'sequential'` skips orthonormalization
+- **Python `TourResult`**: `tour_mode` → `tour_family`, `tour_description` → `description`, `tour_frame_description`/`frame_summaries` → `keyframe_descriptions`
+- **Python widget**: `show_frame_loadings` → `show_keyframe_loadings`, `view_mode` → `tour_traversal`
+- **Python `build_dtour_metadata`**: `view_mode` → `tour_traversal`, `slider_spacing` → `tour_slider_spacing`, `color_map` → `point_color_map`, `show_frame_numbers` → `show_keyframe_numbers`, `show_frame_loadings` → `show_keyframe_loadings`
+- **Python functions**: `sequential_tour`, `aligned_umap_tour` parameters renamed (`frame_summaries`/`tour_description`/`tour_frame_description` → `keyframe_descriptions`/`description`)
+- **No backward compatibility**: old Parquet files and `.npz` tours with legacy field names are no longer parsed. Re-export data with the new format.
+
 ### python
 - feat: `TourResult.from_parquet()` classmethod to extract tours from Parquet metadata
 - feat: `tour_dimensions` traitlet for explicit tour column-name support

@@ -9,26 +9,25 @@ import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import { PortalContainerContext, usePortalContainer } from './portal-container.tsx';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
-import type { DtourSpec, FrameLoading } from './spec.ts';
+import type { DtourSpec, KeyframeLoading } from './spec.ts';
 import {
   activeColumnsAtom,
   backgroundColorAtom,
   colorMapAtom,
   embeddedConfigAtom,
-  frameLoadingsAtom,
-  frameSummariesAtom,
+  keyframeDescriptionsAtom,
+  keyframeLoadingsAtom,
   legendSelectionAtom,
   legendVisibleAtom,
   metadataAtom,
-  pointColorAtom,
+  pointColorByAtom,
   predefinedTourAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
   tourByAtom,
   tourDescriptionAtom,
-  tourFrameDescriptionAtom,
-  tourModeAtom,
-  viewModeAtom,
+  tourFamilyAtom,
+  tourTraversalAtom,
 } from './state/atoms.ts';
 import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
 
@@ -47,7 +46,7 @@ export type DtourHandle = {
 export type DtourProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
   data?: ArrayBuffer;
-  /** Tour keyframe views (p×2 column-major). Auto-generated if omitted. */
+  /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
   views?: Float32Array[];
   /** Arrow IPC ArrayBuffer with per-view quality metrics (columns = metrics, rows = views). */
   metrics?: ArrayBuffer;
@@ -79,16 +78,15 @@ export type DtourProps = {
   onReady?: (api: DtourHandle) => void;
   /** Rendering backend. Default 'webgpu'. */
   backend?: 'webgpu' | 'webgl';
-  /** Tour mode identifier. Overrides embedded config when provided. */
-  tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
+  /** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
+  tourFamily?: 'hyperdimensional' | 'sequential';
   /** Human-readable tour description shown in the description sub-bar. */
   tourDescription?: string | null;
-  /** Per-frame tooltip template with {dim1}, {dim2}, {relation} placeholders. */
-  tourFrameDescription?: string | null;
-  /** Per-frame text summaries shown below preview thumbnails. */
-  frameSummaries?: string[] | null;
-  /** Per-frame top-2 feature correlations. Overrides embedded config. */
-  frameLoadings?: FrameLoading[][] | null;
+  /** Per-keyframe descriptions: string[] of literals, or a template string
+   *  with {primary}, {secondary}, {relation} placeholders. */
+  keyframeDescriptions?: string | string[] | null;
+  /** Per-keyframe feature loadings. Overrides embedded config. */
+  keyframeLoadings?: KeyframeLoading[] | null;
 };
 
 export const Dtour = ({
@@ -109,11 +107,10 @@ export const Dtour = ({
   portalContainer,
   onReady,
   backend,
-  tourMode,
+  tourFamily,
   tourDescription,
-  tourFrameDescription,
-  frameSummaries,
-  frameLoadings,
+  keyframeDescriptions,
+  keyframeLoadings,
 }: DtourProps) => {
   // Each Dtour instance gets its own isolated jotai store.
   // Eagerly apply initial spec values so there's no flash of defaults.
@@ -144,11 +141,10 @@ export const Dtour = ({
           colorMap={colorMap}
           onReady={onReady}
           backend={backend}
-          tourMode={tourMode}
+          tourFamily={tourFamily}
           tourDescription={tourDescription}
-          tourFrameDescription={tourFrameDescription}
-          frameSummaries={frameSummaries}
-          frameLoadings={frameLoadings}
+          keyframeDescriptions={keyframeDescriptions}
+          keyframeLoadings={keyframeLoadings}
         />
       </Provider>
     </PortalContainerContext.Provider>
@@ -173,11 +169,10 @@ const DtourInner = ({
   colorMap,
   onReady,
   backend,
-  tourMode: tourModeProp,
+  tourFamily: tourFamilyProp,
   tourDescription: tourDescriptionProp,
-  tourFrameDescription: tourFrameDescriptionProp,
-  frameSummaries: frameSummariesProp,
-  frameLoadings: frameLoadingsProp,
+  keyframeDescriptions: keyframeDescriptionsProp,
+  keyframeLoadings: keyframeLoadingsProp,
 }: {
   data: ArrayBuffer | undefined;
   views: Float32Array[] | undefined;
@@ -195,22 +190,16 @@ const DtourInner = ({
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
   backend: 'webgpu' | 'webgl' | undefined;
-  tourMode: 'signed' | 'discriminative' | 'parameter' | null | undefined;
+  tourFamily: 'hyperdimensional' | 'sequential' | undefined;
   tourDescription: string | null | undefined;
-  tourFrameDescription: string | null | undefined;
-  frameSummaries: string[] | null | undefined;
-  frameLoadings: FrameLoading[][] | null | undefined;
+  keyframeDescriptions: string | string[] | null | undefined;
+  keyframeLoadings: KeyframeLoading[] | null | undefined;
 }) => {
   useSpecSync(spec, onSpecChange);
   useModeCycling();
   useSystemTheme();
 
   // ── Apply theme class to portal container ──────────────────────────────
-  // Radix portals (tooltips, dropdowns, etc.) render to `document.body` by
-  // default, which sits outside any wrapper div we put `.dtour-light` on.
-  // Without this, portalled content ignores light-mode CSS variables and
-  // renders with dark defaults.  When an explicit portalContainer is
-  // provided (e.g. shadow DOM embed), apply the class there instead.
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const portalContainer = usePortalContainer();
   useEffect(() => {
@@ -220,8 +209,6 @@ const DtourInner = ({
     } else {
       target.classList.remove('dtour-light');
     }
-    // Clean up body class on unmount to avoid leaking theme state across
-    // page lifecycles.  Consumer-provided containers are their own domain.
     return () => {
       if (!portalContainer) {
         document.body.classList.remove('dtour-light');
@@ -254,41 +241,37 @@ const DtourInner = ({
     applySpecToStore(store, fieldsToApply);
   }, [embeddedConfig, spec, store]);
 
-  // Sync colorMap prop → atom (embedded colorMap used as fallback)
+  // Sync colorMap prop → atom (embedded spec colorMap used as fallback)
   const setColorMap = useSetAtom(colorMapAtom);
   useEffect(() => {
-    setColorMap(colorMap ?? embeddedConfig?.colorMap ?? null);
+    setColorMap(colorMap ?? embeddedConfig?.spec?.pointColorMap ?? null);
   }, [colorMap, embeddedConfig, setColorMap]);
 
   // Sync tour metadata: props take priority over embedded config
-  const setFrameLoadings = useSetAtom(frameLoadingsAtom);
-  const setFrameSummaries = useSetAtom(frameSummariesAtom);
-  const setTourMode = useSetAtom(tourModeAtom);
+  const setKeyframeLoadings = useSetAtom(keyframeLoadingsAtom);
+  const setKeyframeDescriptions = useSetAtom(keyframeDescriptionsAtom);
+  const setTourFamily = useSetAtom(tourFamilyAtom);
   const setTourDescription = useSetAtom(tourDescriptionAtom);
-  const setTourFrameDescription = useSetAtom(tourFrameDescriptionAtom);
   const setTourBy = useSetAtom(tourByAtom);
   useEffect(() => {
-    setFrameLoadings(frameLoadingsProp ?? embeddedConfig?.tour?.frameLoadings ?? null);
-    setFrameSummaries(frameSummariesProp ?? embeddedConfig?.tour?.frameSummaries ?? null);
-    setTourDescription(tourDescriptionProp ?? embeddedConfig?.tour?.tourDescription ?? null);
-    setTourFrameDescription(
-      tourFrameDescriptionProp ?? embeddedConfig?.tour?.tourFrameDescription ?? null,
+    setKeyframeLoadings(keyframeLoadingsProp ?? embeddedConfig?.tour?.keyframeLoadings ?? null);
+    setKeyframeDescriptions(
+      keyframeDescriptionsProp ?? embeddedConfig?.tour?.keyframeDescriptions ?? null,
     );
+    setTourDescription(tourDescriptionProp ?? embeddedConfig?.tour?.description ?? null);
 
-    // Resolve tourMode and enforce tourBy consistency
-    const resolvedTourMode = tourModeProp ?? embeddedConfig?.tour?.tourMode ?? null;
-    setTourMode(resolvedTourMode);
+    // Resolve tourFamily and enforce tourBy consistency
+    const resolvedKind = tourFamilyProp ?? embeddedConfig?.tour?.family ?? 'hyperdimensional';
+    setTourFamily(resolvedKind);
 
     type TourBy = 'dimensions' | 'pca' | 'parameter';
-    // The embedded spec effect may not have applied tourBy yet, so only warn
-    // when the mismatch isn't about to be resolved by the spec itself.
     const specWillSetTourBy = embeddedConfig?.spec?.tourBy;
-    if (resolvedTourMode === 'parameter') {
+    if (resolvedKind === 'sequential') {
       setTourBy((prev: TourBy) => {
         if (prev !== 'parameter') {
           if (specWillSetTourBy !== 'parameter') {
             console.warn(
-              `[dtour] tourMode is 'parameter' but tourBy was '${prev}'; forcing tourBy to 'parameter'`,
+              `[dtour] tourFamily is 'sequential' but tourBy was '${prev}'; forcing tourBy to 'parameter'`,
             );
           }
           return 'parameter';
@@ -300,7 +283,7 @@ const DtourInner = ({
         if (prev === 'parameter') {
           if (specWillSetTourBy === 'parameter') return prev; // spec will handle it
           console.warn(
-            `[dtour] tourBy is 'parameter' but tourMode is '${resolvedTourMode}'; falling back to 'dimensions'`,
+            `[dtour] tourBy is 'parameter' but tourFamily is '${resolvedKind}'; falling back to 'dimensions'`,
           );
           return 'dimensions';
         }
@@ -309,41 +292,36 @@ const DtourInner = ({
     }
   }, [
     embeddedConfig,
-    frameLoadingsProp,
-    frameSummariesProp,
-    tourModeProp,
+    keyframeLoadingsProp,
+    keyframeDescriptionsProp,
+    tourFamilyProp,
     tourDescriptionProp,
-    tourFrameDescriptionProp,
-    setFrameLoadings,
-    setFrameSummaries,
-    setTourMode,
+    setKeyframeLoadings,
+    setKeyframeDescriptions,
+    setTourFamily,
     setTourDescription,
-    setTourFrameDescription,
     setTourBy,
   ]);
 
   // Sync resolved theme → background color + CSS class
   const setBackgroundColor = useSetAtom(backgroundColorAtom);
   useEffect(() => {
-    // sRGB values matching --color-dtour-bg: dark=#000000, light=#ffffff
     setBackgroundColor(resolvedTheme === 'light' ? [1, 1, 1] : [0, 0, 0]);
   }, [resolvedTheme, setBackgroundColor]);
 
   // Forward legend selection changes to the parent as label name strings
   const legendSelection = useAtomValue(legendSelectionAtom);
-  const pointColor = useAtomValue(pointColorAtom);
+  const pointColorBy = useAtomValue(pointColorByAtom);
   const metadata = useAtomValue(metadataAtom);
 
   // Apply tour.dimensions → activeColumnsAtom so the toolbar shows which
-  // numeric columns participate in the predefined tour. When dimensions
-  // is absent (old files), falls back to all numeric columns (null).
+  // numeric columns participate in the predefined tour.
   const setActiveColumns = useSetAtom(activeColumnsAtom);
   const setPredefinedTour = useSetAtom(predefinedTourAtom);
   useEffect(() => {
     if (!metadata) return;
     const tourDims = embeddedConfig?.tour?.dimensions;
     if (!tourDims || tourDims.length === 0) {
-      // No explicit dimensions — assume all numeric columns participate
       setActiveColumns(null);
       return;
     }
@@ -360,21 +338,21 @@ const DtourInner = ({
   useEffect(() => {
     if (!onSelectionChange) return;
 
-    if (typeof pointColor !== 'string' || !metadata) return;
-    if (!metadata.categoricalColumnNames.includes(pointColor)) return;
+    if (!pointColorBy || !metadata) return;
+    if (!metadata.categoricalColumnNames.includes(pointColorBy)) return;
 
     if (!legendSelection || legendSelection.size === 0) {
       onSelectionChange([]);
       return;
     }
 
-    const allLabels = metadata.categoricalLabels[pointColor] ?? [];
+    const allLabels = metadata.categoricalLabels[pointColorBy] ?? [];
     const selectedLabels = Array.from(legendSelection)
       .map((i) => allLabels[i])
       .filter((l): l is string => l !== undefined);
 
     onSelectionChange(selectedLabels.length > 0 ? selectedLabels : []);
-  }, [legendSelection, pointColor, metadata, onSelectionChange]);
+  }, [legendSelection, pointColorBy, metadata, onSelectionChange]);
 
   // Track scatter instance for programmatic select API
   const [scatterInstance, setScatterInstance] = useState<ScatterInstance | null>(null);
@@ -394,13 +372,13 @@ const DtourInner = ({
         }
       },
       selectByLabels: (labels) => {
-        const color = store.get(pointColorAtom);
-        if (typeof color !== 'string' || !metadata.categoricalColumnNames.includes(color)) return;
-        const allLabels = metadata.categoricalLabels[color] ?? [];
+        const colorByCol = store.get(pointColorByAtom);
+        if (!colorByCol || !metadata.categoricalColumnNames.includes(colorByCol)) return;
+        const allLabels = metadata.categoricalLabels[colorByCol] ?? [];
         const labelSet = new Set(labels);
         const indices = allLabels.map((l, i) => (labelSet.has(l) ? i : -1)).filter((i) => i >= 0);
         if (indices.length > 0) {
-          scatterInstance.selectByColumn(color, { labelIndices: indices });
+          scatterInstance.selectByColumn(colorByCol, { labelIndices: indices });
           store.set(legendSelectionAtom, new Set(indices));
         } else {
           scatterInstance.clearSelection();
@@ -427,15 +405,15 @@ const DtourInner = ({
     onStatusRef.current?.(status);
   }, []);
 
-  const viewMode = useAtomValue(viewModeAtom);
-  const isGrand = viewMode === 'grand';
+  const tourTraversal = useAtomValue(tourTraversalAtom);
+  const isGrand = tourTraversal === 'grand';
   const legendVisible = useAtomValue(legendVisibleAtom);
 
   // Tour description sub-bar
   const showTourDescription = useAtomValue(showTourDescriptionAtom);
   const tourDescription = useAtomValue(tourDescriptionAtom);
   const descriptionVisible =
-    showTourDescription && viewMode === 'guided' && tourDescription !== null;
+    showTourDescription && tourTraversal === 'guided' && tourDescription !== null;
   const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
 
   // Sidebar width state — remembered across open/close cycles

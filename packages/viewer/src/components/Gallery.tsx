@@ -9,21 +9,20 @@ import {
   computeLayout,
 } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
-import type { FrameLoading } from '../spec.ts';
+import type { KeyframeLoading } from '../spec.ts';
 import {
   arcLengthsAtom,
   currentKeyframeAtom,
-  frameLoadingsAtom,
-  frameSummariesAtom,
   hoveredKeyframeAtom,
+  keyframeDescriptionsAtom,
+  keyframeLoadingsAtom,
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
   previewScaleAtom,
   selectedKeyframeAtom,
-  showFrameLoadingsAtom,
-  showFrameNumbersAtom,
-  tourFrameDescriptionAtom,
+  showKeyframeLoadingsAtom,
+  showKeyframeNumbersAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -45,10 +44,28 @@ export type GalleryProps = {
 // Loading pill helpers
 // ---------------------------------------------------------------------------
 
-/** Whether the two loadings in a pair have the same sign (co-vary vs contrast). */
-function sameSign(pairs: FrameLoading[]): boolean {
-  if (pairs.length < 2) return true;
-  return pairs[0]![1] * pairs[1]![1] >= 0;
+/** Whether the primary and secondary loadings have the same sign (co-vary vs contrast). */
+function sameSign(loading: KeyframeLoading): boolean {
+  return loading.primary[1] * loading.secondary[1] >= 0;
+}
+
+/** Resolve a keyframe description for index `i` given the descriptions and loading. */
+function resolveDescription(
+  descriptions: string | string[] | null,
+  loading: KeyframeLoading | null,
+  i: number,
+): string | null {
+  if (descriptions === null) return null;
+  if (Array.isArray(descriptions)) {
+    return i < descriptions.length ? descriptions[i]! : null;
+  }
+  // Template string — requires loading data
+  if (!loading) return null;
+  const same = sameSign(loading);
+  return descriptions
+    .replace('{primary}', loading.primary[0])
+    .replace('{secondary}', loading.secondary[0])
+    .replace('{relation}', same ? 'co-varying' : 'contrasting');
 }
 
 export const Gallery = ({
@@ -60,28 +77,28 @@ export const Gallery = ({
 }: GalleryProps) => {
   const basePreviewCount = useAtomValue(previewCountAtom);
   const predefinedTour = useAtomValue(predefinedTourAtom);
-  const previewCount = predefinedTour?.viewCount ?? basePreviewCount;
+  const previewCount = predefinedTour?.keyframeCount ?? basePreviewCount;
   const previewScale = useAtomValue(previewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
-  const showFrameNumbers = useAtomValue(showFrameNumbersAtom);
-  const showFrameLoadings = useAtomValue(showFrameLoadingsAtom);
-  const frameLoadings = useAtomValue(frameLoadingsAtom);
-  const tourFrameDescription = useAtomValue(tourFrameDescriptionAtom);
+  const showKeyframeNumbers = useAtomValue(showKeyframeNumbersAtom);
+  const showKeyframeLoadings = useAtomValue(showKeyframeLoadingsAtom);
+  const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
+  const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
   const { animateTo } = useAnimatePosition();
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  const frameSummaries = useAtomValue(frameSummariesAtom);
-
   // Whether loading pills are actually visible (data available + user toggle on)
-  const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
-  const summariesVisible = !loadingsVisible && frameSummaries !== null && frameSummaries.length > 0;
-  const showBarSpace = loadingsVisible || summariesVisible;
+  const loadingsVisible =
+    showKeyframeLoadings && keyframeLoadings !== null && keyframeLoadings.length > 0;
+  const descriptionsVisible =
+    !loadingsVisible && keyframeDescriptions !== null && Array.isArray(keyframeDescriptions);
+  const showBarSpace = loadingsVisible || descriptionsVisible;
 
   // Grid area = container minus its CSS insets.
   const verticalInset = PREVIEW_SPACING + toolbarHeight / 2;
@@ -185,12 +202,14 @@ export const Gallery = ({
 
         // For bottom-edge previews, put loading bar above (flex-col-reverse)
         const isBottomEdge = row === layout.rows - 1;
-        const loadingPairs: FrameLoading[] | null =
-          loadingsVisible && frameLoadings && i < frameLoadings.length ? frameLoadings[i]! : null;
-        const hasLoadingPills = loadingPairs !== null && loadingPairs.length >= 2;
-        const frameSummary =
-          !hasLoadingPills && frameSummaries && i < frameSummaries.length
-            ? frameSummaries[i]
+        const loading: KeyframeLoading | null =
+          loadingsVisible && keyframeLoadings && i < keyframeLoadings.length
+            ? keyframeLoadings[i]!
+            : null;
+        const hasLoadingPills = loading !== null;
+        const keyframeDescription =
+          !hasLoadingPills && descriptionsVisible && Array.isArray(keyframeDescriptions)
+            ? (keyframeDescriptions[i] ?? null)
             : null;
 
         return (
@@ -217,7 +236,7 @@ export const Gallery = ({
                 onKeyDown={undefined}
                 className={cn(
                   'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
-                  hasLoadingPills || frameSummary
+                  hasLoadingPills || keyframeDescription
                     ? isBottomEdge
                       ? 'rounded-b'
                       : 'rounded-t'
@@ -231,7 +250,7 @@ export const Gallery = ({
                   boxShadow: getBoxShadow(i),
                 }}
               >
-                {visible && showFrameNumbers && (
+                {visible && showKeyframeNumbers && (
                   <span
                     className={cn(
                       'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
@@ -254,15 +273,15 @@ export const Gallery = ({
                   </span>
                 )}
               </div>
-              {/* Loading pills: [name1] [≠ or =] [name2] */}
+              {/* Loading pills: [primary] [≠ or =] [secondary] */}
               {visible &&
-                loadingPairs &&
-                loadingPairs.length >= 2 &&
+                loading &&
                 (() => {
-                  const [n0] = loadingPairs[0]!;
-                  const [n1] = loadingPairs[1]!;
-                  const same = sameSign(loadingPairs);
+                  const n0 = loading.primary[0];
+                  const n1 = loading.secondary[0];
+                  const same = sameSign(loading);
                   const isActive = i === selectedKeyframe || i === currentKeyframe;
+                  const tooltipText = resolveDescription(keyframeDescriptions, loading, i);
                   return (
                     <TooltipProvider>
                       <Tooltip>
@@ -324,19 +343,14 @@ export const Gallery = ({
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
-                          {tourFrameDescription
-                            ? tourFrameDescription
-                                .replace('{dim1}', n0)
-                                .replace('{dim2}', n1)
-                                .replace('{relation}', same ? 'co-varying' : 'contrasting')
-                            : `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
+                          {tooltipText ?? `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   );
                 })()}
-              {/* Frame summary label (shown when no loading pills) */}
-              {visible && frameSummary && (
+              {/* Keyframe description label (shown when no loading pills) */}
+              {visible && keyframeDescription && (
                 <div
                   className={cn(
                     'flex items-center justify-center select-none',
@@ -361,7 +375,7 @@ export const Gallery = ({
                         : 'text-dtour-highlight/70',
                     )}
                   >
-                    {frameSummary}
+                    {keyframeDescription}
                   </span>
                 </div>
               )}

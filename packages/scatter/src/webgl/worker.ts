@@ -1351,7 +1351,7 @@ const handleMessage = (msg: MainToGpu): void => {
     const { bases } = msg;
     if (bases.length === 0) return;
     const dims = bases[0]!.length / 2;
-    const orthonormalize = msg.tourMode !== 'parameter';
+    const orthonormalize = msg.tourFamily !== 'sequential';
 
     state.tour = {
       bases,

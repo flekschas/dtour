@@ -7,9 +7,9 @@ import {
   basisTransitioningAtom,
   currentBasisAtom,
   guidedSuspendedAtom,
-  tourModeAtom,
+  tourFamilyAtom,
   tourPositionAtom,
-  viewModeAtom,
+  tourTraversalAtom,
 } from '../state/atoms.ts';
 
 const easeOut = (t: number): number => 1 - (1 - t) ** 3;
@@ -86,7 +86,7 @@ export const useGuidedResume = (
       // interpolation while the blend is still active.
 
       const readPos = getPosition ?? (() => store.get(tourPositionAtom));
-      const ortho = store.get(tourModeAtom) !== 'parameter';
+      const ortho = store.get(tourFamilyAtom) !== 'sequential';
       const startTime = performance.now();
       const scratch = new Float32Array(dims * 2);
 
@@ -132,8 +132,8 @@ export const useGuidedResume = (
   // Auto-cancel if the viewer leaves guided mode during the blend so the rAF
   // doesn't keep calling setDirectBasis after manual/grand takes over.
   useEffect(() => {
-    return store.sub(viewModeAtom, () => {
-      if (store.get(viewModeAtom) !== 'guided') cancelTransition();
+    return store.sub(tourTraversalAtom, () => {
+      if (store.get(tourTraversalAtom) !== 'guided') cancelTransition();
     });
   }, [store, cancelTransition]);
 

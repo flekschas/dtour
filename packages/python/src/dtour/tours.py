@@ -29,7 +29,7 @@ class TourResult:
 
     Attributes:
         views: List of projection (basis) matrices, each shape ``(p, 2)`` float32.
-        n_views: Number of projection views.
+        n_views: Number of keyframes.
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
@@ -37,15 +37,13 @@ class TourResult:
             dimension and each original feature, shape ``(n_components, n_features)``.
         feature_names: Original feature column names for labeling loadings.
         feature_r2: Per-dimension R-squared from the OLS regression.
-        frame_summaries: Per-frame text describing the top projection-driving
-            features, e.g. ``"Structure: CD3, CD4"``.
-        tour_mode: The embedding mode: ``None`` (vanilla LE),
-            ``"signed"`` (true signed Laplacian), or
-            ``"discriminative"`` (spectral Fisher discriminant).
-        tour_description: Human-readable description of the tour
+        tour_family: Tour family: ``"hyperdimensional"`` (one high-D space)
+            or ``"sequential"`` (multiple 2D embeddings).
+        description: Human-readable description of the tour
             (shown in the description sub-bar).
-        tour_frame_description: Template string for per-frame tooltips.
-            Supports ``{dim1}``, ``{dim2}``, and ``{relation}`` placeholders.
+        keyframe_descriptions: Per-keyframe descriptions: a list of literal
+            strings, or a single template string with ``{primary}``,
+            ``{secondary}``, and ``{relation}`` placeholders.
     """
 
     views: list[np.ndarray]
@@ -56,10 +54,9 @@ class TourResult:
     feature_loadings: np.ndarray | None = None
     feature_names: list[str] | None = None
     feature_r2: list[float] | None = None
-    frame_summaries: list[str] | None = None
-    tour_mode: str | None = None
-    tour_description: str | None = None
-    tour_frame_description: str | None = None
+    tour_family: str | None = None
+    description: str | None = None
+    keyframe_descriptions: list[str] | str | None = None
 
     @property
     def views_raw(self) -> bytes:
@@ -92,14 +89,14 @@ class TourResult:
             arrays["feature_names_json"] = np.array([json.dumps(self.feature_names)])
         if self.feature_r2 is not None:
             arrays["feature_r2"] = np.asarray(self.feature_r2, dtype=np.float64)
-        if self.frame_summaries is not None:
-            arrays["frame_summaries_json"] = np.array([json.dumps(self.frame_summaries)])
-        if self.tour_mode is not None:
-            arrays["tour_mode"] = np.array([self.tour_mode])
-        if self.tour_description is not None:
-            arrays["tour_description"] = np.array([self.tour_description])
-        if self.tour_frame_description is not None:
-            arrays["tour_frame_description"] = np.array([self.tour_frame_description])
+        if self.tour_family is not None:
+            arrays["tour_family"] = np.array([self.tour_family])
+        if self.description is not None:
+            arrays["description"] = np.array([self.description])
+        if self.keyframe_descriptions is not None:
+            arrays["keyframe_descriptions_json"] = np.array(
+                [json.dumps(self.keyframe_descriptions)]
+            )
         np.savez_compressed(path, **arrays)
 
     @classmethod
@@ -144,20 +141,18 @@ class TourResult:
             for i in range(n_views)
         ]
 
-        tour_mode = t.get("tourMode")
-        tour_description = t.get("tourDescription")
-        tour_frame_description = t.get("tourFrameDescription")
-        frame_summaries = t.get("frameSummaries")
+        family = t.get("family")
+        description = t.get("description")
+        keyframe_descriptions = t.get("keyframeDescriptions")
 
         return cls(
             views=views,
             n_views=n_views,
             n_dims=n_dims,
             feature_names=dimensions,
-            frame_summaries=frame_summaries,
-            tour_mode=tour_mode,
-            tour_description=tour_description,
-            tour_frame_description=tour_frame_description,
+            tour_family=family,
+            description=description,
+            keyframe_descriptions=keyframe_descriptions,
         )
 
     @classmethod
@@ -175,22 +170,16 @@ class TourResult:
             json.loads(str(data["feature_names_json"][0])) if "feature_names_json" in data else None
         )
         feature_r2 = data["feature_r2"].tolist() if "feature_r2" in data else None
-        frame_summaries = (
-            json.loads(str(data["frame_summaries_json"][0]))
-            if "frame_summaries_json" in data
+
+        # Read tour_family; fall back to legacy fields
+        tour_family = str(data["tour_family"][0]) if "tour_family" in data else None
+        description = str(data["description"][0]) if "description" in data else None
+        keyframe_descriptions = (
+            json.loads(str(data["keyframe_descriptions_json"][0]))
+            if "keyframe_descriptions_json" in data
             else None
         )
-        # Read tour_mode; fall back to old n_attract for backward compat
-        if "tour_mode" in data:
-            tour_mode = str(data["tour_mode"][0])
-        elif "n_attract" in data:
-            tour_mode = "signed"
-        else:
-            tour_mode = None
-        tour_description = str(data["tour_description"][0]) if "tour_description" in data else None
-        tour_frame_description = (
-            str(data["tour_frame_description"][0]) if "tour_frame_description" in data else None
-        )
+
         return cls(
             views=views,
             n_views=n_views,
@@ -200,10 +189,9 @@ class TourResult:
             feature_loadings=feature_loadings,
             feature_names=feature_names,
             feature_r2=feature_r2,
-            frame_summaries=frame_summaries,
-            tour_mode=tour_mode,
-            tour_description=tour_description,
-            tour_frame_description=tour_frame_description,
+            tour_family=tour_family,
+            description=description,
+            keyframe_descriptions=keyframe_descriptions,
         )
 
 
@@ -940,10 +928,10 @@ _TOUR_DESCRIPTIONS: dict[str | None, str] = {
     "parameter": "Attraction-repulsion spectrum from global structure to local clusters.",
 }
 
-_TOUR_FRAME_DESCRIPTIONS: dict[str | None, str] = {
-    None: "Top new correlates for finer neighborhoods: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
-    "signed": "Top new correlates for finer label patterns: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
-    "discriminative": "Top new correlates for subtler label contrasts: {relation} {dim1} and {dim2} (vs. previous frame)",  # noqa: E501
+_TOUR_KEYFRAME_DESCRIPTIONS: dict[str | None, str] = {
+    None: "Top new correlates for finer neighborhoods: {relation} {primary} and {secondary} (vs. previous frame)",  # noqa: E501
+    "signed": "Top new correlates for finer label patterns: {relation} {primary} and {secondary} (vs. previous frame)",  # noqa: E501
+    "discriminative": "Top new correlates for subtler label contrasts: {relation} {primary} and {secondary} (vs. previous frame)",  # noqa: E501
     "parameter": "Embedding at exaggeration rho={rho}",
 }
 
@@ -1046,7 +1034,7 @@ def le_tour(
     Returns:
         A :class:`TourResult` with basis matrices, embedding,
         ``feature_loadings``, ``feature_names``, ``feature_r2``, and
-        ``frame_summaries``.
+        ``keyframe_descriptions``.
     """
     from sklearn.manifold import SpectralEmbedding
 
@@ -1187,10 +1175,9 @@ def le_tour(
         result.feature_loadings = loadings
         result.feature_names = feature_names
         result.feature_r2 = r2
-        result.frame_summaries = frame_summaries
-        result.tour_mode = tour_mode
-        result.tour_description = _TOUR_DESCRIPTIONS.get(tour_mode)
-        result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS.get(tour_mode)
+        result.keyframe_descriptions = frame_summaries
+        result.tour_family = "hyperdimensional"
+        result.description = _TOUR_DESCRIPTIONS.get(tour_mode)
         return result
 
     # ── Standard path (vanilla LE, no labels) ─────────────────────────
@@ -1276,9 +1263,9 @@ def le_tour(
     result.feature_loadings = loadings
     result.feature_names = feature_names
     result.feature_r2 = r2
-    result.frame_summaries = frame_summaries
-    result.tour_description = _TOUR_DESCRIPTIONS[None]
-    result.tour_frame_description = _TOUR_FRAME_DESCRIPTIONS[None]
+    result.keyframe_descriptions = frame_summaries
+    result.tour_family = "hyperdimensional"
+    result.description = _TOUR_DESCRIPTIONS[None]
 
     return result
 
@@ -1399,9 +1386,8 @@ def _pack_embedding_frames(
     embeddings: list[np.ndarray],
     *,
     feature_names: list[str] | None = None,
-    frame_summaries: list[str] | None = None,
-    tour_description: str | None = None,
-    tour_frame_description: str | None = None,
+    keyframe_descriptions: list[str] | str | None = None,
+    description: str | None = None,
 ) -> TourResult:
     """Procrustes-align a list of 2D embeddings and pack into a TourResult.
 
@@ -1440,10 +1426,9 @@ def _pack_embedding_frames(
     )
     result.embedding = stacked
     result.feature_names = feature_names
-    result.frame_summaries = frame_summaries
-    result.tour_mode = "parameter"
-    result.tour_description = tour_description
-    result.tour_frame_description = tour_frame_description
+    result.keyframe_descriptions = keyframe_descriptions
+    result.tour_family = "sequential"
+    result.description = description
 
     return result
 
@@ -1459,9 +1444,8 @@ def sequential_tour(
     steps: list[EmbeddingStep] | None = None,
     init: np.ndarray | None = None,
     feature_names: list[str] | None = None,
-    frame_summaries: list[str] | None = None,
-    tour_description: str | None = None,
-    tour_frame_description: str | None = None,
+    keyframe_descriptions: list[str] | str | None = None,
+    description: str | None = None,
     random_state: int | None = None,
 ) -> TourResult:
     """Compute a sequential embedding tour.
@@ -1495,14 +1479,13 @@ def sequential_tour(
             When ``None``, the first frame starts from the method's
             default initialization.
         feature_names: Original feature column names for the result.
-        frame_summaries: Per-frame text descriptions.
-        tour_description: Human-readable tour description.
-        tour_frame_description: Template string for per-frame tooltips.
+        keyframe_descriptions: Per-keyframe text descriptions or template.
+        description: Human-readable tour description.
         random_state: Seed for reproducibility.  Passed to PyMDE's
             ``torch.manual_seed`` when the pymde method is used.
 
     Returns:
-        A :class:`TourResult` with ``tour_mode="parameter"``.
+        A :class:`TourResult` with ``tour_family="sequential"``.
         The embedding is an ``n x (2K)`` matrix of stacked aligned
         2D embeddings.  Basis matrices select each ``(x, y)`` pair.
     """
@@ -1583,9 +1566,8 @@ def sequential_tour(
     return _pack_embedding_frames(
         embeddings,
         feature_names=feature_names,
-        frame_summaries=frame_summaries,
-        tour_description=tour_description,
-        tour_frame_description=tour_frame_description,
+        keyframe_descriptions=keyframe_descriptions,
+        description=description,
     )
 
 
@@ -1637,7 +1619,7 @@ def attraction_repulsion_tour(
         random_state: Random seed for reproducibility.
 
     Returns:
-        A :class:`TourResult` with ``tour_mode="parameter"``.
+        A :class:`TourResult` with ``tour_family="sequential"``.
         The embedding is an ``n x (2K)`` matrix of stacked aligned
         2D embeddings.  Basis matrices select each pair.
     """
@@ -1709,14 +1691,14 @@ def attraction_repulsion_tour(
                 )
             )
 
-    # ── Frame summaries ──────────────────────────────────────────────
-    frame_summaries: list[str] = []
+    # ── Keyframe descriptions ────────────────────────────────────────
+    kf_descriptions: list[str] = []
     for rho in rhos:
         label = _RHO_LANDMARKS.get(rho)
         if label:
-            frame_summaries.append(f"rho={rho:g} ({label})")
+            kf_descriptions.append(f"rho={rho:g} ({label})")
         else:
-            frame_summaries.append(f"rho={rho:g}")
+            kf_descriptions.append(f"rho={rho:g}")
 
     # ── Delegate to sequential_tour ──────────────────────────────────
     result = sequential_tour(
@@ -1725,12 +1707,10 @@ def attraction_repulsion_tour(
         steps=steps,
         init=init_coords,
         feature_names=feature_names,
-        frame_summaries=frame_summaries,
-        tour_description=_TOUR_DESCRIPTIONS["parameter"],
-        tour_frame_description=_TOUR_FRAME_DESCRIPTIONS["parameter"],
+        keyframe_descriptions=kf_descriptions,
+        description=_TOUR_DESCRIPTIONS["parameter"],
         random_state=random_state,
     )
-    result.tour_mode = "parameter"
     return result
 
 
@@ -1743,9 +1723,8 @@ def aligned_umap_tour(
     *,
     umap_kwargs: dict | None = None,
     feature_names: list[str] | None = None,
-    frame_summaries: list[str] | None = None,
-    tour_description: str | None = None,
-    tour_frame_description: str | None = None,
+    keyframe_descriptions: list[str] | str | None = None,
+    description: str | None = None,
 ) -> TourResult:
     """Compute a tour using UMAP's joint AlignedUMAP optimisation.
 
@@ -1772,12 +1751,11 @@ def aligned_umap_tour(
             ``umap.AlignedUMAP`` (e.g. ``n_neighbors``,
             ``alignment_regularisation``, ``random_state``).
         feature_names: Original feature column names for the result.
-        frame_summaries: Per-frame text descriptions.
-        tour_description: Human-readable tour description.
-        tour_frame_description: Template string for per-frame tooltips.
+        keyframe_descriptions: Per-keyframe text descriptions or template.
+        description: Human-readable tour description.
 
     Returns:
-        A :class:`TourResult` with ``tour_mode="parameter"``.
+        A :class:`TourResult` with ``tour_family="sequential"``.
         The embedding is an ``n x (2K)`` matrix of stacked
         Procrustes-aligned 2D embeddings.
     """
@@ -1817,7 +1795,6 @@ def aligned_umap_tour(
     return _pack_embedding_frames(
         embeddings,
         feature_names=feature_names,
-        frame_summaries=frame_summaries,
-        tour_description=tour_description,
-        tour_frame_description=tour_frame_description,
+        keyframe_descriptions=keyframe_descriptions,
+        description=description,
     )

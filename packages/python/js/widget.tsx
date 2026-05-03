@@ -1,15 +1,14 @@
 import { createRender, useModel } from '@anywidget/react';
 import { Dtour } from '@dtour/viewer';
-import type { DtourHandle, DtourSpec, FrameLoading, RadialTrackConfig } from '@dtour/viewer';
+import type { DtourHandle, DtourSpec, KeyframeLoading, RadialTrackConfig } from '@dtour/viewer';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type TourMeta = {
-  tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
+  tourFamily?: 'hyperdimensional' | 'sequential';
   tourDescription?: string | null;
-  tourFrameDescription?: string | null;
-  frameSummaries?: string[] | null;
-  frameLoadings?: FrameLoading[][] | null;
+  keyframeDescriptions?: string | string[] | null;
+  keyframeLoadings?: KeyframeLoading[] | null;
 };
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
@@ -29,12 +28,13 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   point_size: 'pointSize',
   point_opacity: 'pointOpacity',
   point_color: 'pointColor',
+  point_color_by: 'pointColorBy',
   camera_pan_x: 'cameraPanX',
   camera_pan_y: 'cameraPanY',
   camera_zoom: 'cameraZoom',
-  view_mode: 'viewMode',
+  tour_traversal: 'tourTraversal',
   show_legend: 'showLegend',
-  show_frame_loadings: 'showFrameLoadings',
+  show_keyframe_loadings: 'showKeyframeLoadings',
   show_tour_description: 'showTourDescription',
   theme: 'themeMode',
 };
@@ -159,11 +159,10 @@ function Widget() {
       } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
         setViews(parseViews(buffers[0], msg.n_dims));
         setTourMeta({
-          tourMode: msg.tour_mode ?? null,
+          tourFamily: msg.tour_family ?? 'hyperdimensional',
           tourDescription: msg.tour_description ?? null,
-          tourFrameDescription: msg.tour_frame_description ?? null,
-          frameSummaries: msg.frame_summaries ?? null,
-          frameLoadings: msg.frame_loadings ?? null,
+          keyframeDescriptions: msg.keyframe_descriptions ?? null,
+          keyframeLoadings: msg.keyframe_loadings ?? null,
         });
       } else if (msg.type === 'metrics' && buffers[0]) {
         const ab = toArrayBuffer(buffers[0]);
@@ -332,11 +331,10 @@ function Widget() {
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}
         colorMap={colorMap}
-        tourMode={tourMeta.tourMode}
+        tourFamily={tourMeta.tourFamily}
         tourDescription={tourMeta.tourDescription}
-        tourFrameDescription={tourMeta.tourFrameDescription}
-        frameSummaries={tourMeta.frameSummaries}
-        frameLoadings={tourMeta.frameLoadings}
+        keyframeDescriptions={tourMeta.keyframeDescriptions}
+        keyframeLoadings={tourMeta.keyframeLoadings}
         spec={spec}
         onSpecChange={handleSpecChange}
         onSelectionChange={handleSelectionChange}

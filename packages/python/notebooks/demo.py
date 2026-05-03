@@ -34,7 +34,7 @@ def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
         tour=tour,
         preview_count=8,
         preview_size="small",
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         color_map=phenotype_colors,
         metric_bar_width=24,
         metric_tracks=[{"metric": "confusion", "height": 64, "domain": [0, 1]}],
@@ -208,11 +208,11 @@ def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
 
     # Build dtour spec and write with Polars (better compression than pyarrow).
     dtour_json = dtour.build_dtour_metadata(
-        point_color="phenotypes",
+        point_color_by="phenotypes",
         tour_by="dimensions",
         preview_count=4,
         camera_zoom=0.75,
-        color_map=phenotype_colors,
+        point_color_map=phenotype_colors,
         tour=tour_4d,
     )
     out_path = cache_dir / "mair-2022-tumor-4d.pq"

@@ -4,7 +4,7 @@ import {
   grandExitTargetAtom,
   guidedSuspendedAtom,
   tourPlayingAtom,
-  viewModeAtom,
+  tourTraversalAtom,
 } from '../state/atoms.ts';
 
 const MODES = ['guided', 'manual', 'grand'] as const;
@@ -20,23 +20,23 @@ const MODES = ['guided', 'manual', 'grand'] as const;
  * tour animation can ease out first.
  */
 export const useModeCycling = () => {
-  const viewMode = useAtomValue(viewModeAtom);
-  const setViewMode = useSetAtom(viewModeAtom);
+  const tourTraversal = useAtomValue(tourTraversalAtom);
+  const setTourTraversal = useSetAtom(tourTraversalAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
 
-  // Use ref so the keydown handler always sees the latest viewMode
+  // Use ref so the keydown handler always sees the latest tourTraversal
   // without needing to re-register the listener on every mode change.
-  const viewModeRef = useRef(viewMode);
-  viewModeRef.current = viewMode;
+  const tourTraversalRef = useRef(tourTraversal);
+  tourTraversalRef.current = tourTraversal;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !e.shiftKey || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       e.preventDefault();
 
-      const current = viewModeRef.current;
+      const current = tourTraversalRef.current;
       const idx = MODES.indexOf(current);
       const next = MODES[(idx + 1) % MODES.length]!;
 
@@ -54,11 +54,11 @@ export const useModeCycling = () => {
         if (next === 'grand') {
           setGrandExitTarget(null);
         }
-        setViewMode(next);
+        setTourTraversal(next);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setViewMode, setPlaying, setGuidedSuspended, setGrandExitTarget]);
+  }, [setTourTraversal, setPlaying, setGuidedSuspended, setGrandExitTarget]);
 };

@@ -8,7 +8,7 @@ import {
   grandExitTargetAtom,
   guidedSuspendedAtom,
   tourSpeedAtom,
-  viewModeAtom,
+  tourTraversalAtom,
 } from '../state/atoms.ts';
 
 const EASE_DURATION = 0.5; // seconds
@@ -25,12 +25,12 @@ function smoothstep(t: number): number {
  * `setDirectBasis` — much cheaper than `setBases`.
  *
  * Eases in over 500ms on entry and eases out over 500ms on exit.
- * During ease-out, `viewMode` stays 'grand' — the actual mode switch
+ * During ease-out, `tourTraversal` stays 'grand' — the actual mode switch
  * happens only after the animation decelerates to zero.
  */
 export const useGrandTour = (
   scatter: ScatterInstance | null,
-  viewMode: 'guided' | 'manual' | 'grand',
+  tourTraversal: 'guided' | 'manual' | 'grand',
   metadata: Metadata | null,
 ): void => {
   const speed = useAtomValue(tourSpeedAtom);
@@ -49,12 +49,12 @@ export const useGrandTour = (
   exitTargetRef.current = exitTarget;
 
   const store = useStore();
-  const setViewMode = useSetAtom(viewModeAtom);
+  const setTourTraversal = useSetAtom(tourTraversalAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
 
   useEffect(() => {
-    if (viewMode !== 'grand' || !metadata || metadata.dimCount < 2 || !scatter) return;
+    if (tourTraversal !== 'grand' || !metadata || metadata.dimCount < 2 || !scatter) return;
     if (activeIndices.length < 2) return;
 
     const dims = metadata.dimCount;
@@ -149,7 +149,7 @@ export const useGrandTour = (
           setGuidedSuspended(true);
         }
         setGrandExitTarget(null);
-        setViewMode(currentExitTarget);
+        setTourTraversal(currentExitTarget);
         return;
       }
 
@@ -164,12 +164,12 @@ export const useGrandTour = (
       store.set(currentBasisAtom, new Float32Array(basis));
     };
   }, [
-    viewMode,
+    tourTraversal,
     metadata,
     scatter,
     activeIndices,
     store,
-    setViewMode,
+    setTourTraversal,
     setGrandExitTarget,
     setGuidedSuspended,
   ]);

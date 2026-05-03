@@ -10,14 +10,14 @@ export type MainToGpu =
   | { type: 'addPreviewCanvas'; id: number; canvas: OffscreenCanvas }
   | { type: 'removePreviewCanvas'; id: number }
   | {
-      // Array of p×2 column-major basis matrices, one per view.
+      // Array of p×2 column-major basis matrices, one per keyframe.
       // Column-major: [x0, x1, ..., xp-1, y0, y1, ..., yp-1]
       // dims (p) is inferred as bases[0].length / 2.
       type: 'setBases';
       bases: Float32Array[];
-      // When 'parameter', skip Gram-Schmidt during interpolation so
-      // selector bases yield direct Catmull-Rom coordinate blending.
-      tourMode?: 'signed' | 'discriminative' | 'parameter' | null;
+      // When 'sequential', skip Gram-Schmidt during interpolation so
+      // bases yield direct Catmull-Rom coordinate blending.
+      tourFamily?: 'hyperdimensional' | 'sequential';
     }
   | {
       // Normalized position along the tour arc [0, 1].

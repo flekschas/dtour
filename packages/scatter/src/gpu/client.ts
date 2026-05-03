@@ -71,13 +71,10 @@ export type ScatterInstance = {
    * dims (p) is inferred as bases[0].length / 2.
    *
    * @param bases - array of basis matrices, one per tour keyframe
-   * @param tourMode - when 'parameter', skip Gram-Schmidt during
+   * @param tourFamily - when 'sequential', skip Gram-Schmidt during
    *   interpolation for direct coordinate blending
    */
-  setBases: (
-    bases: Float32Array[],
-    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
-  ) => void;
+  setBases: (bases: Float32Array[], tourFamily?: 'hyperdimensional' | 'sequential') => void;
   /** Set tour position along the arc-length parameterized path [0, 1]. */
   setTourPosition: (position: number) => void;
   /** Update point rendering style. Use 'auto' for density-adaptive sizing. */
@@ -308,11 +305,11 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
 
   const setBases = (
     bases: Float32Array[],
-    tourMode?: 'signed' | 'discriminative' | 'parameter' | null,
+    tourFamily?: 'hyperdimensional' | 'sequential',
   ): void => {
     // Transfer ownership of basis buffers for zero-copy
     const transfers = bases.map((b) => b.buffer);
-    sendToGpu(gpuWorker, { type: 'setBases', bases, tourMode }, transfers);
+    sendToGpu(gpuWorker, { type: 'setBases', bases, tourFamily }, transfers);
   };
 
   const setTourPosition = (position: number): void => {

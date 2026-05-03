@@ -84,7 +84,7 @@ dtour.Widget(
     camera_pan_y=0.0,
     camera_zoom=1.0,
     # mode & appearance
-    view_mode="guided",   # "guided" | "manual" | "grand"
+    tour_traversal="guided",   # "guided" | "manual" | "grand"
     show_legend=True,     # show/hide color legend
     theme="dark",         # "light" | "dark" | "system"
 )
@@ -212,7 +212,7 @@ type DtourSpec = {
   cameraPanX?: number;                // default 0
   cameraPanY?: number;                // default 0
   cameraZoom?: number;                // default 1/1.5
-  viewMode?: "guided" | "manual" | "grand";
+  tourTraversal?: "guided" | "manual" | "grand";
   showLegend?: boolean;               // default true
   themeMode?: "light" | "dark" | "system"; // default "dark"
 };

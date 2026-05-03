@@ -50,14 +50,14 @@ import {
   currentBasisAtom,
   currentKeyframeAtom,
   embeddedConfigAtom,
-  frameLoadingsAtom,
-  frameSummariesAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   is3dRotatedAtom,
+  keyframeDescriptionsAtom,
+  keyframeLoadingsAtom,
   legendSelectionAtom,
   metadataAtom,
-  pointColorAtom,
+  pointColorByAtom,
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
@@ -65,13 +65,13 @@ import {
   resolvedThemeAtom,
   resumeGuidedAtom,
   showAxesAtom,
-  showFrameLoadingsAtom,
-  sliderSpacingAtom,
+  showKeyframeLoadingsAtom,
   tourByAtom,
-  tourModeAtom,
+  tourFamilyAtom,
   tourPlayingAtom,
   tourPositionAtom,
-  viewModeAtom,
+  tourSliderSpacingAtom,
+  tourTraversalAtom,
 } from './state/atoms.ts';
 import { createDefaultViews, createPCAViews, expandBases } from './views.ts';
 
@@ -126,7 +126,7 @@ export const DtourViewer = ({
   const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(previewScaleAtom);
-  const [viewMode, setViewMode] = useAtom(viewModeAtom);
+  const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
   const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setCanvasSize = useSetAtom(canvasSizeAtom);
@@ -181,29 +181,31 @@ export const DtourViewer = ({
 
   const setCurrentBasis = useSetAtom(currentBasisAtom);
   const tourBy = useAtomValue(tourByAtom);
-  const tourMode = useAtomValue(tourModeAtom);
+  const tourFamily = useAtomValue(tourFamilyAtom);
   const [pcaResult, setPcaResult] = useState<{
     eigenvectors: Float32Array[];
     numDims: number;
   } | null>(null);
 
   const showAxes = useAtomValue(showAxesAtom);
-  const spacingMode = useAtomValue(sliderSpacingAtom);
+  const spacingMode = useAtomValue(tourSliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
-  const isGuidedMode = viewMode === 'guided';
-  const frameLoadings = useAtomValue(frameLoadingsAtom);
-  const frameSummaries = useAtomValue(frameSummariesAtom);
-  const showFrameLoadings = useAtomValue(showFrameLoadingsAtom);
-  const loadingsVisible = showFrameLoadings && frameLoadings !== null && frameLoadings.length > 0;
-  const summariesVisible = !loadingsVisible && frameSummaries !== null && frameSummaries.length > 0;
-  const showBarSpace = loadingsVisible || summariesVisible;
+  const isGuidedMode = tourTraversal === 'guided';
+  const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
+  const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
+  const showKeyframeLoadings = useAtomValue(showKeyframeLoadingsAtom);
+  const loadingsVisible =
+    showKeyframeLoadings && keyframeLoadings !== null && keyframeLoadings.length > 0;
+  const descriptionsVisible =
+    !loadingsVisible && keyframeDescriptions !== null && Array.isArray(keyframeDescriptions);
+  const showBarSpace = loadingsVisible || descriptionsVisible;
 
   // Resolve views (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
   // Embedded tour views from Parquet metadata.
   const embeddedViews =
-    embeddedConfig?.tour && metadata && embeddedConfig.tour.views.length > 0
-      ? embeddedConfig.tour.views
+    embeddedConfig?.tour && metadata && embeddedConfig.tour.keyframes.length > 0
+      ? embeddedConfig.tour.keyframes
       : null;
 
   // Track whether the active tour is predefined (externally computed) vs auto-generated.
@@ -216,7 +218,7 @@ export const DtourViewer = ({
       // to the first nDims column names (derived from basis matrix size).
       const tourNDims = predefinedViews[0]!.length / 2;
       const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-      setPredefinedTour({ dimensions: dims, viewCount: predefinedViews.length });
+      setPredefinedTour({ dimensions: dims, keyframeCount: predefinedViews.length });
     } else {
       setPredefinedTour(null);
     }
@@ -225,7 +227,7 @@ export const DtourViewer = ({
   // Effective preview count: predefined tours use their own view count,
   // auto-generated tours use the user-configurable previewCount atom.
   const predefinedTour = useAtomValue(predefinedTourAtom);
-  const effectivePreviewCount = predefinedTour?.viewCount ?? previewCount;
+  const effectivePreviewCount = predefinedTour?.keyframeCount ?? previewCount;
 
   const { resolvedViews, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
@@ -250,7 +252,10 @@ export const DtourViewer = ({
     } else {
       rb = createDefaultViews(dims, previewCount, activeIndices);
     }
-    return { resolvedViews: rb, arcLengths: computeArcLengths(rb, dims, tourMode !== 'parameter') };
+    return {
+      resolvedViews: rb,
+      arcLengths: computeArcLengths(rb, dims, tourFamily !== 'sequential'),
+    };
   }, [
     views,
     embeddedViews,
@@ -259,7 +264,7 @@ export const DtourViewer = ({
     previewCount,
     activeIndices,
     tourBy,
-    tourMode,
+    tourFamily,
     pcaResult,
   ]);
 
@@ -278,7 +283,7 @@ export const DtourViewer = ({
   resolvedViewsRef.current = resolvedViews;
   const metadataRef = useRef(metadata);
   metadataRef.current = metadata;
-  const orthonormalize = tourMode !== 'parameter';
+  const orthonormalize = tourFamily !== 'sequential';
   const orthonormalizeRef = useRef(orthonormalize);
   orthonormalizeRef.current = orthonormalize;
   // Pre-allocated scratch buffer for imperative basis interpolation
@@ -310,7 +315,7 @@ export const DtourViewer = ({
   // from the previous mode (grand/manual), not the tour interpolation,
   // so overwriting currentBasisAtom here would cause a jump on re-entry.
   useEffect(() => {
-    if (viewMode !== 'guided') return;
+    if (tourTraversal !== 'guided') return;
     if (guidedSuspended) return;
     if (!resolvedViews || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
@@ -318,7 +323,7 @@ export const DtourViewer = ({
     interpolateAtPosition(out, resolvedViews, arcLengths, dims, position, orthonormalize);
     setCurrentBasis(out);
   }, [
-    viewMode,
+    tourTraversal,
     guidedSuspended,
     resolvedViews,
     arcLengths,
@@ -336,7 +341,7 @@ export const DtourViewer = ({
 
   // Override confusion track color: highlight by default, label palette color on single selection
   const legendSelection = useAtomValue(legendSelectionAtom);
-  const pointColor = useAtomValue(pointColorAtom);
+  const pointColorBy = useAtomValue(pointColorByAtom);
   const resolvedTheme = useAtomValue(resolvedThemeAtom);
   const rawColorMap = useAtomValue(colorMapAtom);
 
@@ -350,11 +355,11 @@ export const DtourViewer = ({
     if (
       legendSelection &&
       legendSelection.size === 1 &&
-      typeof pointColor === 'string' &&
-      metadata?.categoricalColumnNames.includes(pointColor)
+      pointColorBy &&
+      metadata?.categoricalColumnNames.includes(pointColorBy)
     ) {
       const selectedIndex = legendSelection.values().next().value as number;
-      const labels = metadata.categoricalLabels[pointColor] ?? [];
+      const labels = metadata.categoricalLabels[pointColorBy] ?? [];
       const selectedLabel = labels[selectedIndex];
 
       if (selectedLabel && rawColorMap?.[selectedLabel]) {
@@ -377,7 +382,7 @@ export const DtourViewer = ({
     const result = [...parsedTracks];
     result[confusionIdx] = { ...currentTrack, color: confusionColor };
     return result;
-  }, [parsedTracks, legendSelection, pointColor, metadata, resolvedTheme, rawColorMap]);
+  }, [parsedTracks, legendSelection, pointColorBy, metadata, resolvedTheme, rawColorMap]);
 
   // Bridge Jotai atoms (style, camera) → scatter instance
   useScatter(scatter);
@@ -385,7 +390,7 @@ export const DtourViewer = ({
   // Spatial index for hover picking
   const spatialIndexRef = useSpatialIndex(scatter);
 
-  const isToolbarVisible = toolbarHeight > 0 && viewMode !== 'grand';
+  const isToolbarVisible = toolbarHeight > 0 && tourTraversal !== 'grand';
   const effectiveToolbarHeight = isToolbarVisible ? toolbarHeight : 0;
 
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
@@ -399,7 +404,7 @@ export const DtourViewer = ({
   useEffect(() => {
     if (!scatter || containerSize.height === 0) return;
 
-    const targetT = viewMode === 'grand' || toolbarHeight === 0 ? 0 : 1;
+    const targetT = tourTraversal === 'grand' || toolbarHeight === 0 ? 0 : 1;
     const h = containerSize.height;
     const t = toolbarHeight;
 
@@ -448,10 +453,10 @@ export const DtourViewer = ({
         insetAnimRef.current = null;
       }
     };
-  }, [scatter, viewMode, toolbarHeight, containerSize.height]);
+  }, [scatter, tourTraversal, toolbarHeight, containerSize.height]);
 
   // Grand mode: Givens-rotation grand tour
-  useGrandTour(scatter, viewMode, metadata);
+  useGrandTour(scatter, tourTraversal, metadata);
 
   // Largest selector diameter that doesn't overlap any gallery preview
   const selectorSize = useMemo(
@@ -636,10 +641,10 @@ export const DtourViewer = ({
 
   // Force guided mode when tourBy is 'parameter' (no manual/grand for parameter tours)
   useEffect(() => {
-    if (tourBy === 'parameter' && viewMode !== 'guided') {
-      setViewMode('guided');
+    if (tourBy === 'parameter' && tourTraversal !== 'guided') {
+      setTourTraversal('guided');
     }
-  }, [tourBy, viewMode, setViewMode]);
+  }, [tourBy, tourTraversal, setTourTraversal]);
 
   // Trigger PCA computation when tourBy is 'pca' and data is loaded
   useEffect(() => {
@@ -671,7 +676,7 @@ export const DtourViewer = ({
     } else {
       bases = createDefaultViews(dims, previewCount, activeIndices);
     }
-    scatter.setBases(bases, tourMode);
+    scatter.setBases(bases, tourFamily);
     scatter.render();
   }, [
     scatter,
@@ -682,7 +687,7 @@ export const DtourViewer = ({
     previewCount,
     activeIndices,
     tourBy,
-    tourMode,
+    tourFamily,
     pcaResult,
   ]);
 
@@ -762,7 +767,7 @@ export const DtourViewer = ({
         });
         return;
       }
-      if (store.get(viewModeAtom) !== 'guided') return;
+      if (store.get(tourTraversalAtom) !== 'guided') return;
       e.preventDefault();
       // Cancel any running position animation before wheel scrub
       store.set(animationGenAtom, (g) => g + 1);
@@ -838,7 +843,7 @@ export const DtourViewer = ({
       if (e.button !== 0) return;
       // Shift+drag to enter 3D; once active, plain drag also rotates
       if (!e.shiftKey && !store.get(is3dRotatedAtom)) return;
-      if (store.get(viewModeAtom) !== 'manual') return;
+      if (store.get(tourTraversalAtom) !== 'manual') return;
       if (!store.get(metadataAtom)) return; // data not loaded yet
       if (backendRef.current !== 'webgpu') return; // 3D requires WebGPU
       // Let clicks on buttons (revert, toolbar, etc.) pass through
@@ -961,7 +966,7 @@ export const DtourViewer = ({
 
   // Reset 3D state when leaving manual mode
   useEffect(() => {
-    if (viewMode === 'manual') return;
+    if (tourTraversal === 'manual') return;
     if (is3dEnabledRef.current) {
       scatterRef.current?.disable3d();
       is3dEnabledRef.current = false;
@@ -970,7 +975,7 @@ export const DtourViewer = ({
       axisOverlayRef.current?.clearRotation3d();
       setIs3dRotated(false);
     }
-  }, [viewMode, setIs3dRotated]);
+  }, [tourTraversal, setIs3dRotated]);
 
   const tickCount = views?.length ?? embeddedViews?.length ?? previewCount;
   const hasData = !!data && !!metadata;
@@ -1017,7 +1022,7 @@ export const DtourViewer = ({
 
         {/* Axis overlay — interactive in manual mode (disabled during 3D rotation),
             read-only in guided when enabled */}
-        {(viewMode === 'manual' || (isGuidedMode && showAxes)) &&
+        {(tourTraversal === 'manual' || (isGuidedMode && showAxes)) &&
           hasData &&
           containerSize.width > 0 && (
             <AxisOverlay
@@ -1030,7 +1035,7 @@ export const DtourViewer = ({
           )}
 
         {/* Revert camera button — shown when 3D camera is rotated in manual mode */}
-        {viewMode === 'manual' && <RevertCameraButton onRevert={revertCamera} />}
+        {tourTraversal === 'manual' && <RevertCameraButton onRevert={revertCamera} />}
 
         {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
         {isGuidedMode && hasData && (

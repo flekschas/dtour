@@ -202,7 +202,7 @@ def _(ImagesWidget, color_map, dtour, label_names, mo, tour):
         tour=tour,
         preview_count=4,
         preview_size="large",
-        point_color="label",
+        point_color_by="label",
         color_map=color_map,
         camera_zoom=0.5,
         height=900,
@@ -236,8 +236,8 @@ def _(cache_dir, color_map, dtour, sp_df, tour):
     _pa_table = sp_df.to_arrow()
     _meta_json = dtour.build_dtour_metadata(
         tour=tour,
-        point_color="label",
-        color_map=color_map,
+        point_color_by="label",
+        point_color_map=color_map,
         camera_zoom=0.5,
         preview_count=4,
         theme_mode="light",
@@ -296,7 +296,7 @@ def _(ImagesWidget, color_map, dtour, label_names, mo, pl, tour_pymde):
         tour=tour_pymde,
         preview_count=4,
         preview_size="large",
-        point_color="label",
+        point_color_by="label",
         color_map=color_map,
         camera_zoom=0.5,
         height=900,
@@ -321,8 +321,8 @@ def _(cache_dir, color_map, dtour, pq, sp_pymde_df, tour_pymde):
     _pa_table = sp_pymde_df.to_arrow()
     _meta_json = dtour.build_dtour_metadata(
         tour=tour_pymde,
-        point_color="label",
-        color_map=color_map,
+        point_color_by="label",
+        point_color_map=color_map,
         camera_zoom=0.5,
         preview_count=4,
         theme_mode="light",
