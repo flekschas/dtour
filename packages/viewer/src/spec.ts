@@ -33,6 +33,7 @@ export const dtourSpecSchema = z.object({
   tourSpeed: z.number().min(0.1).max(5).optional(),
   tourDirection: z.enum(['forward', 'backward']).optional(),
   tourSliderSpacing: z.enum(['equal', 'geodesic']).optional(),
+  tourSliderVisibility: z.enum(['visible', 'subtle', 'hidden']).optional(),
   previewCount: previewCountSchema.optional(),
   previewScale: z.union([z.literal(1), z.literal(0.75), z.literal(0.5)]).optional(),
   previewPadding: z.number().nonnegative().optional(),
@@ -247,6 +248,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   showKeyframeNumbers: false,
   showKeyframeLoadings: true,
   showTourDescription: false,
+  tourSliderVisibility: 'visible',
   tourSliderSpacing: 'equal',
   themeMode: 'dark',
 };

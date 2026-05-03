@@ -44,6 +44,7 @@ import {
   showKeyframeNumbersAtom,
   showLegendAtom,
   showTourDescriptionAtom,
+  sliderVisibilityAtom,
   themeModeAtom,
   tourByAtom,
   tourDescriptionAtom,
@@ -108,6 +109,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const predefinedViewCount = predefinedTour?.keyframeCount ?? null;
   const [tourSliderSpacing, setTourSliderSpacing] = useAtom(tourSliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
+  const [sliderVisibility, setSliderVisibility] = useAtom(sliderVisibilityAtom);
   const [color2dEnabled, setColor2dEnabled] = useAtom(color2dEnabledAtom);
   const [color2dColumns, setColor2dColumns] = useAtom(color2dColumnsAtom);
   const [minPointSize, setMinPointSize] = useAtom(minPointSizeAtom);
@@ -480,6 +482,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     min={0}
                     max={SPEED_STEPS.length - 1}
                     step={1}
+                    ticks={SPEED_STEPS.length}
                     value={[speedToStep(speed)]}
                     onValueChange={([step]: number[]) => {
                       if (step !== undefined) setSpeed(stepToSpeed(step));
@@ -507,6 +510,28 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     onCheckedChange={() =>
                       setTourSliderSpacing(tourSliderSpacing === 'equal' ? 'geodesic' : 'equal')
                     }
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex flex-col items-start gap-1"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-xs">Slider Visibility</span>
+                    <span className="text-xs font-medium text-dtour-highlight">
+                      {SLIDER_VIS_LABELS[sliderVisibility]}
+                    </span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={2}
+                    step={1}
+                    ticks={3}
+                    value={[SLIDER_VIS_STEPS.indexOf(sliderVisibility)]}
+                    onValueChange={([v]: number[]) => {
+                      if (v !== undefined) setSliderVisibility(SLIDER_VIS_STEPS[v]!);
+                    }}
+                    className="w-full"
                   />
                 </DropdownMenuItem>
                 {hasKeyframeLoadings && (
@@ -561,6 +586,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                       min={0}
                       max={PREVIEW_COUNT_STEPS.length - 1}
                       step={1}
+                      ticks={PREVIEW_COUNT_STEPS.length}
                       value={[PREVIEW_COUNT_STEPS.indexOf(previewCount)]}
                       onValueChange={([step]: number[]) => {
                         if (step !== undefined) setPreviewCount(PREVIEW_COUNT_STEPS[step]!);
@@ -583,6 +609,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     min={0}
                     max={PREVIEW_SCALE_STEPS.length - 1}
                     step={1}
+                    ticks={PREVIEW_SCALE_STEPS.length}
                     value={[PREVIEW_SCALE_STEPS.indexOf(previewScale)]}
                     onValueChange={([step]: number[]) => {
                       if (step !== undefined) setPreviewScale(PREVIEW_SCALE_STEPS[step]!);
@@ -903,6 +930,13 @@ const ColumnRow = ({
     </button>
   </DropdownMenuCheckboxItem>
 );
+
+const SLIDER_VIS_STEPS: ('visible' | 'subtle' | 'hidden')[] = ['hidden', 'subtle', 'visible'];
+const SLIDER_VIS_LABELS: Record<string, string> = {
+  visible: 'Visible',
+  subtle: 'Subtle',
+  hidden: 'Hidden',
+};
 
 const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];

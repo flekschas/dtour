@@ -66,6 +66,7 @@ import {
   resumeGuidedAtom,
   showAxesAtom,
   showKeyframeLoadingsAtom,
+  sliderVisibilityAtom,
   tourByAtom,
   tourFamilyAtom,
   tourPlayingAtom,
@@ -188,6 +189,7 @@ export const DtourViewer = ({
   } | null>(null);
 
   const showAxes = useAtomValue(showAxesAtom);
+  const sliderVisibility = useAtomValue(sliderVisibilityAtom);
   const spacingMode = useAtomValue(tourSliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = tourTraversal === 'guided';
@@ -1074,6 +1076,7 @@ export const DtourViewer = ({
                 hoveredKeyframe={hoveredKeyframe}
                 previewCenters={previewCenters}
                 showOriginDot={showAxes}
+                visibility={sliderVisibility}
               />
             </div>
           </div>

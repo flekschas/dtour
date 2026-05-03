@@ -19,6 +19,7 @@ import {
   showKeyframeNumbersAtom,
   showLegendAtom,
   showTourDescriptionAtom,
+  sliderVisibilityAtom,
   themeModeAtom,
   tourByAtom,
   tourDirectionAtom,
@@ -74,6 +75,7 @@ const SPEC_ATOM_MAP = {
   showKeyframeNumbers: entry(showKeyframeNumbersAtom),
   showKeyframeLoadings: entry(showKeyframeLoadingsAtom),
   showTourDescription: entry(showTourDescriptionAtom),
+  tourSliderVisibility: entry(sliderVisibilityAtom),
   tourSliderSpacing: entry(tourSliderSpacingAtom),
   themeMode: entry(themeModeAtom),
 } as const;

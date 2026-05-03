@@ -39,6 +39,7 @@
 - feat: projection-anchored hover highlight with per-point color
 - feat: hover tooltip anchored to projection space with directional arrow
 - feat: show color in point tooltip
+- feat: add tour slider visibility settings
 - fix: clear hover highlight and tooltip on projection change
 - refactor: make toolbar design more responsive
 - refactor: hide origin dot until axes are shown

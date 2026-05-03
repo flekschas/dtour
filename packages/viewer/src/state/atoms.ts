@@ -201,6 +201,9 @@ export const showKeyframeLoadingsAtom = atom(true);
 /** User preference for showing the tour description sub-bar. */
 export const showTourDescriptionAtom = atom(false);
 
+/** Circular slider visibility: 'visible' (full), 'subtle' (translucent + thinner), 'hidden'. */
+export const sliderVisibilityAtom = atom<'visible' | 'subtle' | 'hidden'>('visible');
+
 /** Per-keyframe feature loadings from embedded tour config. */
 export const keyframeLoadingsAtom = atom<KeyframeLoading[] | null>(null);
 

@@ -54,6 +54,8 @@ export {
   showLegendAtom,
   // Axes
   showAxesAtom,
+  // Slider visibility
+  sliderVisibilityAtom,
   // Keyframe numbers
   showKeyframeNumbersAtom,
   // Keyframe loadings & descriptions

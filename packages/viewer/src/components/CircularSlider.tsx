@@ -42,6 +42,8 @@ export type CircularSliderProps = {
   previewCenters?: PreviewCenter[];
   /** Whether to show the center origin dot (e.g. when axes are visible). */
   showOriginDot?: boolean;
+  /** Visibility mode: 'visible' (default), 'subtle' (translucent + thinner), 'hidden'. */
+  visibility?: 'visible' | 'subtle' | 'hidden';
 };
 
 const BASE_STROKE = 3;
@@ -69,9 +71,12 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       hoveredKeyframe,
       previewCenters,
       showOriginDot,
+      visibility = 'visible',
     },
     ref,
   ) => {
+    const isSubtle = visibility === 'subtle';
+    if (visibility === 'hidden') return null;
     const [isDragging, setIsDragging] = useState(false);
     const hasDraggedRef = useRef(false);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -205,9 +210,10 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       return Array.from({ length: tickCount }, (_, i) => {
         const angle = tickRad(i);
         const isActive = i === currentKeyframe;
-        const extra = isActive ? ACTIVE_EXTRA : 0;
+        const extra = isActive ? (isSubtle ? ACTIVE_EXTRA * 0.5 : ACTIVE_EXTRA) : 0;
+        const tickLen = isSubtle ? TICK_LEN * 0.6 : TICK_LEN;
         const r1 = radius + TICK_GAP;
-        const r2 = radius + TICK_GAP + TICK_LEN + extra;
+        const r2 = radius + TICK_GAP + tickLen + extra;
         return (
           <line
             // biome-ignore lint/suspicious/noArrayIndexKey: tick key
@@ -217,11 +223,12 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
             x2={center + r2 * Math.cos(angle)}
             y2={center + r2 * Math.sin(angle)}
             stroke={isActive ? 'var(--color-dtour-highlight)' : 'var(--color-dtour-border)'}
-            strokeWidth={isActive ? ACTIVE_WIDTH : 2}
+            strokeWidth={isActive ? (isSubtle ? 2 : ACTIVE_WIDTH) : isSubtle ? 1 : 2}
+            opacity={isSubtle ? (isActive ? 0.66 : 0.33) : undefined}
           />
         );
       });
-    }, [tickCount, tickRad, radius, center, currentKeyframe]);
+    }, [tickCount, tickRad, radius, center, currentKeyframe, isSubtle]);
 
     // Bezier connector — cubic bezier from tick outward end to preview center.
     // Shown on hover (hoveredKeyframe) or during playback (currentKeyframe).
@@ -276,11 +283,14 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       if (spacingMode !== 'equal' || !arcLengths || arcLengths.length < 2) return null;
       const n = arcLengths.length - 1;
       const expected = 1 / n;
+      const baseStroke = isSubtle ? 1.5 : BASE_STROKE;
+      const minStroke = isSubtle ? 0.5 : MIN_STROKE;
+      const maxStroke = isSubtle ? 4 : MAX_STROKE;
       const segments: React.ReactElement[] = [];
       for (let i = 0; i < n; i++) {
         const segLen = arcLengths[i + 1]! - arcLengths[i]!;
         const ratio = expected > 1e-10 ? segLen / expected : 1;
-        const strokeW = Math.max(MIN_STROKE, Math.min(MAX_STROKE, BASE_STROKE * ratio));
+        const strokeW = Math.max(minStroke, Math.min(maxStroke, baseStroke * ratio));
 
         const startFrac = i / n;
         const endFrac = (i + 1) / n;
@@ -302,12 +312,13 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
             fill="none"
             stroke="var(--color-dtour-border)"
             strokeWidth={strokeW}
+            opacity={isSubtle ? 0.33 : undefined}
             className="pointer-events-none"
           />,
         );
       }
       return segments;
-    }, [spacingMode, arcLengths, radius, center, startDeg]);
+    }, [spacingMode, arcLengths, radius, center, startDeg, isSubtle]);
 
     return (
       <svg
@@ -338,7 +349,8 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
             r={radius}
             fill="none"
             stroke="var(--color-dtour-border)"
-            strokeWidth="3"
+            strokeWidth={isSubtle ? 2 : 3}
+            opacity={isSubtle ? 0.33 : undefined}
             className="pointer-events-none"
           />
         )}
@@ -353,8 +365,9 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           display={value > 0.001 ? undefined : 'none'}
           fill="none"
           stroke="var(--color-dtour-highlight)"
-          strokeWidth="4"
+          strokeWidth={isSubtle ? 2 : 4}
           strokeLinecap="round"
+          opacity={isSubtle ? 0.66 : undefined}
           className="pointer-events-none"
         />
         {/* Center dot — only shown when axes are visible */}
@@ -372,7 +385,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           ref={hitAreaRef}
           cx={handleX}
           cy={handleY}
-          r="16"
+          r={isSubtle ? 12 : 16}
           fill="transparent"
           className={cn(
             'cursor-grab pointer-events-auto',
@@ -384,10 +397,10 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
           ref={handleCircleRef}
           cx={handleX}
           cy={handleY}
-          r="8"
+          r={isSubtle ? 5 : 8}
           fill="var(--color-dtour-highlight)"
           stroke="var(--color-dtour-bg)"
-          strokeWidth="2"
+          strokeWidth={isSubtle ? 1.5 : 2}
           className="pointer-events-none"
         />
       </svg>
