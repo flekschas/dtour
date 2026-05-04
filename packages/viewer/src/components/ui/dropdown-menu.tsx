@@ -58,7 +58,7 @@ export const DropdownMenuCheckboxItem = ({
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>) => (
   <DropdownMenuPrimitive.CheckboxItem
     className={cn(
-      'relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-dtour-border focus:text-dtour-highlight data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-dtour-surface focus:text-dtour-highlight data-highlighted:bg-dtour-surface data-highlighted:text-dtour-highlight data-disabled:pointer-events-none data-[disabled]:opacity-50',
       className,
     )}
     checked={checked}
