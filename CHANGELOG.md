@@ -40,6 +40,7 @@
 - feat: hover tooltip anchored to projection space with directional arrow
 - feat: show color in point tooltip
 - feat: add tour slider visibility settings
+- feat: add ability to reset spec to default settings
 - fix: clear hover highlight and tooltip on projection change
 - refactor: make toolbar design more responsive
 - refactor: hide origin dot until axes are shown

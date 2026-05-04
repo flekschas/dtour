@@ -16,10 +16,11 @@ import {
   SunIcon,
 } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePortalContainer } from '../portal-container.tsx';
+import { DTOUR_DEFAULTS } from '../spec.ts';
 import type { PreviewCount } from '../spec.ts';
 import {
   activeColumnsAtom,
@@ -53,6 +54,7 @@ import {
   tourSpeedAtom,
   tourTraversalAtom,
 } from '../state/atoms.ts';
+import { applySpecToStore } from '../state/spec-sync.ts';
 import { Logo } from './Logo.tsx';
 import { Button } from './ui/button.tsx';
 import { Checkbox } from './ui/checkbox.tsx';
@@ -115,6 +117,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [minPointSize, setMinPointSize] = useAtom(minPointSizeAtom);
   const [pointOpacity, setPointOpacity] = useAtom(pointOpacityAtom);
 
+  const store = useStore();
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -624,7 +627,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     setShowKeyframeNumbers((v) => !v);
                   }}
                 >
-                  <span className="flex-1 text-xs">Numbers</span>
+                  <span className="flex-1 text-xs">Show Numbers</span>
                   <Checkbox
                     checked={showKeyframeNumbers}
                     onCheckedChange={() => setShowKeyframeNumbers((v) => !v)}
@@ -632,6 +635,13 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-xs"
+              onSelect={() => applySpecToStore(store, DTOUR_DEFAULTS)}
+            >
+              Reset settings
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -766,7 +776,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                         }}
                         className={`cursor-pointer px-1.5 py-0.5 transition-colors ${
                           !color2dEnabled
-                            ? 'bg-dtour-highlight text-dtour-bg'
+                            ? 'bg-dtour-border text-dtour-text'
                             : 'text-dtour-text-muted hover:text-dtour-highlight'
                         }`}
                         title="1D coloring (single column)"
@@ -780,7 +790,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                         }}
                         className={`cursor-pointer px-1.5 py-0.5 transition-colors border-l border-dtour-border ${
                           color2dEnabled
-                            ? 'bg-dtour-highlight text-dtour-bg'
+                            ? 'bg-dtour-border text-dtour-text'
                             : 'text-dtour-text-muted hover:text-dtour-highlight'
                         }`}
                         title="2D coloring (two columns)"
