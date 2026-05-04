@@ -253,7 +253,7 @@ export const Gallery = ({
                 {visible && showKeyframeNumbers && (
                   <span
                     className={cn(
-                      'absolute text-xs leading-none text-white pointer-events-none transition-opacity duration-200',
+                      'absolute z-10 text-xs leading-none text-dtour-text pointer-events-none transition-opacity duration-200',
                       row === 0
                         ? 'top-0.5'
                         : row === layout.rows - 1
