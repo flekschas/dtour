@@ -35,10 +35,10 @@ export default defineConfig({
   assetsInclude: [],
   server: {
     proxy: {
-      '/gcs': {
-        target: 'https://storage.googleapis.com',
+      '/cloudflare': {
+        target: 'https://data.dtour.dev',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/gcs/, ''),
+        rewrite: (path) => path.replace(/^\/cloudflare/, ''),
       },
     },
   },

@@ -15,7 +15,7 @@ type ThemeMode = 'light' | 'dark' | 'system';
 
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
-const REMOTE = import.meta.env.DEV ? '/gcs/dtour' : 'https://data.dtour.dev';
+const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
 
 type ExampleDataset = {
   label: string;
