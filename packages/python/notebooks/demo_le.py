@@ -660,7 +660,7 @@ def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
 
 @app.cell
 def _(mo, signed_tour):
-    _summaries = signed_tour.frame_summaries or []
+    _summaries = signed_tour.keyframe_descriptions or []
     _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
     mo.md("### Per-Frame Correlation Summaries\n\n" + "\n".join(_lines))
     return
@@ -793,7 +793,7 @@ def _(cache_dir, df, dtour, fisher_df, fisher_tour, phenotype_colors, pl, win_co
 
 @app.cell
 def _(fisher_tour, mo):
-    _summaries = fisher_tour.frame_summaries or []
+    _summaries = fisher_tour.keyframe_descriptions or []
     _lines = [f"- **Frame {i + 1}**: {s}" for i, s in enumerate(_summaries)]
     mo.md("### Per-Frame Correlation Summaries (Fisher)\n\n" + "\n".join(_lines))
     return

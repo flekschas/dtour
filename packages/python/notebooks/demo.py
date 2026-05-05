@@ -214,6 +214,7 @@ def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
         camera_zoom=0.75,
         point_color_map=phenotype_colors,
         tour=tour_4d,
+        tour_dimensions=[f"umap_{i}" for i in range(tour_4d.n_dims)],
     )
     out_path = cache_dir / "mair-2022-tumor-4d.pq"
     df_4d.write_parquet(

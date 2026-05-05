@@ -73,10 +73,13 @@ def _(cache_dir, df, mo, np, pc_cols):
 
 @app.cell
 def _(class_cmap, df, dtour, pa, pc_cols):
-    _df_tour = df[*pc_cols, "Age", "Class", "Subclass"]
+    _df_tour = df[pc_cols + ["Age", "Class", "Subclass"]]  # noqa: RUF005
+
+    pca_tour = dtour.little_tour(_df_tour[pc_cols])
 
     tour_widget = dtour.Widget(
         data=pa.Table.from_pandas(_df_tour),
+        tour=pca_tour,
         point_color_by="Class",
         point_opacity=0.5,
         color_map=class_cmap,
@@ -87,7 +90,7 @@ def _(class_cmap, df, dtour, pa, pc_cols):
         theme="dark",
         height=1080,
     )
-    return (tour_widget,)
+    return pca_tour, tour_widget
 
 
 @app.cell
@@ -174,7 +177,27 @@ def _(mo, scatter_2d, tour_widget):
 
 
 @app.cell
-def _():
+def _(cache_dir, class_cmap, df, dtour, pa, pc_cols, pca_tour):
+    import pyarrow.parquet as pq
+
+    _df_tour = df[pc_cols + ["Age", "Class", "Subclass"]]  # noqa: RUF005
+    _table = pa.Table.from_pandas(_df_tour)
+    _meta_json = dtour.build_dtour_metadata(
+        tour=pca_tour,
+        tour_dimensions=pc_cols,
+        point_color_by="Class",
+        point_color_map=class_cmap,
+        point_opacity=0.5,
+        preview_count=8,
+    )
+    _existing = _table.schema.metadata or {}
+    _existing[b"dtour"] = _meta_json.encode("utf-8")
+
+    pq.write_table(
+        _table.replace_schema_metadata(_existing),
+        cache_dir / "lamanno2021-pca-tour.pq",
+        compression="zstd",
+    )
     return
 
 

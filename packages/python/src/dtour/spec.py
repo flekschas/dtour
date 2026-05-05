@@ -66,9 +66,11 @@ def _encode_tour(
     family = tour.tour_family or "hyperdimensional"
 
     # nViews/nDims are only needed by the parser to decode the base64 blob.
+    # nDims must match the basis matrix row count (tour.n_dims), NOT len(dims).
+    # For sequential tours, n_dims = 2 * n_frames while dims lists the original features.
     result: dict[str, Any] = {
         "nViews": tour.n_views,
-        "nDims": len(dims),
+        "nDims": tour.n_dims,
         "views": b64,
         "family": family,
         "dimensions": dims,

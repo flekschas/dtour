@@ -234,7 +234,7 @@ const DtourInner = ({
 
     const fieldsToApply: DtourSpec = {};
     for (const [key, value] of Object.entries(embeddedConfig.spec)) {
-      if (spec?.[key as keyof DtourSpec] === undefined) {
+      if (spec?.[key as keyof DtourSpec] == null) {
         (fieldsToApply as Record<string, unknown>)[key] = value;
       }
     }
