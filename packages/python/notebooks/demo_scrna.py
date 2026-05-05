@@ -34,10 +34,11 @@ def _():
     import jscatter
     import numpy as np
     import pandas as pd
+    import polars as pl
     import pyarrow as pa
 
     cache_dir = Path(__file__).parent / "__cache__"
-    return cache_dir, dtour, jscatter, np, pa, pd
+    return cache_dir, dtour, jscatter, np, pa, pd, pl
 
 
 @app.cell
@@ -177,11 +178,12 @@ def _(mo, scatter_2d, tour_widget):
 
 
 @app.cell
-def _(cache_dir, class_cmap, df, dtour, pa, pc_cols, pca_tour):
-    import pyarrow.parquet as pq
-
-    _df_tour = df[pc_cols + ["Age", "Class", "Subclass"]]  # noqa: RUF005
-    _table = pa.Table.from_pandas(_df_tour)
+def _(cache_dir, class_cmap, df, dtour, pc_cols, pca_tour, pl):
+    _df_tour = (
+        pl.from_pandas(df[pc_cols + ["Age", "Class", "Subclass"]])  # noqa: RUF005
+        .cast({c: pl.Float32 for c in pc_cols})
+        .cast({"Class": pl.Categorical, "Subclass": pl.Categorical})
+    )
     _meta_json = dtour.build_dtour_metadata(
         tour=pca_tour,
         tour_dimensions=pc_cols,
@@ -190,13 +192,11 @@ def _(cache_dir, class_cmap, df, dtour, pa, pc_cols, pca_tour):
         point_opacity=0.5,
         preview_count=8,
     )
-    _existing = _table.schema.metadata or {}
-    _existing[b"dtour"] = _meta_json.encode("utf-8")
-
-    pq.write_table(
-        _table.replace_schema_metadata(_existing),
-        cache_dir / "lamanno2021-pca-tour.pq",
+    _df_tour.write_parquet(
+        str(cache_dir / "lamanno2021-pca-tour.pq"),
         compression="zstd",
+        compression_level=9,
+        metadata={"dtour": _meta_json},
     )
     return
 

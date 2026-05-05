@@ -768,7 +768,10 @@ def _(cache_dir, df, dtour, fisher_df, fisher_tour, phenotype_colors, pl, win_co
     )
 
     # Second dataset: Fisher embedding + winsorized marker expression values
-    fisher_markers_df = pl.concat([fisher_df, df.select(win_cols)], how="horizontal")
+    # Cast Windsorized columns from float64 → float32 (halves size; float64 precision is unnecessary)
+    fisher_markers_df = pl.concat(
+        [fisher_df, df.select(pl.col(win_cols).cast(pl.Float32))], how="horizontal"
+    )
     fd_cols = [c for c in fisher_markers_df.columns if c.startswith("FD")]
     fisher_markers_json = dtour.build_dtour_metadata(
         point_color_by="phenotypes",
