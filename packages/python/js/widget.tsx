@@ -206,7 +206,10 @@ function Widget() {
     (newSpec: Required<DtourSpec>) => {
       suppressRef.current = true;
       for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
-        model.set(trait, newSpec[specKey]);
+        const value = newSpec[specKey];
+        if (value !== undefined) {
+          model.set(trait, value);
+        }
       }
       model.set('preview_size', SCALE_TO_SIZE[newSpec.previewScale] ?? 'large');
       model.save_changes();

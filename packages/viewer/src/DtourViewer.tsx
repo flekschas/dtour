@@ -242,14 +242,17 @@ export const DtourViewer = ({
       rb = views.map((b) => new Float32Array(b));
     } else if (!views && embeddedViews) {
       const tourNDims = embeddedViews[0]!.length / 2;
-      if (tourNDims < dims) {
+      if (tourNDims === dims) {
+        rb = embeddedViews.map((b) => new Float32Array(b));
+      } else if (tourNDims < dims) {
         // Tour spans fewer dims than the dataset — expand bases to full width.
         // Use tour.dimensions if available, otherwise assume the first nDims columns.
         const tourDims =
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
         rb = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
       } else {
-        rb = embeddedViews.map((b) => new Float32Array(b));
+        // Tour has more dims than the dataset — can't use it, fall back to defaults
+        rb = createDefaultViews(dims, previewCount, activeIndices);
       }
     } else {
       rb = createDefaultViews(dims, previewCount, activeIndices);
@@ -668,12 +671,15 @@ export const DtourViewer = ({
       bases = views.map((b) => new Float32Array(b));
     } else if (!views && embeddedViews) {
       const tourNDims = embeddedViews[0]!.length / 2;
-      if (tourNDims < dims) {
+      if (tourNDims === dims) {
+        bases = embeddedViews.map((b) => new Float32Array(b));
+      } else if (tourNDims < dims) {
         const tourDims =
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
         bases = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
       } else {
-        bases = embeddedViews.map((b) => new Float32Array(b));
+        // Tour has more dims than the dataset — can't use it, fall back to defaults
+        bases = createDefaultViews(dims, previewCount, activeIndices);
       }
     } else {
       bases = createDefaultViews(dims, previewCount, activeIndices);

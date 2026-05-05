@@ -53,7 +53,7 @@ class Widget(anywidget.AnyWidget):
 
     # ── DtourSpec fields (flat traitlets, snake_case) ────────────────────
     tour_by = t.Enum(["dimensions", "pca", "parameter"], default_value="dimensions").tag(sync=True)
-    tour_position = t.Float(0.0).tag(sync=True)
+    tour_position = t.Float(0.0, allow_none=True).tag(sync=True)
     tour_playing = t.Bool(False).tag(sync=True)
     tour_speed = t.Float(1.0).tag(sync=True)
     tour_direction = t.Enum(["forward", "backward"], default_value="forward").tag(sync=True)
@@ -100,6 +100,13 @@ class Widget(anywidget.AnyWidget):
     height = t.Int(720).tag(sync=True)
 
     # ── Validators ───────────────────────────────────────────────────────
+    @t.validate("tour_position")
+    def _validate_tour_position(self, proposal: t.Bunch) -> float:
+        value = proposal["value"]
+        if value is None:
+            return 0.0
+        return float(value)
+
     @t.validate("preview_count")
     def _validate_preview_count(self, proposal: t.Bunch) -> int:
         value = proposal["value"]
