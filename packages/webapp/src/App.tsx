@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
+import GaussianBlobsWorkerFactory from './workers/gaussianBlobs.worker.ts?worker&inline';
+import LinkedRingsWorkerFactory from './workers/linkedRings.worker.ts?worker&inline';
 import LorenzWorkerFactory from './workers/lorenz.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'done';
@@ -13,35 +15,97 @@ type ThemeMode = 'light' | 'dark' | 'system';
 
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
-const GCS_BASE = import.meta.env.DEV ? '/gcs/dtour' : 'https://storage.googleapis.com/dtour';
+const REMOTE = import.meta.env.DEV ? '/gcs/dtour' : 'https://data.dtour.dev';
 
-type ExampleDataset =
-  | { label: string; fileName: string; type: 'remote'; url: string }
-  | { label: string; fileName: string; type: 'generate' };
+type ExampleDataset = {
+  label: string;
+  fileName: string;
+  numPoints: string;
+  numDims: string;
+  size?: string;
+} & (
+  | { type: 'remote'; url: string }
+  | { type: 'generate'; worker: 'lorenz' | 'gaussian-blobs' | 'linked-rings' }
+);
 
 const EXAMPLES: ExampleDataset[] = [
   {
+    type: 'generate',
+    worker: 'gaussian-blobs',
+    label: 'Gaussian Blobs',
+    fileName: 'gaussian-blobs-5d.arrow',
+    numPoints: '500K',
+    numDims: '5',
+  },
+  {
+    type: 'generate',
+    worker: 'linked-rings',
+    label: 'Linked Rings',
+    fileName: 'linked-rings-4d.arrow',
+    numPoints: '500K',
+    numDims: '4',
+  },
+  {
+    type: 'generate',
+    worker: 'lorenz',
+    label: 'Lorenz Attractor',
+    fileName: 'lorenz-stenflo-1m.arrow',
+    numPoints: '1M',
+    numDims: '4',
+  },
+  {
     type: 'remote',
     label: 'Fashion MNIST',
-    fileName: 'fashion-mnist-embeddings-umap-dense-supervised-4d.pq',
-    url: `${GCS_BASE}/fashion-mnist-embeddings-umap-dense-supervised-4d.pq`,
+    fileName: 'fashion-mnist-attraction-repulsion-tour.pq',
+    url: `${REMOTE}/fashion-mnist-attraction-repulsion-tour.pq`,
+    numPoints: '70K',
+    numDims: '8',
+    size: '3MB',
   },
   {
     type: 'remote',
     label: 'News Headlines',
     fileName: 'huffpost-news-embeddings-umap-dense-supervised-4d.pq',
-    url: `${GCS_BASE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
+    url: `${REMOTE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
+    numPoints: '204K',
+    numDims: '4',
+    size: '5MB',
   },
   {
     type: 'remote',
-    label: 'Single Cell',
-    fileName: 'mair-2022-tumor-le-fisher.pq',
-    url: `${GCS_BASE}/mair-2022-tumor-le-fisher.pq`,
+    label: 'Single Cell Proteomics',
+    fileName: 'mair-2022-tumor-le-fisher-tour-markers.pq',
+    url: `${REMOTE}/mair-2022-tumor-le-fisher-tour-markers.pq`,
+    numPoints: '345K',
+    numDims: '9',
+    size: '34MB',
   },
   {
-    type: 'generate',
-    label: 'Lorenz Attractor',
-    fileName: 'lorenz-stenflo-1m.arrow',
+    type: 'remote',
+    label: 'Single Cell RNA-seq',
+    fileName: 'lamanno2021-pca-tour.pq',
+    url: `${REMOTE}/lamanno2021-pca-tour.pq`,
+    numPoints: '276K',
+    numDims: '8',
+    size: '8MB',
+  },
+  {
+    type: 'remote',
+    label: 'Image Caption CLIP',
+    fileName: 'sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq',
+    url: `${REMOTE}/sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq`,
+    numPoints: '49K',
+    numDims: '10',
+    size: '5MB',
+  },
+  {
+    type: 'remote',
+    label: 'arXiv papers',
+    fileName: 'arxiv-sequential-embedding-model-tour.pq',
+    url: `${REMOTE}/arxiv-sequential-embedding-model-tour.pq`,
+    numPoints: '3M',
+    numDims: '8',
+    size: '115MB',
   },
 ];
 
@@ -50,6 +114,8 @@ const DATASET_SLUGS: Record<string, number> = {
   'news-headlines': 1,
   'single-cell': 2,
   lorenz: 3,
+  'gaussian-blobs': 4,
+  'linked-rings': 5,
 };
 
 const THEME_STORAGE_KEY = 'dtour-theme-mode';
@@ -249,8 +315,15 @@ const App = () => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           buffer = await response.arrayBuffer();
         } else {
+          const WorkerFactory =
+            example.worker === 'gaussian-blobs'
+              ? GaussianBlobsWorkerFactory
+              : example.worker === 'linked-rings'
+                ? LinkedRingsWorkerFactory
+                : LorenzWorkerFactory;
+
           buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-            const worker = new LorenzWorkerFactory();
+            const worker = new WorkerFactory();
             worker.onmessage = (e: MessageEvent<ArrayBuffer>) => {
               resolve(e.data);
               worker.terminate();
@@ -265,11 +338,11 @@ const App = () => {
 
         if (id !== loadIdRef.current) return;
 
-        // When generating lorenz with a custom point count, use a distinct filename
+        // When generating with a custom point count, use a distinct filename
         // so the spec cache doesn't collide between sizes.
         const effectiveName =
           example.type === 'generate' && pointsParam
-            ? `lorenz-stenflo-${pointsParam}.arrow`
+            ? `${example.worker}-${pointsParam}.arrow`
             : example.fileName;
 
         metadataReceivedRef.current = false;
@@ -424,7 +497,7 @@ const App = () => {
             <>
               <Button
                 variant="ghost"
-                className="cursor-pointer flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
+                className="w-128 cursor-pointer flex flex-col items-center gap-3 px-6 py-6 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
                 onClick={() => inputRef.current?.click()}
               >
                 <svg
@@ -449,12 +522,12 @@ const App = () => {
                 </span>
               </Button>
               <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
-              <div className="flex items-center gap-1 mt-3 pointer-events-auto">
+              <div className="grid grid-cols-3 gap-4 mt-3 pointer-events-auto">
                 {EXAMPLES.map((example, i) => (
                   <motion.button
                     key={example.fileName}
                     type="button"
-                    className="text-xs text-dtour-text-muted hover:text-dtour-highlight hover:underline underline-offset-2 cursor-pointer transition-colors px-1 py-0.5 select-none"
+                    className="w-40 p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{
@@ -464,7 +537,15 @@ const App = () => {
                     }}
                     onClick={() => loadExample(example)}
                   >
-                    {example.label}
+                    <span className="block text-xs text-dtour-text/70 truncate">
+                      {example.label}
+                    </span>
+                    <span className="flex justify-between text-[10px] text-dtour-text-muted/50 mt-1">
+                      <span>
+                        {example.numPoints} &times; {example.numDims}D
+                      </span>
+                      {example.size && <span>{example.size}</span>}
+                    </span>
                   </motion.button>
                 ))}
               </div>
@@ -517,7 +598,7 @@ const App = () => {
                 <>
                   <Button
                     variant="ghost"
-                    className="cursor-pointer flex flex-col items-center gap-3 px-6 py-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                    className="w-128 cursor-pointer flex flex-col items-center gap-3 px-6 py-6 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
                     onClick={() => inputRef.current?.click()}
                   >
                     <svg
@@ -542,18 +623,26 @@ const App = () => {
                     </span>
                   </Button>
                   <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
-                  <div className="flex items-center gap-1 mt-3 pointer-events-auto">
+                  <div className="grid grid-cols-3 gap-4 mt-3 pointer-events-auto">
                     {EXAMPLES.map((example) => (
                       <button
                         key={example.fileName}
                         type="button"
-                        className="text-xs text-dtour-text-muted hover:text-dtour-highlight hover:underline underline-offset-2 cursor-pointer transition-colors px-1 py-0.5 select-none"
+                        className="w-40 p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                         onClick={() => {
                           setHomeOpen(false);
                           loadExample(example);
                         }}
                       >
-                        {example.label}
+                        <span className="block text-xs text-dtour-text/70 truncate">
+                          {example.label}
+                        </span>
+                        <span className="flex justify-between text-[10px] text-dtour-text-muted/50 mt-1">
+                          <span>
+                            {example.numPoints} &times; {example.numDims}D
+                          </span>
+                          {example.size && <span>{example.size}</span>}
+                        </span>
                       </button>
                     ))}
                   </div>

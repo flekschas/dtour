@@ -83,7 +83,7 @@ self.onmessage = (e: MessageEvent<number | null>) => {
   }
 
   const table = tableFromArrays({ x, y, z, w });
-  const bytes = tableToIPC(table);
-  const buffer = bytes.buffer as ArrayBuffer;
+  const bytes = tableToIPC(table, {});
+  const buffer = bytes!.buffer as ArrayBuffer;
   self.postMessage(buffer, [buffer]);
 };

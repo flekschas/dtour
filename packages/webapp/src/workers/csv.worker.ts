@@ -145,8 +145,8 @@ self.onmessage = (e: MessageEvent<ArrayBuffer>) => {
     }
 
     const table = tableFromArrays(columns);
-    const bytes = tableToIPC(table);
-    const buffer = bytes.buffer as ArrayBuffer;
+    const bytes = tableToIPC(table, {});
+    const buffer = bytes!.buffer as ArrayBuffer;
     self.postMessage(buffer, [buffer]);
   } catch (err) {
     self.postMessage({ error: err instanceof Error ? err.message : String(err) });
