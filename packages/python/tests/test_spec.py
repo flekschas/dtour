@@ -52,7 +52,7 @@ def test_build_color_map():
 def test_build_tour():
     X = np.random.default_rng(42).standard_normal((50, 4)).astype(np.float32)
     tour = little_tour(X)
-    result = json.loads(build_dtour_metadata(tour=tour))
+    result = json.loads(build_dtour_metadata(tour=tour, tour_dimensions=["a", "b", "c", "d"]))
     assert "tour" in result
     assert result["tour"]["nDims"] == 4
     assert result["tour"]["nViews"] == tour.n_views
@@ -73,6 +73,7 @@ def test_build_snake_to_camel_all_keys():
         "point_size": 4,
         "point_opacity": 0.8,
         "point_color": "col",
+        "point_color_by": "label",
         "point_color_map": {"A": "#ff0000"},
         "camera_pan_x": 0.1,
         "camera_pan_y": -0.1,
@@ -80,8 +81,8 @@ def test_build_snake_to_camel_all_keys():
         "tour_traversal": "manual",
         "show_legend": False,
         "show_axes": True,
-        "show_frame_numbers": True,
-        "show_frame_loadings": False,
+        "show_keyframe_numbers": True,
+        "show_keyframe_loadings": False,
         "show_tour_description": True,
         "tour_slider_spacing": "equal",
         "theme_mode": "light",
@@ -193,7 +194,7 @@ def test_round_trip_spec_and_color_map():
 def test_round_trip_tour():
     X = np.random.default_rng(42).standard_normal((50, 4)).astype(np.float32)
     tour = little_tour(X)
-    table = add_spec_to_parquet(_make_table(), tour=tour)
+    table = add_spec_to_parquet(_make_table(), tour=tour, tour_dimensions=["a", "b", "c", "d"])
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "rt_tour.parquet"
         arro3.io.write_parquet(table, str(path))
@@ -237,6 +238,7 @@ def test_widget_save_spec_with_tour():
 
     X = np.random.default_rng(42).standard_normal((50, 4)).astype(np.float32)
     tour = little_tour(X)
+    tour.feature_names = ["a", "b", "c", "d"]
     w = Widget(tour=tour)
     table = w.save_spec_to_parquet(_make_table())
     meta = json.loads(table.schema.metadata_str["dtour"])

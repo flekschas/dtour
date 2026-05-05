@@ -280,7 +280,7 @@ def test_le_tour_signed_basic():
     # n_frames=7 → 8 eigenvectors, 7 cumulative views
     assert result.n_dims == 8
     assert result.n_views == 7
-    assert result.tour_mode == "signed"
+    assert result.tour_family == "hyperdimensional"
     assert result.embedding is not None
     assert result.embedding.shape == (300, 8)
     for basis in result.views:
@@ -322,9 +322,9 @@ def test_le_tour_signed_frame_summaries():
         labels=labels,
         feature_names=names,
     )
-    assert result.frame_summaries is not None
-    assert len(result.frame_summaries) == result.n_views
-    for s in result.frame_summaries:
+    assert result.keyframe_descriptions is not None
+    assert len(result.keyframe_descriptions) == result.n_views
+    for s in result.keyframe_descriptions:
         assert s.startswith("Structure:"), s
 
 
@@ -350,11 +350,11 @@ def test_le_tour_signed_subsample():
         random_state=42,
     )
     assert result.embedding.shape == (300, 5)
-    assert result.tour_mode == "signed"
+    assert result.tour_family == "hyperdimensional"
 
 
 def test_le_tour_signed_save_load(tmp_path):
-    """Signed tour should survive save/load roundtrip with tour_mode."""
+    """Signed tour should survive save/load roundtrip with tour_family."""
     X = make_data(n=300, p=6)
     labels = np.array(["A"] * 150 + ["B"] * 150)
     names = ["f0", "f1", "f2", "f3", "f4", "f5"]
@@ -368,8 +368,8 @@ def test_le_tour_signed_save_load(tmp_path):
     path = tmp_path / "signed_tour.npz"
     result.save(path)
     loaded = TourResult.load(path)
-    assert loaded.tour_mode == "signed"
-    assert loaded.frame_summaries == result.frame_summaries
+    assert loaded.tour_family == "hyperdimensional"
+    assert loaded.keyframe_descriptions == result.keyframe_descriptions
     assert loaded.n_dims == result.n_dims
     assert loaded.n_views == result.n_views
     np.testing.assert_allclose(loaded.feature_loadings, result.feature_loadings, atol=1e-6)
@@ -392,7 +392,7 @@ def test_le_tour_discriminative_basic():
     assert result.n_views == 5
     assert result.n_dims == 6  # n_frames + 1
     assert result.embedding.shape == (300, 6)
-    assert result.tour_mode == "discriminative"
+    assert result.tour_family == "hyperdimensional"
     for basis in result.views:
         assert basis.shape == (6, 2)
         gram = basis.T @ basis
@@ -412,8 +412,8 @@ def test_le_tour_discriminative_frame_summaries():
         discriminative=True,
         feature_names=names,
     )
-    assert result.frame_summaries is not None
-    for s in result.frame_summaries:
+    assert result.keyframe_descriptions is not None
+    for s in result.keyframe_descriptions:
         assert s.startswith("Discriminant:"), s
 
 
@@ -438,7 +438,7 @@ def test_le_tour_discriminative_subsample():
         random_state=42,
     )
     assert result.embedding.shape == (300, 5)
-    assert result.tour_mode == "discriminative"
+    assert result.tour_family == "hyperdimensional"
 
 
 def test_le_tour_discriminative_save_load(tmp_path):
@@ -457,8 +457,8 @@ def test_le_tour_discriminative_save_load(tmp_path):
     path = tmp_path / "fisher_tour.npz"
     result.save(path)
     loaded = TourResult.load(path)
-    assert loaded.tour_mode == "discriminative"
-    assert loaded.frame_summaries == result.frame_summaries
+    assert loaded.tour_family == "hyperdimensional"
+    assert loaded.keyframe_descriptions == result.keyframe_descriptions
 
 
 # ── stratified subsampling ────────────────────────────────────────────────
@@ -478,7 +478,7 @@ def test_labeled_subsample_preserves_all_classes():
         random_state=42,
     )
     assert result.embedding.shape == (300, 4)
-    assert result.tour_mode == "signed"
+    assert result.tour_family == "hyperdimensional"
 
 
 def test_labeled_subsample_too_small_raises():
@@ -510,7 +510,7 @@ def test_labeled_subsample_imbalanced_discriminative():
         random_state=42,
     )
     assert result.embedding.shape == (200, 4)
-    assert result.tour_mode == "discriminative"
+    assert result.tour_family == "hyperdimensional"
     # Embedding should have finite, reasonable values (no 1e6 magnitudes)
     assert np.all(np.isfinite(result.embedding))
     assert np.abs(result.embedding).max() < 100
@@ -520,23 +520,23 @@ def test_labeled_subsample_imbalanced_discriminative():
 
 
 def test_frame_summaries_backward_compat(tmp_path):
-    """Loading an old npz without frame_summaries should return None."""
+    """Loading an old npz without keyframe_descriptions should return None."""
     X = make_data()
     result = little_tour(X, n_components=3)
     path = tmp_path / "old_tour.npz"
     result.save(path)
     loaded = TourResult.load(path)
-    assert loaded.frame_summaries is None
+    assert loaded.keyframe_descriptions is None
 
 
 def test_le_tour_frame_summaries():
-    """Vanilla LE tour should get 'Structure:' frame summaries."""
+    """Vanilla LE tour should get 'Structure:' keyframe descriptions."""
     X = make_data(n=200, p=6)
     names = ["a", "b", "c", "d", "e", "f"]
     result = le_tour(X, n_neighbors=10, n_frames=4, feature_names=names)
-    assert result.frame_summaries is not None
-    assert len(result.frame_summaries) == result.n_views
-    for s in result.frame_summaries:
+    assert result.keyframe_descriptions is not None
+    assert len(result.keyframe_descriptions) == result.n_views
+    for s in result.keyframe_descriptions:
         assert s.startswith("Structure:"), s
 
 
@@ -627,7 +627,7 @@ def test_le_tour_signed_adaptive_sigma():
         labels=labels,
         adaptive_sigma=True,
     )
-    assert result.tour_mode == "signed"
+    assert result.tour_family == "hyperdimensional"
     assert result.n_views == 5
     assert result.embedding.shape == (300, 6)
 
@@ -644,7 +644,7 @@ def test_le_tour_discriminative_mutual_knn():
         discriminative=True,
         affinity="mutual_knn",
     )
-    assert result.tour_mode == "discriminative"
+    assert result.tour_family == "hyperdimensional"
     assert result.n_views == 5
 
 
@@ -758,14 +758,14 @@ def test_sequential_tour_basic_callable():
     result = sequential_tour(
         data=datasets,
         method=fake_embed,
-        frame_summaries=["a", "b", "c"],
+        keyframe_descriptions=["a", "b", "c"],
     )
     assert isinstance(result, TourResult)
     assert result.n_views == 3
     assert result.n_dims == 6  # 2 * 3
     assert result.embedding.shape == (n, 6)
-    assert result.tour_mode == "parameter"
-    assert result.frame_summaries == ["a", "b", "c"]
+    assert result.tour_family == "sequential"
+    assert result.keyframe_descriptions == ["a", "b", "c"]
     for basis in result.views:
         assert basis.shape == (6, 2)
         assert basis.dtype == np.float32
@@ -941,14 +941,14 @@ def test_aligned_umap_tour_basic():
     result = aligned_umap_tour(
         data=slices,
         umap_kwargs={"n_neighbors": 10, "random_state": 42},
-        frame_summaries=["t0", "t1", "t2"],
+        keyframe_descriptions=["t0", "t1", "t2"],
     )
     assert isinstance(result, TourResult)
     assert result.n_views == 3
     assert result.n_dims == 6
     assert result.embedding.shape == (n, 6)
-    assert result.tour_mode == "parameter"
-    assert result.frame_summaries == ["t0", "t1", "t2"]
+    assert result.tour_family == "sequential"
+    assert result.keyframe_descriptions == ["t0", "t1", "t2"]
     for basis in result.views:
         assert basis.shape == (6, 2)
         assert basis.dtype == np.float32
@@ -1031,7 +1031,7 @@ def test_attraction_repulsion_tour_basic():
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
     assert isinstance(result, TourResult)
-    assert result.tour_mode == "parameter"
+    assert result.tour_family == "sequential"
     assert result.n_views == 2
     assert result.n_dims == 4  # 2 * n_frames
     assert result.embedding.shape == (200, 4)
@@ -1041,15 +1041,15 @@ def test_attraction_repulsion_tour_basic():
 
 
 def test_attraction_repulsion_tour_frame_summaries():
-    """Frame summaries should include rho values and landmarks."""
+    """Keyframe descriptions should include rho values and landmarks."""
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, rhos=[100, 4, 1], n_neighbors=10, random_state=42)
-    assert result.frame_summaries is not None
-    assert len(result.frame_summaries) == 3
-    assert "rho=100" in result.frame_summaries[0]
-    assert "LE-like" in result.frame_summaries[0]
-    assert "UMAP-like" in result.frame_summaries[1]
-    assert "t-SNE" in result.frame_summaries[2]
+    assert result.keyframe_descriptions is not None
+    assert len(result.keyframe_descriptions) == 3
+    assert "rho=100" in result.keyframe_descriptions[0]
+    assert "LE-like" in result.keyframe_descriptions[0]
+    assert "UMAP-like" in result.keyframe_descriptions[1]
+    assert "t-SNE" in result.keyframe_descriptions[2]
 
 
 def test_attraction_repulsion_tour_custom_rhos_override_n_frames():
@@ -1094,7 +1094,7 @@ def test_attraction_repulsion_tour_pymde_basic():
         random_state=42,
     )
     assert isinstance(result, TourResult)
-    assert result.tour_mode == "parameter"
+    assert result.tour_family == "sequential"
     assert result.n_views == 2
     assert result.embedding.shape == (200, 4)
 
@@ -1179,8 +1179,8 @@ def test_from_parquet_roundtrip(tmp_path):
     assert restored.n_views == original.n_views
     assert restored.n_dims == original.n_dims
     assert restored.feature_names == original.feature_names
-    assert restored.tour_mode == original.tour_mode
-    assert restored.frame_summaries == original.frame_summaries
+    assert restored.tour_family == original.tour_family
+    assert restored.keyframe_descriptions == original.keyframe_descriptions
     for orig_v, rest_v in zip(original.views, restored.views):
         np.testing.assert_allclose(rest_v, orig_v, atol=1e-6)
 
