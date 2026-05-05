@@ -182,7 +182,7 @@ export const PointTooltip = ({
           {rows.map((row) => (
             <div
               key={row.label}
-              className={`flex gap-2 ${row.isColor ? 'rounded-sm px-1 -mx-1' : ''}`}
+              className={`flex gap-2 ${row.isColor ? 'rounded-xs px-1 -mx-1' : ''}`}
               style={
                 row.isColor && color?.startsWith('#')
                   ? {
