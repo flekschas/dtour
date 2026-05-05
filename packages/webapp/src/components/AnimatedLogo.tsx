@@ -48,9 +48,9 @@ const animate = (letter: string, duration: number, delay: number) => {
 
 const springTransition: Transition = {
   type: 'spring',
-  stiffness: 300,
-  damping: 28,
-  mass: 0.8,
+  stiffness: 200,
+  damping: 30,
+  mass: 1,
 };
 
 export const AnimatedLogo = ({
@@ -132,31 +132,28 @@ export const AnimatedLogo = ({
 
   const blendClass = theme === 'light' ? 'mix-blend-multiply' : 'mix-blend-screen';
   const isMoving = phase === 'moving';
-  const atTarget = phase === 'moving';
-  const animTarget = atTarget
-    ? {
-        left: targetRect.x,
-        top: targetRect.y,
-        width: targetRect.width,
-        height: targetRect.height,
-      }
-    : {
-        left: initialRect.x,
-        top: initialRect.y,
-        width: initialRect.width,
-        height: initialRect.height,
-      };
+
+  // Compute transform-based animation: translate + scale from initial rect.
+  // This avoids animating layout properties (left/top/width/height) which
+  // trigger layout recalc every frame and cause jank.
+  const scaleX = targetRect.width / initialRect.width;
+  const scaleY = targetRect.height / initialRect.height;
+  // Translate accounts for the scale pivot being at top-left (transform-origin: 0 0)
+  const tx = targetRect.x - initialRect.x;
+  const ty = targetRect.y - initialRect.y;
 
   return (
     <motion.div
-      className="fixed z-30 text-dtour-highlight pointer-events-none"
-      initial={{
+      className="fixed z-30 text-dtour-highlight pointer-events-none will-change-transform"
+      style={{
         left: initialRect.x,
         top: initialRect.y,
         width: initialRect.width,
         height: initialRect.height,
+        transformOrigin: '0 0',
       }}
-      animate={animTarget}
+      initial={{ x: 0, y: 0, scaleX: 1, scaleY: 1 }}
+      animate={isMoving ? { x: tx, y: ty, scaleX, scaleY } : { x: 0, y: 0, scaleX: 1, scaleY: 1 }}
       transition={isMoving ? springTransition : { duration: 0 }}
       onAnimationComplete={() => {
         if (isMoving) handleMoveDone();

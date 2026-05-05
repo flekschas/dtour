@@ -6,9 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
-import GaussianBlobsWorkerFactory from './workers/gaussianBlobs.worker.ts?worker&inline';
-import LinkedRingsWorkerFactory from './workers/linkedRings.worker.ts?worker&inline';
-import LorenzWorkerFactory from './workers/lorenz.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'done';
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -315,12 +312,12 @@ const App = () => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           buffer = await response.arrayBuffer();
         } else {
-          const WorkerFactory =
-            example.worker === 'gaussian-blobs'
-              ? GaussianBlobsWorkerFactory
-              : example.worker === 'linked-rings'
-                ? LinkedRingsWorkerFactory
-                : LorenzWorkerFactory;
+          const mod = await (example.worker === 'gaussian-blobs'
+            ? import('./workers/gaussianBlobs.worker.ts?worker&inline')
+            : example.worker === 'linked-rings'
+              ? import('./workers/linkedRings.worker.ts?worker&inline')
+              : import('./workers/lorenz.worker.ts?worker&inline'));
+          const WorkerFactory = mod.default;
 
           buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
             const worker = new WorkerFactory();
@@ -362,12 +359,19 @@ const App = () => {
     [loading],
   );
 
-  // Auto-load dataset from URL parameter (for benchmark automation)
+  // Auto-load dataset from URL parameter (for benchmark automation).
+  // Deferred until the logo draw completes so the worker doesn't compete
+  // with the animation for main-thread resources.
   const loadExampleRef = useRef(loadExample);
   loadExampleRef.current = loadExample;
   const handleLoadDataRef = useRef(handleLoadData);
   handleLoadDataRef.current = handleLoadData;
+  const pendingAutoLoad = useRef(true);
   useEffect(() => {
+    if (!pendingAutoLoad.current) return;
+    if (logoPhase === 'drawing') return; // wait for draw to finish
+    pendingAutoLoad.current = false;
+
     if (urlParam) {
       setLoading(true);
       fetch(urlParam)
@@ -392,7 +396,7 @@ const App = () => {
       return;
     }
     loadExampleRef.current(EXAMPLES[index]!);
-  }, []);
+  }, [logoPhase]);
 
   // Expose readiness signal for Playwright.
   // We wait for the first 'rendered' event (not just 'metadata'), because bases
@@ -448,8 +452,12 @@ const App = () => {
   }, []);
 
   const handleMoveComplete = useCallback(() => {
-    setParsing(false);
+    // Step 2: logo has landed → show toolbar (fade in via hideToolbar=false)
     setLogoPhase('done');
+    // Step 3+4: brief pause for browser to settle, then reveal scatter
+    setTimeout(() => {
+      setParsing(false);
+    }, 350);
   }, []);
 
   return (
@@ -473,14 +481,19 @@ const App = () => {
         onLogoClick={() => setHomeOpen(true)}
         onSpecChange={handleSpecChange}
         onStatus={handleStatus}
-        hideToolbar={logoPhase === 'drawing' || logoPhase === 'moving' || parsing}
+        hideToolbar={logoPhase !== 'done'}
         backend={rendererParam}
       />
-      {(!data || parsing) && logoPhase !== 'moving' && (
+      {/* Solid background cover — stays during logo move to hide scatter */}
+      {(!data || parsing) && (
+        <div className="absolute inset-0 z-20 bg-dtour-bg pointer-events-none" />
+      )}
+      {/* Content overlay (upload button + examples) — hidden during logo move/settle */}
+      {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
           className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
-            logoPhase !== 'done' ? 'justify-end pb-[40vh]' : 'justify-center'
-          } ${loading || parsing ? 'bg-dtour-bg' : ''}`}
+            logoPhase === 'done' ? 'justify-center' : 'justify-start pt-[35vh]'
+          }`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{
