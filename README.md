@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://storage.googleapis.com/dtour/dtour-logo-plate.svg" alt="dtour" width="240">
+  <img src="https://data.dtour.dev/dtour-logo-plate.svg" alt="dtour" width="240">
 </p>
 <p align="center">
   <em>take a detour from your usual 2D embedding visualization → <a href="https://dtour.dev" target="_blank">dtour.dev</a></em>
@@ -17,7 +17,7 @@
 - 🖱️ **Fingertrippy**: play and rewind tours, manipulate axes, or get hypnotized by an endless grand tour animation
 
 <p align="center">
-  <img src="https://storage.googleapis.com/dtour/dtour-teaser-60fps.gif" alt="dtour teaser" width="480">
+  <img src="https://data.dtour.dev/dtour-teaser-60fps.gif" alt="dtour teaser" width="480">
 </p>
 
 A single 2D projection can only capture a fraction of high-dimensional structure. That's not a flaw of the embedding, it's a constraint of two axes. dtour lets you fly through multiple projections so you can build a sense for the full space.
@@ -241,3 +241,20 @@ overwhelming than a grand tour. In other terms, dtour, wants to tighten the
 exploration of high-dimensional data by replacing the random wandering of a
 grand tour animation with deterministic, optimized navigation through, what's
 called _guided tours_.
+
+## Paper
+
+For details about the design of dtour, the tour interpolation math, and usage scenarios spanning text, image, and single-cell data, see our preprint at https://arxiv.org/abs/2605.04306.
+
+```bibtex
+@misc{lekschas2026dtour,
+  author        = {Fritz Lekschas and Nezar Abdennur},
+  title         = {dtour: a steerable tour de vis through high-dimensional data},
+  year          = {2026},
+  eprint        = {2605.04306},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.HC},
+  doi           = {10.48550/arXiv.2605.04306},
+  url           = {https://arxiv.org/abs/2605.04306}
+}
+```
