@@ -198,8 +198,8 @@ export const showKeyframeNumbersAtom = atom(false);
 /** User preference for showing feature loading pills on preview thumbnails. */
 export const showKeyframeLoadingsAtom = atom(true);
 
-/** User preference for showing the tour description sub-bar. */
-export const showTourDescriptionAtom = atom(false);
+/** User preference for showing the tour description sub-bar. null = derive from tourDescription. */
+export const showTourDescriptionAtom = atom<boolean | null>(null);
 
 /** Circular slider visibility: 'visible' (full), 'subtle' (translucent + thinner), 'hidden'. */
 export const sliderVisibilityAtom = atom<'visible' | 'subtle' | 'hidden'>('visible');

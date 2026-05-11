@@ -20,6 +20,7 @@ type ExampleDataset = {
   numPoints: string;
   numDims: string;
   size?: string;
+  tourDescription?: string;
 } & (
   | { type: 'remote'; url: string }
   | { type: 'generate'; worker: 'lorenz' | 'gaussian-blobs' | 'linked-rings' }
@@ -33,6 +34,8 @@ const EXAMPLES: ExampleDataset[] = [
     fileName: 'gaussian-blobs-5d.arrow',
     numPoints: '500K',
     numDims: '5',
+    tourDescription:
+      'Five Gaussian clusters in 5D. The tour rotates through projections that reveal how the groups separate and overlap from different angles.',
   },
   {
     type: 'generate',
@@ -41,6 +44,8 @@ const EXAMPLES: ExampleDataset[] = [
     fileName: 'linked-rings-4d.arrow',
     numPoints: '500K',
     numDims: '4',
+    tourDescription:
+      'Two interlocking rings in 4D. The tour reveals the linked topology that is invisible in any single 2D projection.',
   },
   {
     type: 'generate',
@@ -49,6 +54,8 @@ const EXAMPLES: ExampleDataset[] = [
     fileName: 'lorenz-stenflo-1m.arrow',
     numPoints: '1M',
     numDims: '4',
+    tourDescription:
+      'The 4D [Lorenz-Stenflo chaotic attractor](https://simple.wikipedia.org/wiki/Lorenz_attractor). The tour traces its butterfly-shaped structure from multiple projection angles.',
   },
   {
     type: 'remote',
@@ -58,6 +65,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '70K',
     numDims: '8',
     size: '3MB',
+    tourDescription:
+      '70K fashion product images from [Fashion MNIST](https://github.com/zalandoresearch/fashion-mnist). Four 2D embeddings sweep the attraction-repulsion spectrum from LE-like (rho=100) through UMAP-like (rho=4) to t-SNE (rho=1), revealing how cluster structure emerges as repulsion increases.',
   },
   {
     type: 'remote',
@@ -67,6 +76,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '204K',
     numDims: '4',
     size: '5MB',
+    tourDescription:
+      '[200K+ HuffPost news headlines](https://www.kaggle.com/datasets/rmisra/news-category-dataset) in a 4D supervised UMAP embedding. The tour rotates through projections, revealing topic clusters and the continuum between news categories.',
   },
   {
     type: 'remote',
@@ -76,6 +87,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '345K',
     numDims: '9',
     size: '34MB',
+    tourDescription:
+      '345K tumor immune cells across 9 protein markers from [Mair et al. (2022)](https://doi.org/10.1038/s41586-022-04718-w). A Fisher-discriminant tour through spectral LE bases reveals immunophenotypic subpopulations at increasing differentiation levels.',
   },
   {
     type: 'remote',
@@ -85,6 +98,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '276K',
     numDims: '8',
     size: '8MB',
+    tourDescription:
+      '276K developing mouse brain cells from [La Manno et al. (2021)](https://doi.org/10.1038/s41586-021-03775-x). A PCA tour through the first 8 principal components, showing the transcriptomic diversity of neural cell types.',
   },
   {
     type: 'remote',
@@ -94,6 +109,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '49K',
     numDims: '10',
     size: '5MB',
+    tourDescription:
+      '49K image-caption pairs from [ShareGPT4V](https://sharegpt4v.github.io/) as joint CLIP embeddings. Five 2D embeddings sweep from pure caption to pure pixel representation, revealing how visual and textual semantics align across modalities.',
   },
   {
     type: 'remote',
@@ -103,6 +120,8 @@ const EXAMPLES: ExampleDataset[] = [
     numPoints: '3M',
     numDims: '8',
     size: '115MB',
+    tourDescription:
+      '3M [arXiv](https://arxiv.org/) papers. Four 2D UMAP embeddings of the titles and abstracts from [SPECTER2](https://huggingface.co/allenai/specter2), [BGE-M3](https://huggingface.co/BAAI/bge-m3), [Nomic v2](https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe), and [F2LLM-v2 8B](https://huggingface.co/codefuse-ai/F2LLM-v2-8B) embeddingsreveal how different models organize the scientific research landscape.',
   },
 ];
 
@@ -132,6 +151,8 @@ function loadPersistedSpec(fileName: string): DtourSpec {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
+    // Migrate: old specs stored showTourDescription as false; now null means "auto"
+    if (parsed.showTourDescription === false) parsed.showTourDescription = null;
     return parsed as DtourSpec;
   } catch {
     return {};
@@ -179,6 +200,7 @@ if (benchmarkMode) {
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
   const [fileName, setFileName] = useState<string | undefined>(undefined);
+  const [tourDescription, setTourDescription] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [homeOpen, setHomeOpen] = useState(false);
@@ -257,6 +279,7 @@ const App = () => {
 
       metadataReceivedRef.current = false;
       gpuReadyRef.current = false;
+      setTourDescription(undefined);
       setFileName(file.name);
       setData(buffer);
       setParsing(true);
@@ -272,6 +295,7 @@ const App = () => {
     const applyData = (b: ArrayBuffer) => {
       metadataReceivedRef.current = false;
       gpuReadyRef.current = false;
+      setTourDescription(undefined);
       setFileName(name);
       setData(b);
       setParsing(true);
@@ -344,6 +368,7 @@ const App = () => {
 
         metadataReceivedRef.current = false;
         gpuReadyRef.current = false;
+        setTourDescription(example.tourDescription);
         setFileName(effectiveName);
         setData(buffer);
         setParsing(true);
@@ -477,6 +502,7 @@ const App = () => {
         key={fileName}
         data={data}
         spec={spec}
+        tourDescription={tourDescription}
         onLoadData={handleLoadData}
         onLogoClick={() => setHomeOpen(true)}
         onSpecChange={handleSpecChange}

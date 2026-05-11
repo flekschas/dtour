@@ -239,19 +239,24 @@ export const DtourViewer = ({
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
       rb = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
     } else if (views && views.length > 0) {
-      rb = views.map((b) => new Float32Array(b));
-    } else if (!views && embeddedViews) {
+      const tourNDims = views[0]!.length / 2;
+      if (tourNDims === dims) {
+        rb = views.map((b) => new Float32Array(b));
+      } else if (tourNDims < dims) {
+        const tourDims = metadata.columnNames.slice(0, tourNDims);
+        rb = expandBases(views, tourDims, metadata.columnNames, dims);
+      } else {
+        rb = createDefaultViews(dims, previewCount, activeIndices);
+      }
+    } else if (embeddedViews) {
       const tourNDims = embeddedViews[0]!.length / 2;
       if (tourNDims === dims) {
         rb = embeddedViews.map((b) => new Float32Array(b));
       } else if (tourNDims < dims) {
-        // Tour spans fewer dims than the dataset — expand bases to full width.
-        // Use tour.dimensions if available, otherwise assume the first nDims columns.
         const tourDims =
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
         rb = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
       } else {
-        // Tour has more dims than the dataset — can't use it, fall back to defaults
         rb = createDefaultViews(dims, previewCount, activeIndices);
       }
     } else {
@@ -668,8 +673,16 @@ export const DtourViewer = ({
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
       bases = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
     } else if (views && views.length > 0) {
-      bases = views.map((b) => new Float32Array(b));
-    } else if (!views && embeddedViews) {
+      const tourNDims = views[0]!.length / 2;
+      if (tourNDims === dims) {
+        bases = views.map((b) => new Float32Array(b));
+      } else if (tourNDims < dims) {
+        const tourDims = metadata.columnNames.slice(0, tourNDims);
+        bases = expandBases(views, tourDims, metadata.columnNames, dims);
+      } else {
+        bases = createDefaultViews(dims, previewCount, activeIndices);
+      }
+    } else if (embeddedViews) {
       const tourNDims = embeddedViews[0]!.length / 2;
       if (tourNDims === dims) {
         bases = embeddedViews.map((b) => new Float32Array(b));
@@ -678,7 +691,6 @@ export const DtourViewer = ({
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
         bases = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
       } else {
-        // Tour has more dims than the dataset — can't use it, fall back to defaults
         bases = createDefaultViews(dims, previewCount, activeIndices);
       }
     } else {

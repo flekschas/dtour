@@ -557,13 +557,15 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     className="gap-4"
                     onSelect={(e) => {
                       e.preventDefault();
-                      setShowTourDescription((v) => !v);
+                      setShowTourDescription((v) => !(v ?? hasTourDescription));
                     }}
                   >
                     <span className="flex-1 text-xs">Tour description</span>
                     <Checkbox
-                      checked={showTourDescription}
-                      onCheckedChange={() => setShowTourDescription((v) => !v)}
+                      checked={showTourDescription ?? hasTourDescription}
+                      onCheckedChange={() =>
+                        setShowTourDescription((v) => !(v ?? hasTourDescription))
+                      }
                     />
                   </DropdownMenuItem>
                 )}

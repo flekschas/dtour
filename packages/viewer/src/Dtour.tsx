@@ -1,7 +1,7 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { bitPackIndices } from '@dtour/scatter';
 import { Provider, createStore, useAtomValue, useSetAtom, useStore } from 'jotai';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DtourViewer } from './DtourViewer.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
@@ -88,6 +88,32 @@ export type DtourProps = {
   /** Per-keyframe feature loadings. Overrides embedded config. */
   keyframeLoadings?: KeyframeLoading[] | null;
 };
+
+// Minimal inline markdown: [text](url), **bold**/__bold__, *italic*/_italic_
+const MD_INLINE = /\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|__(.+?)__|\*(.+?)\*|_(.+?)_/g;
+
+function InlineMarkdown({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(MD_INLINE)) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[1] != null) {
+      parts.push(
+        <a key={key++} href={m[2]} target="_blank" rel="noopener noreferrer" className="underline">
+          {m[1]}
+        </a>,
+      );
+    } else if (m[3] != null || m[4] != null) {
+      parts.push(<strong key={key++}>{m[3] ?? m[4]}</strong>);
+    } else if (m[5] != null || m[6] != null) {
+      parts.push(<em key={key++}>{m[5] ?? m[6]}</em>);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
 
 export const Dtour = ({
   data,
@@ -410,10 +436,13 @@ const DtourInner = ({
   const legendVisible = useAtomValue(legendVisibleAtom);
 
   // Tour description sub-bar
-  const showTourDescription = useAtomValue(showTourDescriptionAtom);
+  const showTourDescriptionPref = useAtomValue(showTourDescriptionAtom);
   const tourDescription = useAtomValue(tourDescriptionAtom);
+  const tourFamily = useAtomValue(tourFamilyAtom);
   const descriptionVisible =
-    showTourDescription && tourTraversal === 'guided' && tourDescription !== null;
+    (showTourDescriptionPref ?? tourDescription !== null) &&
+    tourTraversal === 'guided' &&
+    tourDescription !== null;
   const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
 
   // Sidebar width state — remembered across open/close cycles
@@ -469,8 +498,11 @@ const DtourInner = ({
           </div>
           {descriptionVisible && (
             <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
-              <span className="text-[11px] text-dtour-text-muted italic">
-                <strong>Tour:</strong> {tourDescription}
+              <span className="text-[11px] text-dtour-text-muted">
+                <strong>
+                  {tourFamily === 'sequential' ? 'Sequential tour:' : 'Hyperdimensional tour:'}
+                </strong>{' '}
+                <InlineMarkdown text={tourDescription} />
               </span>
             </div>
           )}
