@@ -86,6 +86,7 @@ def test_build_snake_to_camel_all_keys():
         "show_tour_description": True,
         "tour_slider_spacing": "equal",
         "theme_mode": "light",
+        "centering": "mean",
     }
     result = json.loads(build_dtour_metadata(**kwargs))
     for snake, camel in _SNAKE_TO_CAMEL.items():

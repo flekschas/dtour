@@ -7,7 +7,7 @@
 // the final means and covariance matrix.
 //
 // Data is normalized identically to the projection shader:
-//   v = (raw - min) / range - 0.5
+//   v = (raw - center) / range
 
 struct PcaParams {
   num_points: u32,
@@ -33,7 +33,7 @@ fn normalize(dim: u32, point_idx: u32, N: u32) -> f32 {
   let raw = data[dim * N + point_idx];
   let np = norm_params[dim];
   let range = max(np.y, 1e-6);
-  return (raw - np.x) / range - 0.5;
+  return (raw - np.x) / range;
 }
 
 fn cov_idx(d: u32, d1: u32, d2: u32) -> u32 {

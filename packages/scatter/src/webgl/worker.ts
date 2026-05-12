@@ -61,6 +61,8 @@ type GLState = {
   dataBuffers: Float32Array[];
   normMins: Float32Array | null;
   normRanges: Float32Array | null;
+  normMeans: Float32Array | null;
+  centering: 'midrange' | 'mean';
   // Categorical index buffers on CPU, keyed by column name
   categoricalBuffers: Map<string, Uint32Array>;
   // Tour
@@ -295,7 +297,7 @@ let adjBasisWeights: Float32Array | null = null;
 
 const computeAdjustedBasis = (
   basis: Float32Array,
-  mins: Float32Array,
+  centers: Float32Array,
   ranges: Float32Array,
   dims: number,
 ): { weights: Float32Array; biasX: number; biasY: number } => {
@@ -315,12 +317,27 @@ const computeAdjustedBasis = (
     adjBasisWeights[d] = bx * invRange;
     adjBasisWeights[dims + d] = by * invRange;
 
-    const normOffset = -mins[d]! / range - 0.5;
+    const normOffset = -centers[d]! / range;
     biasX += normOffset * bx * VIEWPORT_SCALE;
     biasY += normOffset * by * VIEWPORT_SCALE;
   }
 
   return { weights: adjBasisWeights, biasX, biasY };
+};
+
+/** Compute per-dimension center values based on the active centering mode. */
+const computeNormCenters = (): Float32Array | null => {
+  if (!state || !state.normMins || !state.normRanges) return null;
+  const dims = state.numDims;
+  const centers = new Float32Array(dims);
+  if (state.centering === 'mean' && state.normMeans) {
+    centers.set(state.normMeans);
+  } else {
+    for (let d = 0; d < dims; d++) {
+      centers[d] = state.normMins[d]! + state.normRanges[d]! * 0.5;
+    }
+  }
+  return centers;
 };
 
 // ─── HDR FBO management ──────────────────────────────────────────────────
@@ -524,17 +541,14 @@ const renderView = (
   camera: CameraState,
   tonemapTarget?: WebGLFramebuffer,
 ): void => {
-  if (!state || !state.dataTexture || !state.normMins || !state.normRanges) return;
+  if (!state || !state.dataTexture || !state.normRanges) return;
 
   const { numPoints, numDims, pointProgram, pointLocs, tonemapProgram, tonemapLocs } = state;
   const gl = state.mainView.gl;
 
-  const { weights, biasX, biasY } = computeAdjustedBasis(
-    basis,
-    state.normMins,
-    state.normRanges,
-    numDims,
-  );
+  const centers = computeNormCenters();
+  if (!centers) return;
+  const { weights, biasX, biasY } = computeAdjustedBasis(basis, centers, state.normRanges, numDims);
 
   const resolved = resolveStyleForCanvas(canvasWidth, canvasHeight);
 
@@ -936,7 +950,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   // ── Dataset load ──
   if (event.data.type !== 'data') return;
 
-  const { dataVersion, dims, rows, buffers, mins, ranges, categoricalColumns } = event.data;
+  const { dataVersion, dims, rows, buffers, mins, ranges, means, categoricalColumns } = event.data;
   currentDataVersion = dataVersion;
 
   if (dims < 2 || rows === 0 || buffers.length < 2) {
@@ -975,6 +989,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   state.dataBuffers = buffers;
   state.normMins = new Float32Array(mins);
   state.normRanges = new Float32Array(ranges);
+  state.normMeans = new Float32Array(means);
   state.numPoints = rows;
   state.numDims = dims;
 
@@ -1146,7 +1161,7 @@ const pointInPolygon = (
 };
 
 const handleLassoSelect = (polygon: Float32Array): void => {
-  if (!state || !state.normMins || !state.normRanges || state.numPoints === 0) return;
+  if (!state || !state.normRanges || state.numPoints === 0) return;
 
   const { numPoints, numDims, dataBuffers, camera } = state;
   const numVertices = polygon.length / 2;
@@ -1171,9 +1186,11 @@ const handleLassoSelect = (polygon: Float32Array): void => {
   if (!currentBasis) return;
 
   // Compute adjusted basis for projection
+  const centers = computeNormCenters();
+  if (!centers) return;
   const { weights, biasX, biasY } = computeAdjustedBasis(
     currentBasis,
-    state.normMins,
+    centers,
     state.normRanges,
     numDims,
   );
@@ -1432,6 +1449,14 @@ const handleMessage = (msg: MainToGpu): void => {
     return;
   }
 
+  if (msg.type === 'setCentering') {
+    state.centering = msg.centering;
+    if ((state.tour || state.directBasis) && state.dataTexture) {
+      renderAllViews();
+    }
+    return;
+  }
+
   if (msg.type === 'resize') {
     if (msg.dpr !== undefined) {
       state.dpr = msg.dpr;
@@ -1549,7 +1574,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'getProjectedPositions') {
-    if (!state || !state.normMins || !state.normRanges || state.numPoints === 0) {
+    if (!state || !state.normRanges || state.numPoints === 0) {
       postMain({ type: 'projectedPositions', positions: new Float32Array(0) }, []);
       return;
     }
@@ -1577,9 +1602,14 @@ const handleMessage = (msg: MainToGpu): void => {
       return;
     }
 
+    const centers = computeNormCenters();
+    if (!centers) {
+      postMain({ type: 'projectedPositions', positions: new Float32Array(0) }, []);
+      return;
+    }
     const { weights, biasX, biasY } = computeAdjustedBasis(
       currentBasis,
-      state.normMins,
+      centers,
       state.normRanges,
       numDims,
     );
@@ -1739,6 +1769,8 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         dataBuffers: [],
         normMins: null,
         normRanges: null,
+        normMeans: null,
+        centering: 'midrange',
         categoricalBuffers: new Map(),
         tour: null,
         style: {

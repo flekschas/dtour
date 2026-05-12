@@ -6,6 +6,7 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  centeringAtom,
   minPointSizeAtom,
   pointColorAtom,
   pointColorByAtom,
@@ -78,6 +79,7 @@ const SPEC_ATOM_MAP = {
   tourSliderVisibility: entry(sliderVisibilityAtom),
   tourSliderSpacing: entry(tourSliderSpacingAtom),
   themeMode: entry(themeModeAtom),
+  centering: entry(centeringAtom),
 } as const;
 
 type SpecKey = keyof typeof SPEC_ATOM_MAP;

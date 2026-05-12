@@ -2,7 +2,7 @@
 //
 // Reads p-dimensional point data from a single concatenated storage buffer
 // (column-major: dim0[0..N], dim1[0..N], ..., dimP[0..N]),
-// normalizes each dimension using per-dim [min, range] params,
+// normalizes each dimension using per-dim [center, range] params,
 // and projects to 2D using the supplied p×2 basis matrix.
 //
 // Output: N interleaved [x, y] pairs in the projected buffer.
@@ -11,7 +11,7 @@
 // projection in point.wgsl + computeAdjustedBasis() in worker.ts.
 // The render path folds normalization into the basis on CPU (adj_basis, bias)
 // while this shader normalizes per-point on GPU. Both produce identical
-// projected coordinates: (raw - min) / range - 0.5) * basis * viewport_scale.
+// projected coordinates: ((raw - center) / range) * basis * viewport_scale.
 
 struct Params {
   num_points: u32,
@@ -22,7 +22,7 @@ struct Params {
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> data: array<f32>;
-// norm_params[d] = vec2f(min, range) for dimension d
+// norm_params[d] = vec2f(center, range) for dimension d
 @group(0) @binding(2) var<storage, read> norm_params: array<vec2f>;
 // basis: column-major p×2 — first p floats = x-weights, next p = y-weights
 @group(0) @binding(3) var<storage, read> basis: array<f32>;
@@ -43,8 +43,7 @@ fn project(@builtin(global_invocation_id) gid: vec3u) {
     let raw = data[d * N + i];
     let np = norm_params[d];
     let range = max(np.y, 1e-6);
-    // Center to [-0.5, 0.5]
-    let v = (raw - np.x) / range - 0.5;
+    let v = (raw - np.x) / range;
 
     x += v * basis[d];
     y += v * basis[p + d];

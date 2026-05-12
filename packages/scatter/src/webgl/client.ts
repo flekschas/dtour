@@ -158,6 +158,10 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     });
   };
 
+  const setCentering = (centering: 'midrange' | 'mean'): void => {
+    sendToGpu(gpuWorker, { type: 'setCentering', centering });
+  };
+
   const resize = (viewIndex: number, width: number, height: number, dpr?: number): void => {
     sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height, dpr });
   };
@@ -351,6 +355,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setTourPosition,
     setStyle,
     setCamera,
+    setCentering,
     resize,
     render,
     setDirectBasis,

@@ -113,6 +113,8 @@ type GpuState = {
   adjBasisBuffer: GPUBuffer | null;
   normMins: Float32Array | null;
   normRanges: Float32Array | null;
+  normMeans: Float32Array | null;
+  centering: 'midrange' | 'mean';
   // 3D camera rotation mode
   is3dActive: boolean;
   rotation3d: Float32Array | null; // 9-element 3×3 column-major
@@ -300,20 +302,24 @@ let adjBasisWeights: Float32Array | null = null;
  *
  * adjBasis[d]       = basis[d]       / range[d] * VIEWPORT_SCALE
  * adjBasis[dims+d]  = basis[dims+d]  / range[d] * VIEWPORT_SCALE
- * biasX = Σ ((-min[d]/range[d] - 0.5) * basis[d])       * VIEWPORT_SCALE
- * biasY = Σ ((-min[d]/range[d] - 0.5) * basis[dims+d])  * VIEWPORT_SCALE
+ * biasX = Σ ((-center[d] / range[d]) * basis[d])       * VIEWPORT_SCALE
+ * biasY = Σ ((-center[d] / range[d]) * basis[dims+d])  * VIEWPORT_SCALE
  *
  * This is algebraically equivalent to compute-projection.wgsl which does
- * per-point normalization on GPU. Both yield: ((raw-min)/range - 0.5) * basis * VS.
+ * per-point normalization on GPU. Both yield: ((raw - center) / range) * basis * VS.
  * If you change the math here, update compute-projection.wgsl to match.
  */
 /**
  * Fold normalization into basis. When `cols` is 3, also computes z-axis weights.
  * The `basis` layout for 3 columns: [x0..xp-1, y0..yp-1, z0..zp-1].
+ *
+ * `centers` holds the per-dimension center value:
+ *  - midrange centering: center = min + range/2
+ *  - mean centering:     center = mean
  */
 const computeAdjustedBasis = (
   basis: Float32Array,
-  mins: Float32Array,
+  centers: Float32Array,
   ranges: Float32Array,
   dims: number,
   cols = 2,
@@ -336,7 +342,7 @@ const computeAdjustedBasis = (
     adjBasisWeights[d] = bx * invRange;
     adjBasisWeights[dims + d] = by * invRange;
 
-    const normOffset = -mins[d]! / range - 0.5;
+    const normOffset = -centers[d]! / range;
     biasX += normOffset * bx * VIEWPORT_SCALE;
     biasY += normOffset * by * VIEWPORT_SCALE;
 
@@ -348,6 +354,39 @@ const computeAdjustedBasis = (
   }
 
   return { weights: adjBasisWeights, biasX, biasY, biasZ };
+};
+
+/** Compute per-dimension center values based on the active centering mode. */
+const computeNormCenters = (): Float32Array | null => {
+  if (!state || !state.normMins || !state.normRanges) return null;
+  const dims = state.numDims;
+  const centers = new Float32Array(dims);
+  if (state.centering === 'mean' && state.normMeans) {
+    centers.set(state.normMeans);
+  } else {
+    // midrange: center = min + range / 2
+    for (let d = 0; d < dims; d++) {
+      centers[d] = state.normMins[d]! + state.normRanges[d]! * 0.5;
+    }
+  }
+  return centers;
+};
+
+/**
+ * Write [center, range] pairs to the GPU normParamsBuffer.
+ * Called on data load and when the centering mode changes.
+ */
+const writeNormParamsToGpu = (): void => {
+  if (!state?.projectionResources || !state.normRanges) return;
+  const dims = state.numDims;
+  const centers = computeNormCenters();
+  if (!centers) return;
+  const normData = new Float32Array(dims * 2);
+  for (let d = 0; d < dims; d++) {
+    normData[d * 2] = centers[d]!;
+    normData[d * 2 + 1] = state.normRanges[d]!;
+  }
+  state.device.queue.writeBuffer(state.projectionResources.normParamsBuffer, 0, normData);
 };
 
 // ─── Worker-driven playback ───────────────────────────────────────────────
@@ -484,14 +523,7 @@ const renderView = (
   camera: CameraState,
   renBindGroup: GPUBindGroup,
 ): void => {
-  if (
-    !state ||
-    !state.projectionResources ||
-    !state.adjBasisBuffer ||
-    !state.normMins ||
-    !state.normRanges
-  )
-    return;
+  if (!state || !state.projectionResources || !state.adjBasisBuffer || !state.normRanges) return;
 
   const { device, numPoints, numDims } = state;
 
@@ -509,9 +541,11 @@ const renderView = (
   }
 
   // Fold normalization into basis on CPU (trivial for typical dim counts)
+  const centers = computeNormCenters();
+  if (!centers) return;
   const { weights, biasX, biasY, biasZ } = computeAdjustedBasis(
     effectiveBasis,
-    state.normMins,
+    centers,
     state.normRanges,
     numDims,
     cols,
@@ -983,7 +1017,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   // ── Dataset load ──
   if (event.data.type !== 'data') return;
 
-  const { dataVersion, dims, rows, buffers, mins, ranges, categoricalColumns } = event.data;
+  const { dataVersion, dims, rows, buffers, mins, ranges, means, categoricalColumns } = event.data;
   currentDataVersion = dataVersion;
 
   if (dims < 2 || rows === 0 || buffers.length < 2) {
@@ -1050,13 +1084,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     );
   }
 
-  // Upload norm params: [min, range] pairs as vec2f array
-  const normData = new Float32Array(dims * 2);
-  for (let d = 0; d < dims; d++) {
-    normData[d * 2] = mins[d]!;
-    normData[d * 2 + 1] = ranges[d]!;
-  }
-  device.queue.writeBuffer(res.normParamsBuffer, 0, normData);
+  // Norm params are written below via writeNormParamsToGpu after state is updated.
 
   // Upload categorical index buffers
   for (const cat of categoricalColumns) {
@@ -1082,10 +1110,14 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   // Store norm params on CPU for per-frame basis adjustment
   state.normMins = new Float32Array(mins);
   state.normRanges = new Float32Array(ranges);
+  state.normMeans = new Float32Array(means);
 
   state.projectionResources = { ...res, bindGroup: null as unknown as GPUBindGroup };
   state.numPoints = rows;
   state.numDims = dims;
+
+  // Upload norm params (center + range) to GPU using current centering mode
+  writeNormParamsToGpu();
 
   rebuildBindGroups();
 
@@ -1219,6 +1251,21 @@ const handleMessage = (msg: MainToGpu): void => {
       rotation: state.camera.rotation,
     };
     throttledRenderMainView();
+    return;
+  }
+
+  if (msg.type === 'setCentering') {
+    state.centering = msg.centering;
+    // Re-upload norm params with updated centers, then re-render
+    writeNormParamsToGpu();
+    if ((state.tour || state.directBasis) && state.projectionResources) {
+      // Recompute residual PC if 3D is active — it depends on norm params
+      if (state.is3dActive) {
+        const basis = state.directBasis ?? state.tour?.interpolatedBasis;
+        if (basis) triggerResidualPC(state, basis);
+      }
+      renderAllViews();
+    }
     return;
   }
 
@@ -1979,6 +2026,8 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
         adjBasisBuffer: null,
         normMins: null,
         normRanges: null,
+        normMeans: null,
+        centering: 'midrange',
         is3dActive: false,
         rotation3d: null,
         residualPC: null,

@@ -10,7 +10,7 @@ export type ParseResult = AnalyzedData & {
 };
 
 /**
- * Detect format, load, extract numeric columns, normalize to [-1, 1].
+ * Detect format, load, and extract numeric columns with per-column stats.
  * Runs inside the Data Worker.
  */
 export const parseBuffer = async (buffer: ArrayBuffer): Promise<ParseResult> => {
@@ -42,8 +42,8 @@ export const parseBuffer = async (buffer: ArrayBuffer): Promise<ParseResult> => 
 
   const columns = columnNames.map((name) => {
     const values = result.numeric[name]!;
-    const { min, max, range } = analyzeColumn(values);
-    return { name, values, min, max, range };
+    const { min, max, range, mean } = analyzeColumn(values);
+    return { name, values, min, max, range, mean };
   });
 
   return {

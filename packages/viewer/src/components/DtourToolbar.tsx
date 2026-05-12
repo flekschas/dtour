@@ -25,6 +25,7 @@ import type { PreviewCount } from '../spec.ts';
 import {
   activeColumnsAtom,
   cameraZoomAtom,
+  centeringAtom,
   color2dColumnsAtom,
   color2dEnabledAtom,
   grandExitTargetAtom,
@@ -116,6 +117,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [color2dColumns, setColor2dColumns] = useAtom(color2dColumnsAtom);
   const [minPointSize, setMinPointSize] = useAtom(minPointSizeAtom);
   const [pointOpacity, setPointOpacity] = useAtom(pointOpacityAtom);
+  const [centering, setCentering] = useAtom(centeringAtom);
 
   const store = useStore();
   const portalContainer = usePortalContainer();
@@ -454,6 +456,19 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   if (v !== undefined) setPointOpacity(v === 0 ? 'auto' : v / 20);
                 }}
                 className="w-full"
+              />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-4"
+              onSelect={(e) => {
+                e.preventDefault();
+                setCentering(centering === 'midrange' ? 'mean' : 'midrange');
+              }}
+            >
+              <span className="flex-1 text-xs">Mean centering</span>
+              <Checkbox
+                checked={centering === 'mean'}
+                onCheckedChange={() => setCentering(centering === 'midrange' ? 'mean' : 'midrange')}
               />
             </DropdownMenuItem>
             {!isWide && tourTraversal === 'guided' && (

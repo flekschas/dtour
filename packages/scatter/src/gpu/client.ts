@@ -94,6 +94,8 @@ export type ScatterInstance = {
     /** Zoom multiplier — scales content to fit visible area below toolbar. */
     insetZoom?: number;
   }) => void;
+  /** Set projection centering mode: 'midrange' (default) or 'mean' (center of mass). */
+  setCentering: (centering: 'midrange' | 'mean') => void;
   /** Resize a canvas to the given pixel dimensions (use for DPI-aware sizing). */
   resize: (viewIndex: number, width: number, height: number, dpr?: number) => void;
   /** Request a render of all views. */
@@ -350,6 +352,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     });
   };
 
+  const setCentering = (centering: 'midrange' | 'mean'): void => {
+    sendToGpu(gpuWorker, { type: 'setCentering', centering });
+  };
+
   const resize = (viewIndex: number, width: number, height: number, dpr?: number): void => {
     sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height, dpr });
   };
@@ -556,6 +562,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setTourPosition,
     setStyle,
     setCamera,
+    setCentering,
     resize,
     render,
     setDirectBasis,

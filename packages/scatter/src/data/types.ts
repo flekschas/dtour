@@ -4,6 +4,7 @@ export type ColumnData = {
   min: number;
   max: number;
   range: number;
+  mean: number;
 };
 
 export type CategoricalColumn = {
@@ -27,6 +28,7 @@ export type Metadata = {
   mins: number[];
   maxes: number[];
   ranges: number[];
+  means: number[];
   /** Raw JSON string from the Parquet "dtour" key_value_metadata entry. Undefined for Arrow files. */
   embeddedConfig?: string;
 };

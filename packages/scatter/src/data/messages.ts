@@ -36,6 +36,7 @@ export type DataToGpu =
       buffers: Float32Array[];
       mins: number[];
       ranges: number[];
+      means: number[];
       /** Categorical column indices, transferred alongside numeric buffers. */
       categoricalColumns: { name: string; indices: Uint32Array }[];
     }

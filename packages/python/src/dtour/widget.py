@@ -78,6 +78,7 @@ class Widget(anywidget.AnyWidget):
     show_keyframe_loadings = t.Bool(True).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
+    centering = t.Enum(["midrange", "mean"], default_value="midrange").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
         default_value="full",
@@ -341,6 +342,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme != "dark":
             kwargs["theme_mode"] = self.theme
+        if self.centering != "midrange":
+            kwargs["centering"] = self.centering
 
         # Tour dimensions (written inside tour.dimensions by build_dtour_metadata)
         if self.tour_dimensions:

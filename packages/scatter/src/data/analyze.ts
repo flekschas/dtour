@@ -2,19 +2,23 @@ export type ColumnAnalysis = {
   min: number;
   max: number;
   range: number;
+  mean: number;
 };
 
 export const analyzeColumn = (values: Float32Array): ColumnAnalysis => {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
+  let sum = 0;
 
   for (let i = 0; i < values.length; i++) {
     const v = values[i]!;
     if (v < min) min = v;
     if (v > max) max = v;
+    sum += v;
   }
 
   const range = max - min || 1e-6;
+  const mean = values.length > 0 ? sum / values.length : 0;
 
-  return { min, max, range };
+  return { min, max, range, mean };
 };

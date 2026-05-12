@@ -65,7 +65,7 @@ fn reduce_partial(
       let raw   = data[dim * N + i];
       let np    = norm_params[dim];
       let range = max(np.y, 1e-6);
-      let norm  = (raw - np.x) / range - 0.5;
+      let norm  = (raw - np.x) / range;
       vals[dim] = norm;
       dot_x    += norm * basis[dim];
       dot_y    += norm * basis[d + dim];

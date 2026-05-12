@@ -87,6 +87,13 @@ export const color2dMapAtom = atom<Colormap2DName>('schumann');
 export const backgroundColorAtom = atom<[number, number, number]>([0, 0, 0]);
 
 // ---------------------------------------------------------------------------
+// Projection centering — origin definition for normalization
+// ---------------------------------------------------------------------------
+
+/** Centering mode: 'midrange' (default, (min+max)/2) or 'mean' (center of mass). */
+export const centeringAtom = atom<'midrange' | 'mean'>('midrange');
+
+// ---------------------------------------------------------------------------
 // Camera state — 2D pan and zoom
 // ---------------------------------------------------------------------------
 

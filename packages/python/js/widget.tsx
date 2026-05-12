@@ -37,6 +37,7 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   show_keyframe_loadings: 'showKeyframeLoadings',
   show_tour_description: 'showTourDescription',
   theme: 'themeMode',
+  centering: 'centering',
 };
 
 // preview_size uses string enum ("small"/"medium"/"large") in Python

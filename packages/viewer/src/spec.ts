@@ -52,6 +52,7 @@ export const dtourSpecSchema = z.object({
   showKeyframeLoadings: z.boolean().optional(),
   showTourDescription: z.boolean().nullable().optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
+  centering: z.enum(['midrange', 'mean']).optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
@@ -251,4 +252,5 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourSliderVisibility: 'visible',
   tourSliderSpacing: 'equal',
   themeMode: 'dark',
+  centering: 'midrange',
 };

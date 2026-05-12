@@ -41,6 +41,7 @@ _SNAKE_TO_CAMEL: dict[str, str] = {
     "show_tour_description": "showTourDescription",
     "tour_slider_spacing": "tourSliderSpacing",
     "theme_mode": "themeMode",
+    "centering": "centering",
 }
 
 _CAMEL_TO_SNAKE: dict[str, str] = {v: k for k, v in _SNAKE_TO_CAMEL.items()}
@@ -128,6 +129,7 @@ def build_dtour_metadata(
     show_tour_description: bool | None = None,
     tour_slider_spacing: str | None = None,
     theme_mode: str | None = None,
+    centering: str | None = None,
     point_color_map: dict[str, str] | None = None,
     tour_dimensions: list[str] | None = None,
     tour: TourResult | None = None,
@@ -182,6 +184,8 @@ def build_dtour_metadata(
         ``"equal"`` or ``"geodesic"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
+    centering : str, optional
+        ``"midrange"`` (default, ``(min+max)/2``) or ``"mean"`` (center of mass).
     point_color_map : dict, optional
         Label → hex color string mapping.
     tour_dimensions : list[str], optional
@@ -224,6 +228,7 @@ def build_dtour_metadata(
         "show_tour_description": show_tour_description,
         "tour_slider_spacing": tour_slider_spacing,
         "theme_mode": theme_mode,
+        "centering": centering,
     }
 
     for snake_key, value in spec_kwargs.items():

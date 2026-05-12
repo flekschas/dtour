@@ -84,6 +84,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
           mins: parsed.columns.map((c) => c.min),
           maxes: parsed.columns.map((c) => c.max),
           ranges: parsed.columns.map((c) => c.range),
+          means: parsed.columns.map((c) => c.mean),
           embeddedConfig: parsed.embeddedConfig,
         },
       };
@@ -108,6 +109,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
         buffers: numericBuffers,
         mins: parsed.columns.map((c) => c.min),
         ranges: parsed.columns.map((c) => c.range),
+        means: parsed.columns.map((c) => c.mean),
         categoricalColumns: catColumns,
       };
       gpuPort.postMessage(dataMsg, transferables);

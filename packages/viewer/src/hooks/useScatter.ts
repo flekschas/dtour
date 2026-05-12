@@ -9,6 +9,7 @@ import {
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
+  centeringAtom,
   color2dColumnsAtom,
   color2dEnabledAtom,
   color2dMapAtom,
@@ -56,6 +57,7 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const color2dEnabled = useAtomValue(color2dEnabledAtom);
   const color2dColumns = useAtomValue(color2dColumnsAtom);
   const color2dMap = useAtomValue(color2dMapAtom);
+  const centering = useAtomValue(centeringAtom);
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const legendSelection = useAtomValue(legendSelectionAtom);
@@ -73,6 +75,11 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   useEffect(() => {
     scatter?.setCamera({ pan: [panX, panY], zoom });
   }, [scatter, panX, panY, zoom]);
+
+  // Forward centering mode
+  useEffect(() => {
+    scatter?.setCentering(centering);
+  }, [scatter, centering]);
 
   // Forward tour position (skipped during worker-driven playback, when
   // suspended after returning from manual/grand, and while a basis blend is

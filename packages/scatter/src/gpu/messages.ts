@@ -34,6 +34,11 @@ export type MainToGpu =
       fillTarget?: number;
     }
   | {
+      /** Set projection centering mode: 'midrange' (default) or 'mean' (center of mass). */
+      type: 'setCentering';
+      centering: 'midrange' | 'mean';
+    }
+  | {
       type: 'setCamera';
       pan: [number, number];
       zoom: number;
