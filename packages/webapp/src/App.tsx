@@ -1,10 +1,12 @@
-import { Dtour } from '@dtour/viewer';
 import type { DtourSpec } from '@dtour/viewer';
-import { SpinnerIcon } from '@phosphor-icons/react';
+import { Dtour } from '@dtour/viewer';
+import { GithubLogo, PlayCircle, SpinnerIcon, UploadSimple, X } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import 'plyr-react/plyr.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
+import { CONTENT_TOP_VH } from './constants.ts';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'done';
@@ -204,7 +206,10 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [homeOpen, setHomeOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const plyrRef = useRef<InstanceType<typeof import('plyr').default> | null>(null);
 
   const prefersReducedMotion = useReducedMotion();
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(
@@ -239,15 +244,18 @@ const App = () => {
 
   const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
 
-  // Close home modal on Escape
+  // Close home/video modal on Escape
   useEffect(() => {
-    if (!homeOpen) return;
+    if (!homeOpen && !videoOpen) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setHomeOpen(false);
+      if (e.key === 'Escape') {
+        setHomeOpen(false);
+        setVideoOpen(false);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [homeOpen]);
+  }, [homeOpen, videoOpen]);
 
   const handleSpecChange = useCallback(
     (newSpec: Required<DtourSpec>) => {
@@ -518,15 +526,9 @@ const App = () => {
       {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
           className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
-            logoPhase === 'done' ? 'justify-center' : 'justify-start pt-[35vh]'
+            logoPhase === 'done' ? 'justify-center' : 'justify-start'
           }`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{
-            delay: logoPhase === 'drawing' ? 0.75 : 0,
-            duration: 0.5,
-            ease: 'easeOut',
-          }}
+          style={logoPhase !== 'done' ? { paddingTop: `${CONTENT_TOP_VH * 100}vh` } : undefined}
         >
           {loading || parsing ? (
             <div className="flex flex-col items-center gap-3 px-6 py-4">
@@ -534,33 +536,55 @@ const App = () => {
             </div>
           ) : (
             <>
-              <Button
-                variant="ghost"
-                className="w-128 cursor-pointer flex flex-col items-center gap-3 px-6 py-6 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
-                onClick={() => inputRef.current?.click()}
+              {/* 1. Description */}
+              <motion.p
+                className="w-128 text-sm text-dtour-text-muted/80 text-center mb-6 pointer-events-auto"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: logoPhase === 'drawing' ? 1.2 : 0,
+                  duration: 0.6,
+                  ease: 'easeOut',
+                }}
               >
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  role="img"
-                  aria-labelledby="upload-icon-title"
+                Visually explore high-dimensional data and embeddings through interactive, smooth
+                tours of 2D projections to build intuition for the full data manifold.
+              </motion.p>
+              {/* 2. Drop button */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: logoPhase === 'drawing' ? 1.45 : 0,
+                  duration: 0.4,
+                  ease: 'easeOut',
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  className="w-128 cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
+                  onClick={() => inputRef.current?.click()}
                 >
-                  <title id="upload-icon-title">Upload file</title>
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                <span className="text-sm select-none">
-                  Drop a Parquet, Arrow, or CSV file to start
-                </span>
-              </Button>
-              <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
+                  <UploadSimple size={36} />
+                  <span className="text-sm select-none">
+                    Drop a Parquet, Arrow, or CSV file to start
+                  </span>
+                </Button>
+              </motion.div>
+              {/* 3. "or try" */}
+              <motion.span
+                className="text-xs text-dtour-text-muted/60 select-none mt-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: logoPhase === 'drawing' ? 1.5 : 0,
+                  duration: 0.4,
+                  ease: 'easeOut',
+                }}
+              >
+                or try
+              </motion.span>
+              {/* 4. Example grid */}
               <div className="grid grid-cols-3 gap-4 mt-3 pointer-events-auto">
                 {EXAMPLES.map((example, i) => (
                   <motion.button
@@ -570,7 +594,7 @@ const App = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{
-                      delay: (logoPhase === 'drawing' ? 0.75 : 0) + 0.15 + i * 0.05,
+                      delay: (logoPhase === 'drawing' ? 1.55 : 0) + i * 0.05,
                       duration: 0.4,
                       ease: 'easeOut',
                     }}
@@ -588,16 +612,67 @@ const App = () => {
                   </motion.button>
                 ))}
               </div>
+              {/* 5. "or watch" */}
+              <motion.span
+                className="text-xs text-dtour-text-muted/60 select-none mt-4 mb-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + EXAMPLES.length * 0.05 + 0.1,
+                  duration: 0.4,
+                  ease: 'easeOut',
+                }}
+              >
+                or watch
+              </motion.span>
+              {/* 6. Video button */}
+              <motion.button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none mt-2 pointer-events-auto"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + EXAMPLES.length * 0.05 + 0.15,
+                  duration: 0.4,
+                  ease: 'easeOut',
+                }}
+                onClick={() => setVideoOpen(true)}
+              >
+                <PlayCircle size={16} weight="fill" />
+                <span>Intro Video</span>
+              </motion.button>
             </>
           )}
-          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60">
-            Explore high-dimensional data through guided, manual, and grand tours of 2D projections.
+          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 flex items-center gap-1">
+            <span>
+              Made by{' '}
+              <a
+                href="https://lekschas.de"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+              >
+                Fritz
+              </a>
+              {' and '}
+              <a
+                href="https://nvictus.me"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+              >
+                Nezar
+              </a>
+              .
+            </span>
+            <span className="bg-dtour-text-muted/30 w-px h-4 mx-1" />
             <a
               href="https://github.com/flekschas/dtour"
               target="_blank"
               rel="noopener noreferrer"
-              className="pointer-events-auto ml-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+              className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
             >
+              <GithubLogo size={14} weight="fill" />
               GitHub
             </a>
           </p>
@@ -637,26 +712,10 @@ const App = () => {
                 <>
                   <Button
                     variant="ghost"
-                    className="w-128 cursor-pointer flex flex-col items-center gap-3 px-6 py-6 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                    className="w-128 cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
                     onClick={() => inputRef.current?.click()}
                   >
-                    <svg
-                      width="48"
-                      height="48"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      role="img"
-                      aria-labelledby="modal-upload-icon-title"
-                    >
-                      <title id="modal-upload-icon-title">Upload file</title>
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
+                    <UploadSimple size={36} />
                     <span className="text-sm select-none">
                       Drop a Parquet, Arrow, or CSV file to start
                     </span>
@@ -685,20 +744,121 @@ const App = () => {
                       </button>
                     ))}
                   </div>
+                  <div className="flex items-center gap-2 mt-4 pointer-events-auto">
+                    <span className="text-xs text-dtour-text-muted/60 select-none">or watch</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4 pointer-events-auto">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                      onClick={() => {
+                        setHomeOpen(false);
+                        setVideoOpen(true);
+                      }}
+                    >
+                      <PlayCircle size={16} weight="fill" />
+                      <span>Intro Video</span>
+                    </button>
+                  </div>
                 </>
               )}
-              <p className="absolute bottom-6 text-xs text-dtour-text-muted/60">
-                Explore high-dimensional data through guided, manual, and grand tours of 2D
-                projections.
+              <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 flex items-center gap-1">
+                <span>
+                  Made by{' '}
+                  <a
+                    href="https://lekschas.de"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+                  >
+                    Fritz
+                  </a>
+                  {' and '}
+                  <a
+                    href="https://nvictus.me"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+                  >
+                    Nezar
+                  </a>
+                  .
+                </span>
+                <span className="text-dtour-text-muted/30 mx-1">|</span>
                 <a
                   href="https://github.com/flekschas/dtour"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="pointer-events-auto ml-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+                  className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
                 >
+                  <GithubLogo size={14} weight="fill" />
                   GitHub
                 </a>
               </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Video intro modal */}
+      <AnimatePresence>
+        {videoOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div
+              role="presentation"
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setVideoOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setVideoOpen(false);
+              }}
+            />
+            <div className="relative z-10 w-full max-w-4xl mx-4">
+              <button
+                type="button"
+                className="absolute -top-10 right-0 text-dtour-text-muted hover:text-dtour-text transition-colors cursor-pointer"
+                onClick={() => setVideoOpen(false)}
+              >
+                <X size={24} />
+              </button>
+              <div
+                className="rounded-lg overflow-hidden"
+                ref={(el) => {
+                  if (!el) {
+                    plyrRef.current?.destroy();
+                    plyrRef.current = null;
+                    return;
+                  }
+                  const video = el.querySelector('video');
+                  if (!video || plyrRef.current) return;
+                  import('plyr').then(({ default: PlyrLib }) => {
+                    plyrRef.current = new PlyrLib(video, {
+                      markers: {
+                        enabled: true,
+                        points: [
+                          { time: 51, label: 'Repulsion tour' },
+                          { time: 113, label: 'Structure tour' },
+                          { time: 153, label: 'PCA–UMAP tour' },
+                          { time: 211, label: 'Embedding tour' },
+                        ],
+                      },
+                    });
+                  });
+                }}
+              >
+                <video
+                  ref={videoRef}
+                  playsInline
+                  poster="https://data.dtour.dev/dtour-teaser-poster.webp"
+                >
+                  <source src="https://data.dtour.dev/dtour-teaser.mp4" type="video/mp4" />
+                  <track kind="captions" />
+                </video>
+              </div>
             </div>
           </motion.div>
         )}

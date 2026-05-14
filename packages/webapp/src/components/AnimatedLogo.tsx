@@ -1,5 +1,6 @@
-import { type Transition, motion, useReducedMotion } from 'motion/react';
+import { motion, type Transition, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CONTENT_TOP_VH } from '../constants.ts';
 
 type AnimatedLogoProps = {
   phase: 'drawing' | 'moving';
@@ -87,7 +88,7 @@ export const AnimatedLogo = ({
     const width = rect.width * SCALE;
     const height = rect.height * SCALE;
     const x = (window.innerWidth - width) / 2;
-    const y = 64;
+    const y = window.innerHeight * CONTENT_TOP_VH - height;
     setInitialRect({ x, y, width, height });
   }, []);
 
