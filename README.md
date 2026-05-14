@@ -62,30 +62,34 @@ dtour.Widget(data=df)
 ```py
 dtour.Widget(
     data=...,             # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
-    tour=...,             # TourResult from little_tour() / little_umap_tour()
+    tour=...,             # TourResult from little_tour() / umap_little_tour()
     # display
     height=720,           # canvas height in pixels
-    preview_count=4,      # keyframe previews: 4 | 8 | 12 | 16
+    preview_count=4,      # keyframe previews: 2–16
     preview_size="large", # "small" | "medium" | "large"
     preview_padding=12.0, # gap between previews
     # point style
     point_size="auto",    # point radius or "auto"
     point_opacity="auto", # point alpha or "auto"
-    point_color=[0.25, 0.5, 0.9],  # RGB list or column name for categorical coloring
+    point_color=[0.25, 0.5, 0.9],  # default RGB color
+    point_color_by=None,  # column name for categorical coloring
     color_map={},         # label → color mapping (see build_color_map())
     # tour playback
-    tour_by="dimensions", # "dimensions" | "pca"
+    tour_by="dimensions", # "dimensions" | "pca" | "parameter"
     tour_position=0.0,    # 0–1 position along the tour
     tour_playing=False,   # auto-play on load
     tour_speed=1.0,       # playback speed multiplier
     tour_direction="forward",  # "forward" | "backward"
+    tour_dimensions=[],   # explicit column names for the tour
     # camera
     camera_pan_x=0.0,
     camera_pan_y=0.0,
-    camera_zoom=1.0,
+    camera_zoom=1/1.5,
+    centering="midrange", # "midrange" | "mean"
     # mode & appearance
     tour_traversal="guided",   # "guided" | "manual" | "grand"
     show_legend=True,     # show/hide color legend
+    show_keyframe_loadings=True,  # show/hide feature loadings
     theme="dark",         # "light" | "dark" | "system"
 )
 ```
@@ -94,6 +98,8 @@ dtour.Widget(
 
 ```py
 w = dtour.Widget(data=X, tour=tour)
+w.set_data(df)                    # load new data
+w.set_tour(tour)                  # set tour views
 w.set_metrics(metrics)            # display radial quality charts
 w.select([0, 1, 2])              # select points by index
 w.clear_selection()               # clear selection
@@ -111,7 +117,7 @@ tour = dtour.little_tour(
 )
 
 # UMAP + PCA: reduce to n_components with UMAP first (pip install dtour[umap])
-tour = dtour.little_umap_tour(
+tour = dtour.umap_little_tour(
     X,
     n_components=10,
     umap_kwargs=None,     # extra kwargs passed to umap.UMAP
@@ -151,7 +157,7 @@ cmap = dtour.build_color_map(
     theme=None,                   # "light" | "dark" | None (theme-aware dicts)
     overrides=None,               # per-label color overrides
 )
-dtour.Widget(data=df, point_color="cluster", color_map=cmap)
+dtour.Widget(data=df, point_color_by="cluster", color_map=cmap)
 ```
 
 ## JavaScript
@@ -186,9 +192,14 @@ import { Dtour } from "dtour";
   onSpecChange={handleSpec}   // fires on state change (debounced ~250ms)
   onStatus={handleStatus}     // called on every renderer status event
   onSelectionChange={fn}      // fires when legend selection changes (label names)
+  onPointSelectionChange={fn} // fires when point selection changes (Uint32Array mask)
   onLoadData={fn}             // called when user loads a file via the toolbar
   onReady={fn}                // called with a DtourHandle for programmatic control
   hideToolbar={false}         // hide the top toolbar
+  backend="webgpu"            // "webgpu" | "webgl"
+  tourFamily="hyperdimensional" // "hyperdimensional" | "sequential"
+  keyframeDescriptions={[...]} // per-keyframe descriptions or template string
+  keyframeLoadings={[...]}    // per-keyframe feature loadings
 />
 ```
 
@@ -198,22 +209,32 @@ All fields are optional. Omitted fields use defaults.
 
 ```ts
 type DtourSpec = {
-  tourBy?: "dimensions" | "pca";      // default "dimensions"
+  tourTraversal?: "guided" | "manual" | "grand"; // default "guided"
+  tourBy?: "dimensions" | "pca" | "parameter";   // default "dimensions"
   tourPosition?: number;              // 0–1, default 0
   tourPlaying?: boolean;              // default false
   tourSpeed?: number;                 // 0.1–5, default 1
   tourDirection?: "forward" | "backward";
-  previewCount?: 4 | 8 | 12 | 16;    // default 4
+  tourSliderSpacing?: "equal" | "geodesic"; // default "equal"
+  tourSliderVisibility?: "visible" | "subtle" | "hidden";
+  previewCount?: 2–16;               // default 4
   previewScale?: 1 | 0.75 | 0.5;     // default 1
   previewPadding?: number;            // default 12
   pointSize?: number | "auto";        // default "auto"
   pointOpacity?: number | "auto";     // 0–1, default "auto"
-  pointColor?: [number, number, number] | string;  // RGB or column name
+  minPointSize?: number;              // 1–20, default 2
+  pointColor?: [number, number, number]; // default [0.25, 0.5, 0.9]
+  pointColorBy?: string | null;       // column name for categorical coloring
+  pointColorMap?: Record<string, string>; // label → hex color
   cameraPanX?: number;                // default 0
   cameraPanY?: number;                // default 0
   cameraZoom?: number;                // default 1/1.5
-  tourTraversal?: "guided" | "manual" | "grand";
+  centering?: "midrange" | "mean";    // default "midrange"
   showLegend?: boolean;               // default true
+  showAxes?: boolean;                 // default false
+  showKeyframeNumbers?: boolean;      // default false
+  showKeyframeLoadings?: boolean;     // default true
+  showTourDescription?: boolean | null; // default null
   themeMode?: "light" | "dark" | "system"; // default "dark"
 };
 ```
