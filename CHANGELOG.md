@@ -20,10 +20,12 @@
 ### python
 - feat: `TourResult.from_parquet()` classmethod to extract tours from Parquet metadata
 - feat: `tour_dimensions` traitlet for explicit tour column-name support
+- feat: `centering` traitlet and spec parameter (`'midrange'` / `'mean'`)
 - refactor: rename `spectrum_tour` → `attraction_repulsion_tour`
 - fix: auto-coerce `tour_by` mismatches instead of raising errors
 
 ### scatter
+- feat: configurable projection centering (`setCentering('midrange' | 'mean')`) with consistent normalization across WebGPU, WebGL, PCA, and residual-PC shaders
 - feat: `tourMode` parameter on `setBases()` to skip orthonormalization for parameter tours
 - feat: configurable `minPointSize` and `fillTarget` for density-adaptive point sizing
 - feat: conditional zoom-based opacity scaling via `scaleOpacityByZoom`
@@ -42,6 +44,7 @@
 - feat: add tour slider visibility settings
 - feat: add ability to reset spec to default settings
 - feat: configurable projection centering (midrange / mean)
+- feat: drag-to-pan and zoom-about-cursor with toolbar toggle for scroll semantics
 - fix: clear hover highlight and tooltip on projection change
 - refactor: make toolbar design more responsive
 - refactor: hide origin dot until axes are shown
