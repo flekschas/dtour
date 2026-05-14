@@ -1,8 +1,6 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
@@ -29,7 +27,7 @@
   },
   "overrides": [
     {
-      "include": ["packages/viewer/src/circular-range-selector.tsx"],
+      "includes": ["**/packages/viewer/src/circular-range-selector.tsx"],
       "linter": {
         "rules": {
           "suspicious": { "noArrayIndexKey": "off" },
@@ -38,7 +36,7 @@
       }
     },
     {
-      "include": ["packages/scatter/src/data/colormaps2d.ts"],
+      "includes": ["**/packages/scatter/src/data/colormaps2d.ts"],
       "linter": {
         "rules": {
           "suspicious": { "noApproximativeNumericConstant": "off" }
@@ -47,17 +45,18 @@
     }
   ],
   "files": {
-    "ignore": [
-      "**/node_modules",
-      "**/.venv",
-      "**/dist",
-      "**/static",
-      "**/.vite",
-      "related-code/**",
-      "papers/**",
-      "figures/**",
-      ".claude/**",
-      "**/*.md"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.venv",
+      "!**/dist",
+      "!**/static",
+      "!**/.vite",
+      "!**/related-code/**",
+      "!**/papers/**",
+      "!**/figures/**",
+      "!**/.claude/**",
+      "!**/*.md"
     ]
   }
 }

@@ -37,3 +37,10 @@ catalog:
 
   # Validation
   zod: ^4.3.6
+
+allowBuilds:
+  '@biomejs/biome': true
+  core-js: true
+  esbuild: true
+  lefthook: true
+  msw: true
