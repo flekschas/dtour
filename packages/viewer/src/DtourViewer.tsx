@@ -1094,7 +1094,6 @@ export const DtourViewer = ({
                 <RadialChart
                   tracks={coloredTracks}
                   keyframeCount={tickCount}
-                  position={position}
                   size={selectorSize}
                   innerRadius={selectorSize * 0.4}
                   arcLengths={arcLengths}
