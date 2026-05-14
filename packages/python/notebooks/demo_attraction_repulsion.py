@@ -1,30 +1,32 @@
 import marimo
 
-__generated_with = "0.21.1"
+__generated_with = "0.23.5"
 app = marimo.App(width="full")
 
 
 @app.cell(hide_code=True)
-def _():
-    import marimo as mo
+def _(mo):
+    mo.md(r"""
+    # dtour Demo: Attraction-Repulsion Tour
 
-    mo.md(
-        """
-        # dtour Demo: Attraction-Repulsion Tour
+    This notebook loads **[Fashion MNIST](https://github.com/zalandoresearch/fashion-mnist)** (70K points, PCA to 50D) and computes
+    embeddings at different points on the **attraction-repulsion spectrum**
+    ([Bohm, Berens & Kobak, JMLR 2022](https://jmlr.org/papers/v23/21-0055.html)):
+    from pure attraction (LE-like, rho=100) through UMAP-like (rho=4) to standard t-SNE (rho=1).
 
-        This notebook loads **Fashion MNIST** (70K points, PCA to 50D) and computes
-        embeddings at different points on the **attraction-repulsion spectrum**
-        ([Bohm, Berens & Kobak, JMLR 2022](https://jmlr.org/papers/v23/21-0055.html)):
-        from pure attraction (LE-like, rho=100) through UMAP-like (rho=4) to standard t-SNE (rho=1).
+    The tour smoothly morphs between these 2D embeddings, showing how cluster
+    structure emerges as repulsion increases.
 
-        The tour smoothly morphs between these 2D embeddings, showing how cluster
-        structure emerges as repulsion increases.
+    **Select points** in the scatter plot to see corresponding Fashion MNIST images
+    in the sidebar.
+    """)
+    return
 
-        **Select points** in the scatter plot to see corresponding Fashion MNIST images
-        in the sidebar.
-        """
-    )
-    return (mo,)
+
+@app.cell(hide_code=True)
+def _(mo, w, w_images):
+    mo.hstack([w, w_images], widths=[4, 1])
+    return
 
 
 @app.cell
@@ -190,7 +192,16 @@ def _(X_pca, cache_dir, feature_names):
 
 
 @app.cell
-def _(ImagesWidget, color_map, dtour, label_names, mo, tour):
+def _(dtour, label_names):
+    color_map = dtour.build_color_map(
+        sorted(set(label_names)),
+        theme="light",
+    )
+    return (color_map,)
+
+
+@app.cell
+def _(ImagesWidget, color_map, dtour, label_names, tour):
     import polars as pl
 
     sp_df = pl.DataFrame(
@@ -201,7 +212,7 @@ def _(ImagesWidget, color_map, dtour, label_names, mo, tour):
         data=sp_df,
         tour=tour,
         preview_count=4,
-        preview_size="large",
+        preview_size="medium",
         point_color_by="label",
         color_map=color_map,
         camera_zoom=0.5,
@@ -215,18 +226,7 @@ def _(ImagesWidget, color_map, dtour, label_names, mo, tour):
         w_images.images = [[int(i), color_map.get(label_names[i], "#888")] for i in change["new"]]
 
     w.observe(_on_selection, names=["selected_indices"])
-
-    mo.hstack([w, w_images], widths=[4, 1])
-    return pl, sp_df
-
-
-@app.cell
-def _(dtour, label_names):
-    color_map = dtour.build_color_map(
-        sorted(set(label_names)),
-        theme="light",
-    )
-    return (color_map,)
+    return sp_df, w, w_images
 
 
 @app.cell
@@ -250,92 +250,14 @@ def _(cache_dir, color_map, dtour, sp_df, tour):
         cache_dir / "fashion_mnist_attraction_repulsion_tour.pq",
         compression="zstd",
     )
-    return (pq,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## PyMDE with concave anchor regularization
-
-    Same attraction-repulsion tour but using **PyMDE** with concave (log) regularization
-    (``regularization=0.25``). Small jitter is suppressed while large,
-    structurally meaningful movements are allowed through.
-    """)
     return
 
 
 @app.cell
-def _(X_pca, cache_dir, dtour, feature_names):
-    tour_pymde_path = cache_dir / "attraction_repulsion_fmnist_pymde.npz"
-    if tour_pymde_path.exists():
-        tour_pymde = dtour.TourResult.load(tour_pymde_path)
-    else:
-        tour_pymde = dtour.attraction_repulsion_tour(
-            X_pca,
-            rhos=[100, 20, 4, 1],
-            n_neighbors=15,
-            init="le",
-            method="pymde",
-            regularization=0.25,
-            feature_names=feature_names,
-            random_state=42,
-        )
-        tour_pymde.save(tour_pymde_path)
-    return (tour_pymde,)
+def _():
+    import marimo as mo
 
-
-@app.cell
-def _(ImagesWidget, color_map, dtour, label_names, mo, pl, tour_pymde):
-    sp_pymde_df = pl.DataFrame(
-        {f"sp_{i}": tour_pymde.embedding[:, i] for i in range(tour_pymde.embedding.shape[1])}
-    ).with_columns(pl.Series("label", label_names))
-
-    w_pymde = dtour.Widget(
-        data=sp_pymde_df,
-        tour=tour_pymde,
-        preview_count=4,
-        preview_size="large",
-        point_color_by="label",
-        color_map=color_map,
-        camera_zoom=0.5,
-        height=900,
-        theme="light",
-    )
-
-    w_pymde_images = ImagesWidget()
-
-    def _on_pymde_selection(change):
-        w_pymde_images.images = [
-            [int(i), color_map.get(label_names[i], "#888")] for i in change["new"]
-        ]
-
-    w_pymde.observe(_on_pymde_selection, names=["selected_indices"])
-
-    mo.hstack([w_pymde, w_pymde_images], widths=[4, 1])
-    return (sp_pymde_df,)
-
-
-@app.cell
-def _(cache_dir, color_map, dtour, pq, sp_pymde_df, tour_pymde):
-    _pa_table = sp_pymde_df.to_arrow()
-    _meta_json = dtour.build_dtour_metadata(
-        tour=tour_pymde,
-        point_color_by="label",
-        point_color_map=color_map,
-        camera_zoom=0.5,
-        preview_count=4,
-        theme_mode="light",
-    )
-    _existing = _pa_table.schema.metadata or {}
-    _existing[b"dtour"] = _meta_json.encode("utf-8")
-
-    pq.write_table(
-        _pa_table.replace_schema_metadata(_existing),
-        cache_dir / "fashion_mnist_attraction_repulsion_tour_pymde.pq",
-        compression="zstd",
-    )
-    return
+    return (mo,)
 
 
 if __name__ == "__main__":

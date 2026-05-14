@@ -1,14 +1,7 @@
 import marimo
 
-__generated_with = "0.21.1"
+__generated_with = "0.23.5"
 app = marimo.App(width="full")
-
-
-@app.cell
-def _():
-    import marimo as mo
-
-    return (mo,)
 
 
 @app.cell(hide_code=True)
@@ -16,13 +9,28 @@ def _(mo):
     mo.md(r"""
     # La Manno 2021 — scRNA-seq PCA Tour
 
-    Interactive exploration of **293k cells** from the La Manno et al. 2021 developing mouse brain dataset:
+    Interactive exploration of **293k cells** from the [La Manno et al. 2021](https://pubmed.ncbi.nlm.nih.gov/34321664/) developing mouse brain dataset:
 
     - **Left**: Dimensions tour of PC1-PC8 (dtour)
-    - **Right**: 2D UMAP computed from PC1-PC8 (jupyter-scatter)
+    - **Right**: 2D UMAP computed from PC1-PC8 ([jupyter-scatter](https://jupyter-scatter.dev))
 
     Lasso-select points in the dtour widget to highlight them in the scatter view.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, scatter_2d, tour_widget):
+    mo.hstack(
+        [tour_widget, mo.ui.anywidget(scatter_2d.widget)],
+        gap=0,
+    )
+    mo.Html(
+        '<div style="display:grid;grid-template-columns: 1fr 1fr;gap:0">'
+        f'<div style="position:relative;width:100%">{mo.ui.anywidget(tour_widget)}</div>'
+        f'<div style="position:relative;width:100%">{mo.ui.anywidget(scatter_2d.widget)}</div>'
+        "</div>"
+    )
     return
 
 
@@ -39,7 +47,9 @@ def _():
 
     cache_dir = Path(__file__).parent / "__cache__"
     cache_dir.mkdir(exist_ok=True)
-    return cache_dir, dtour, jscatter, np, pa, pd, pl
+
+    height = 640
+    return cache_dir, dtour, height, jscatter, np, pa, pd, pl
 
 
 @app.cell
@@ -83,7 +93,7 @@ def _(cache_dir, df, mo, np, pc_cols):
 
 
 @app.cell
-def _(class_cmap, df, dtour, pa, pc_cols):
+def _(class_cmap, df, dtour, height, pa, pc_cols):
     _df_tour = df[pc_cols + ["Age", "Class", "Subclass"]]  # noqa: RUF005
 
     pca_tour = dtour.little_tour(_df_tour[pc_cols])
@@ -99,13 +109,13 @@ def _(class_cmap, df, dtour, pa, pc_cols):
         preview_size="small",
         preview_count=8,
         theme="dark",
-        height=1080,
+        height=height,
     )
     return pca_tour, tour_widget
 
 
 @app.cell
-def _(class_cmap, df, embedding_2d, jscatter, pd):
+def _(class_cmap, df, embedding_2d, height, jscatter, pd):
     scatter_df = pd.DataFrame(
         {
             "x": embedding_2d[:, 0],
@@ -123,8 +133,7 @@ def _(class_cmap, df, embedding_2d, jscatter, pd):
         color_by="Class",
         color_map=class_cmap,
         background_color="black",
-        width=960,
-        height=1080,
+        height=height,
         tooltip=True,
         axes=False,
     )
@@ -171,23 +180,6 @@ def _(df, scatter_2d, tour_widget):
 
 
 @app.cell
-def _(mo, scatter_2d, tour_widget):
-    # mo.hstack(
-    #     [tour_widget, mo.ui.anywidget(scatter_2d.widget)],
-    #     widths=[960,960],
-    #     gap=0,
-    # )
-    mo.Html(
-        '<div style="display:flex;gap:0">'
-        f'<div style="width:960px;flex-shrink:0">{mo.ui.anywidget(tour_widget)}</div>'
-        f'<div style="width:960px;flex-shrink:0">{mo.ui.anywidget(scatter_2d.widget)}</div>'
-        "</div>"
-    )
-
-    return
-
-
-@app.cell
 def _(cache_dir, class_cmap, df, dtour, pc_cols, pca_tour, pl):
     _df_tour = (
         pl.from_pandas(df[pc_cols + ["Age", "Class", "Subclass"]])  # noqa: RUF005
@@ -209,6 +201,13 @@ def _(cache_dir, class_cmap, df, dtour, pc_cols, pca_tour, pl):
         metadata={"dtour": _meta_json},
     )
     return
+
+
+@app.cell
+def _():
+    import marimo as mo
+
+    return (mo,)
 
 
 if __name__ == "__main__":
