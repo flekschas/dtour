@@ -101,6 +101,9 @@ export const cameraPanXAtom = atom(0);
 export const cameraPanYAtom = atom(0);
 export const cameraZoomAtom = atom(1 / 1.5);
 
+/** When true, scroll = zoom and Shift+scroll = tour scrub (inverted from default). */
+export const panZoomModeAtom = atom(false);
+
 // ---------------------------------------------------------------------------
 // Tour traversal — controls which UI is shown (guided, manual, grand)
 // ---------------------------------------------------------------------------
@@ -247,7 +250,7 @@ export const legendVisibleAtom = atom((get) => {
   if (!meta) return false;
   // 2D color mode has its own legend (only when both columns are selected)
   const cols2d = get(color2dColumnsAtom);
-  if (get(color2dEnabledAtom) && cols2d && cols2d[1]) return true;
+  if (get(color2dEnabledAtom) && cols2d?.[1]) return true;
   const colorBy = get(pointColorByAtom);
   if (!colorBy) return false;
   return meta.columnNames.includes(colorBy) || meta.categoricalColumnNames.includes(colorBy);

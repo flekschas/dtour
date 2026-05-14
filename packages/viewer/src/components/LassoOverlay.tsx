@@ -1,11 +1,11 @@
 import type { Metadata, ScatterInstance } from '@dtour/scatter';
 import {
+  bitPackIndices,
   GLASBEY_DARK,
   GLASBEY_LIGHT,
   MAGMA_25,
   OKABE_ITO,
   VIRIDIS_25,
-  bitPackIndices,
 } from '@dtour/scatter';
 import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -45,7 +45,6 @@ type LassoOverlayProps = {
 };
 
 const LONG_PRESS_MS = 750;
-const MIN_MOVE_PX = 5;
 const MIN_POINT_DISTANCE = 5;
 const THROTTLE_MS = 10;
 
@@ -248,8 +247,11 @@ export const LassoOverlay = ({
   const [lassoMode, setLassoMode] = useState(false);
   const [path, setPath] = useState<[number, number][]>([]);
   const [hover, setHover] = useState<HoverState | null>(null);
+  const [panning, setPanning] = useState(false);
   const pendingPointDataRef = useRef<number>(-1);
   const hoverPointRef = useRef<number>(-1);
+  const panningRef = useRef(false);
+  const lastPanPosRef = useRef<[number, number] | null>(null);
 
   // Refs for values read inside pointermove to avoid recreating the callback
   const hoverCtxRef = useRef({
@@ -307,14 +309,19 @@ export const LassoOverlay = ({
       // Prevent native drag-start (e.g. image/element drag in Marimo widgets)
       e.preventDefault();
       startPos.current = [e.clientX, e.clientY];
+      lastPanPosRef.current = [e.clientX, e.clientY];
+      panningRef.current = false;
       hoverPointRef.current = -1;
       setHover(null);
 
       showIndicator(e.clientX, e.clientY);
 
       longPressTimer.current = setTimeout(() => {
-        setLassoMode(true);
-        setPath([]);
+        // Only enter lasso if we haven't started panning
+        if (!panningRef.current) {
+          setLassoMode(true);
+          setPath([]);
+        }
         longPressTimer.current = null;
       }, LONG_PRESS_MS);
     },
@@ -324,12 +331,39 @@ export const LassoOverlay = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: spatialIndex and hoverCtxRef are refs read inside the callback — we intentionally avoid deps to keep the handler stable
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      // Cancel long press if moved too far
+      // ── Pan: if already panning, update camera and return ───────────
+      if (panningRef.current && lastPanPosRef.current) {
+        const ctx = hoverCtxRef.current;
+        const canvasH = ctx.height + ctx.offsetY;
+        const aspect = ctx.width / canvasH || 1;
+        const zoomIz = ctx.cameraZoom * ctx.insetZoom;
+
+        const dx = e.clientX - lastPanPosRef.current[0];
+        const dy = e.clientY - lastPanPosRef.current[1];
+
+        // Convert pixel delta to projection-space pan delta
+        const dPanX = ((dx / ctx.width) * 2 * aspect) / zoomIz;
+        const dPanY = (-(dy / canvasH) * 2) / zoomIz;
+
+        store.set(cameraPanXAtom, (prev) => prev + dPanX);
+        store.set(cameraPanYAtom, (prev) => prev + dPanY);
+
+        lastPanPosRef.current = [e.clientX, e.clientY];
+        return;
+      }
+
+      // ── Pending long-press: check if we should start panning ───────
       if (!lassoMode && startPos.current && longPressTimer.current) {
         const dx = e.clientX - startPos.current[0];
         const dy = e.clientY - startPos.current[1];
-        if (Math.sqrt(dx * dx + dy * dy) > MIN_MOVE_PX) {
+        if (dx * dx + dy * dy > 1) {
+          // Movement > 1px — cancel long-press, start panning
           clearLongPress();
+          panningRef.current = true;
+          setPanning(true);
+          lastPanPosRef.current = [e.clientX, e.clientY];
+          hoverPointRef.current = -1;
+          setHover(null);
         }
         return;
       }
@@ -440,6 +474,11 @@ export const LassoOverlay = ({
       clearLongPress();
       startPos.current = null;
     }
+    if (panningRef.current) {
+      panningRef.current = false;
+      setPanning(false);
+      lastPanPosRef.current = null;
+    }
     hoverPointRef.current = -1;
     setHover(null);
   }, [lassoMode, clearLongPress]);
@@ -462,12 +501,23 @@ export const LassoOverlay = ({
       clearLongPress();
       hideIndicator();
 
+      // If we were panning, just clean up — no click or lasso
+      if (panningRef.current) {
+        panningRef.current = false;
+        setPanning(false);
+        lastPanPosRef.current = null;
+        setLassoMode(false);
+        setPath([]);
+        startPos.current = null;
+        return;
+      }
+
       if (!lassoMode || path.length < 3 || !scatter) {
-        // Not a lasso — check if it's a short click (no significant movement)
+        // Not a lasso — check if it's a short click (≤1px movement)
         if (!lassoMode && scatter && startPos.current && metadata) {
           const dx = e.clientX - startPos.current[0];
           const dy = e.clientY - startPos.current[1];
-          if (Math.sqrt(dx * dx + dy * dy) <= MIN_MOVE_PX) {
+          if (dx * dx + dy * dy <= 1) {
             const si = spatialIndex.current;
             if (si) {
               const rect = overlayRef.current?.getBoundingClientRect();
@@ -602,7 +652,7 @@ export const LassoOverlay = ({
     <div
       ref={overlayRef}
       className="absolute top-0 left-0 touch-none"
-      style={{ width, height, cursor: lassoMode ? 'crosshair' : undefined }}
+      style={{ width, height, cursor: lassoMode ? 'crosshair' : panning ? 'grabbing' : 'grab' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

@@ -1,4 +1,5 @@
 import {
+  ArrowsCounterClockwiseIcon,
   CaretDownIcon,
   ChartScatterIcon,
   CompassIcon,
@@ -20,10 +21,12 @@ import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import { usePortalContainer } from '../portal-container.tsx';
-import { DTOUR_DEFAULTS } from '../spec.ts';
 import type { PreviewCount } from '../spec.ts';
+import { DTOUR_DEFAULTS } from '../spec.ts';
 import {
   activeColumnsAtom,
+  cameraPanXAtom,
+  cameraPanYAtom,
   cameraZoomAtom,
   centeringAtom,
   color2dColumnsAtom,
@@ -34,6 +37,7 @@ import {
   legendVisibleAtom,
   metadataAtom,
   minPointSizeAtom,
+  panZoomModeAtom,
   pointColorByAtom,
   pointOpacityAtom,
   predefinedTourAtom,
@@ -88,6 +92,9 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [playing, setPlaying] = useAtom(tourPlayingAtom);
   const [speed, setSpeed] = useAtom(tourSpeedAtom);
   const [zoom, setZoom] = useAtom(cameraZoomAtom);
+  const [panX, setPanX] = useAtom(cameraPanXAtom);
+  const [panY, setPanY] = useAtom(cameraPanYAtom);
+  const [panZoomMode, setPanZoomMode] = useAtom(panZoomModeAtom);
   const metadata = useAtomValue(metadataAtom);
   const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
   const resumeGuided = useAtomValue(resumeGuidedAtom);
@@ -471,6 +478,30 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 onCheckedChange={() => setCentering(centering === 'midrange' ? 'mean' : 'midrange')}
               />
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs font-semibold">Camera</DropdownMenuLabel>
+            <DropdownMenuItem
+              className="flex flex-col items-start gap-1"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="text-xs">Zoom</span>
+                <span className="text-xs font-medium text-dtour-highlight">
+                  {Math.round(zoom * 100)}%
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={ZOOM_STEPS.length - 1}
+                step={1}
+                ticks={ZOOM_STEPS.length}
+                value={[zoomToStep(zoom)]}
+                onValueChange={([step]: number[]) => {
+                  if (step !== undefined) setZoom(stepToZoom(step));
+                }}
+                className="w-full"
+              />
+            </DropdownMenuItem>
             {!isWide && tourTraversal === 'guided' && (
               <DropdownMenuItem
                 className="gap-4"
@@ -721,39 +752,47 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           </Button>
         )}
 
-        {/* Zoom popover */}
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <Button variant="ghost" size="icon" title={`Zoom: ${Math.round(zoom * 100)}%`}>
-              <MagnifyingGlassIcon size={16} />
-            </Button>
-          </Popover.Trigger>
-          <Popover.Portal container={portalContainer}>
-            <Popover.Content
-              side="bottom"
-              align="center"
-              sideOffset={4}
-              className="z-50 flex flex-col items-center gap-2 rounded border border-dtour-border bg-dtour-bg p-3 shadow-md origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 animate-ease-out"
-            >
-              <span className="text-xs text-center font-semibold text-dtour-text-muted">Zoom</span>
-              <Slider
-                orientation="vertical"
-                min={0}
-                max={ZOOM_STEPS.length - 1}
-                step={1}
-                ticks={ZOOM_STEPS.length}
-                value={[zoomToStep(zoom)]}
-                onValueChange={([step]: number[]) => {
-                  if (step !== undefined) setZoom(stepToZoom(step));
-                }}
-                className="h-[120px]"
-              />
-              <span className="text-xs font-medium text-dtour-highlight">
-                {Math.round(zoom * 100)}%
-              </span>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
+        {/* Pan/zoom mode toggle — only shown in guided mode (always active in manual/grand) */}
+        {tourTraversal === 'guided' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPanZoomMode((v) => !v)}
+            title={panZoomMode ? 'Pan/zoom scroll (click to disable)' : 'Enable pan/zoom scroll'}
+            className={panZoomMode ? '' : 'opacity-40'}
+          >
+            <MagnifyingGlassIcon size={16} weight={panZoomMode ? 'fill' : 'regular'} />
+          </Button>
+        )}
+
+        {/* Camera reset — appears when camera is not at default */}
+        {(panX !== 0 || panY !== 0 || zoom !== DTOUR_DEFAULTS.cameraZoom) && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Reset camera"
+            onClick={() => {
+              const startPanX = panX;
+              const startPanY = panY;
+              const startZoom = zoom;
+              const targetZoom = DTOUR_DEFAULTS.cameraZoom;
+              const startTime = performance.now();
+              const duration = 250;
+              const tick = (now: number) => {
+                const t = Math.min(1, (now - startTime) / duration);
+                // ease-in-out cubic
+                const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+                setPanX(startPanX * (1 - e));
+                setPanY(startPanY * (1 - e));
+                setZoom(startZoom + (targetZoom - startZoom) * e);
+                if (t < 1) requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+            }}
+          >
+            <ArrowsCounterClockwiseIcon size={16} />
+          </Button>
+        )}
       </div>
 
       {/* Right: data info + settings */}
@@ -918,7 +957,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
 
 const ColumnRow = ({
   name,
-  dtype,
+  dtype: _dtype,
   isColorActive,
   onToggleColor,
   checked,

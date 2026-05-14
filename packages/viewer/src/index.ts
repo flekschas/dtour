@@ -1,75 +1,72 @@
 // @dtour/viewer — React UI for dtour: circular selector, preview gallery, tour controls.
 import './styles.css';
 
+export type { CircularSliderHandle, CircularSliderProps } from './components/CircularSlider.tsx';
+export { CircularSlider } from './components/CircularSlider.tsx';
+export { DtourToolbar } from './components/DtourToolbar.tsx';
+export type { DtourHandle, DtourProps } from './Dtour.tsx';
 // Primary API — self-contained component with spec-driven state
 export { Dtour } from './Dtour.tsx';
-export type { DtourProps, DtourHandle } from './Dtour.tsx';
-export type { DtourSpec, EmbeddedConfig, KeyframeLoading } from './spec.ts';
-export { dtourSpecSchema, DTOUR_DEFAULTS, parseEmbeddedConfig } from './spec.ts';
-
-// Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
-export { PortalContainerContext } from './portal-container.tsx';
-
+export type { DtourViewerProps } from './DtourViewer.tsx';
 // Advanced composable API — for users who need granular control with their own Provider
 export { DtourViewer } from './DtourViewer.tsx';
-export type { DtourViewerProps } from './DtourViewer.tsx';
-export { DtourToolbar } from './components/DtourToolbar.tsx';
-export { CircularSlider } from './components/CircularSlider.tsx';
-export type { CircularSliderProps, CircularSliderHandle } from './components/CircularSlider.tsx';
-export { createDefaultViews } from './views.ts';
-
+// Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
+export { PortalContainerContext } from './portal-container.tsx';
+export type { ParsedTrack, RadialChartProps, RadialTrackConfig } from './radial-chart/index.ts';
 // Radial chart — quality metrics visualization
-export { RadialChart, parseMetrics } from './radial-chart/index.ts';
-export type { RadialTrackConfig, ParsedTrack, RadialChartProps } from './radial-chart/index.ts';
-
+export { parseMetrics, RadialChart } from './radial-chart/index.ts';
+export type { DtourSpec, EmbeddedConfig, KeyframeLoading } from './spec.ts';
+export { DTOUR_DEFAULTS, dtourSpecSchema, parseEmbeddedConfig } from './spec.ts';
 // Jotai atoms — for advanced users composing with DtourViewer + own Provider
 export {
-  // Tour
-  tourPositionAtom,
-  tourPlayingAtom,
-  tourSpeedAtom,
-  tourDirectionAtom,
-  tourSliderSpacingAtom,
   arcLengthsAtom,
-  // Preview
-  previewCountAtom,
-  previewPaddingAtom,
-  selectedKeyframeAtom,
-  currentKeyframeAtom,
-  hoveredKeyframeAtom,
-  // Point style
-  pointSizeAtom,
-  pointOpacityAtom,
-  pointColorAtom,
-  pointColorByAtom,
-  colorMapAtom,
-  minPointSizeAtom,
   // Camera
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
-  // Tour traversal
-  tourTraversalAtom,
-  // Legend
-  showLegendAtom,
-  // Axes
-  showAxesAtom,
-  // Slider visibility
-  sliderVisibilityAtom,
-  // Keyframe numbers
-  showKeyframeNumbersAtom,
-  // Keyframe loadings & descriptions
-  showKeyframeLoadingsAtom,
-  keyframeLoadingsAtom,
+  colorMapAtom,
+  currentKeyframeAtom,
+  embeddedConfigAtom,
+  hoveredKeyframeAtom,
   keyframeDescriptionsAtom,
-  tourFamilyAtom,
+  keyframeLoadingsAtom,
   legendVisibleAtom,
-  // Predefined tour
-  predefinedTourAtom,
-  // Theme
-  themeModeAtom,
-  resolvedThemeAtom,
   // Read-only
   metadataAtom,
-  embeddedConfigAtom,
+  minPointSizeAtom,
+  panZoomModeAtom,
+  pointColorAtom,
+  pointColorByAtom,
+  pointOpacityAtom,
+  // Point style
+  pointSizeAtom,
+  // Predefined tour
+  predefinedTourAtom,
+  // Preview
+  previewCountAtom,
+  previewPaddingAtom,
+  resolvedThemeAtom,
+  selectedKeyframeAtom,
+  // Axes
+  showAxesAtom,
+  // Keyframe loadings & descriptions
+  showKeyframeLoadingsAtom,
+  // Keyframe numbers
+  showKeyframeNumbersAtom,
+  // Legend
+  showLegendAtom,
+  // Slider visibility
+  sliderVisibilityAtom,
+  // Theme
+  themeModeAtom,
+  tourDirectionAtom,
+  tourFamilyAtom,
+  tourPlayingAtom,
+  // Tour
+  tourPositionAtom,
+  tourSliderSpacingAtom,
+  tourSpeedAtom,
+  // Tour traversal
+  tourTraversalAtom,
 } from './state/atoms.ts';
+export { createDefaultViews } from './views.ts';

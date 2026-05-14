@@ -1,19 +1,19 @@
+import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import {
-  GLASBEY_DARK,
-  GLASBEY_LIGHT,
-  OKABE_ITO,
   computeArcLengths,
   createScatter,
   createScatterWebGL,
+  GLASBEY_DARK,
+  GLASBEY_LIGHT,
   interpolateAtPosition,
+  OKABE_ITO,
 } from '@dtour/scatter';
-import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AxisOverlay } from './components/AxisOverlay.tsx';
 import type { AxisOverlayHandle } from './components/AxisOverlay.tsx';
-import { CircularSlider } from './components/CircularSlider.tsx';
+import { AxisOverlay } from './components/AxisOverlay.tsx';
 import type { CircularSliderHandle } from './components/CircularSlider.tsx';
+import { CircularSlider } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { RevertCameraButton } from './components/RevertCameraButton.tsx';
@@ -25,25 +25,27 @@ import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
-  IDENTITY_QUAT,
-  type Quat,
   arcballQuat,
+  IDENTITY_QUAT,
   isIdentityQuat,
   multiplyQuat,
   projectToSphere,
+  type Quat,
   quatToMat3,
   slerp,
 } from './lib/arcball.ts';
 import { tourToVisual, visualToTour } from './lib/position-remap.ts';
 import { throttleAndDebounce } from './lib/throttle-debounce.ts';
-import { RadialChart } from './radial-chart/RadialChart.tsx';
 import { parseMetrics } from './radial-chart/parse-metrics.ts';
+import { RadialChart } from './radial-chart/RadialChart.tsx';
 import type { RadialTrackConfig } from './radial-chart/types.ts';
 import {
   activeColumnsAtom,
   activeIndicesAtom,
   animationGenAtom,
   arcLengthsAtom,
+  cameraPanXAtom,
+  cameraPanYAtom,
   cameraZoomAtom,
   canvasSizeAtom,
   colorMapAtom,
@@ -57,6 +59,7 @@ import {
   keyframeLoadingsAtom,
   legendSelectionAtom,
   metadataAtom,
+  panZoomModeAtom,
   pointColorByAtom,
   predefinedTourAtom,
   previewCentersAtom,
@@ -717,7 +720,6 @@ export const DtourViewer = ({
     resolvedViewsRef,
     arcLengthsRef,
     metadataRef,
-    positionRef,
   );
   // Keep stable refs so the imperative wheel handler always calls the latest version.
   const resumeWithTransitionRef = useRef(resumeWithTransition);
@@ -770,23 +772,55 @@ export const DtourViewer = ({
     [setGuidedSuspended, schedulePositionFlush, spacingMode, arcLengths, updateAxesImperative],
   );
 
-  // Wheel → scrub tour position (guided mode) or zoom (Shift+wheel, all modes).
+  // Wheel → zoom-about-cursor or tour scrub, depending on mode and Shift key.
+  // Normal guided: scroll = tour scrub, Shift+scroll = zoom.
+  // Pan/zoom guided (or manual/grand): scroll = zoom, Shift+scroll = tour scrub.
   // Imperative listener with { passive: false } so preventDefault() works.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const handler = (e: WheelEvent) => {
-      if (e.shiftKey) {
-        // Shift+wheel → zoom (camera distance)
+      const traversal = store.get(tourTraversalAtom);
+      const isPanZoom = traversal !== 'guided' || store.get(panZoomModeAtom);
+      const wantsZoom = isPanZoom ? !e.shiftKey : e.shiftKey;
+
+      if (wantsZoom) {
         e.preventDefault();
-        store.set(cameraZoomAtom, (prev) => {
-          // deltaY > 0 = scroll down = zoom out (smaller zoom value)
-          const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
-          // Clamp zoom range [0.25, 4] (4x zoom out to 4x zoom in)
-          return Math.min(4, Math.max(0.25, prev * factor));
-        });
+
+        // Zoom about cursor: keep the point under the cursor fixed on screen
+        const rect = container.getBoundingClientRect();
+        const canvasH = rect.height;
+        const aspect = rect.width / canvasH || 1;
+        const ofsY = overlayOffsetRef.current;
+        const iz = canvasH > 0 ? 1 - ofsY / canvasH : 1;
+        const iy = canvasH > 0 ? -ofsY / canvasH : 0;
+
+        const oldZoom = store.get(cameraZoomAtom);
+        const oldPanX = store.get(cameraPanXAtom);
+        const oldPanY = store.get(cameraPanYAtom);
+
+        // Cursor → NDC → projection space
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -(((e.clientY - rect.top) / canvasH) * 2 - 1);
+        const zoomIz = oldZoom * iz;
+        const cursorProjX = (ndcX * aspect) / zoomIz - oldPanX;
+        const cursorProjY = (ndcY - iy) / zoomIz - oldPanY;
+
+        const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
+        const newZoom = Math.min(4, Math.max(0.25, oldZoom * factor));
+
+        // Adjust pan so cursor stays at same screen position
+        const ratio = newZoom / oldZoom;
+        const newPanX = (cursorProjX + oldPanX) / ratio - cursorProjX;
+        const newPanY = (cursorProjY + oldPanY) / ratio - cursorProjY;
+
+        store.set(cameraZoomAtom, newZoom);
+        store.set(cameraPanXAtom, newPanX);
+        store.set(cameraPanYAtom, newPanY);
         return;
       }
+
+      // Tour scrub — only in guided mode
       if (store.get(tourTraversalAtom) !== 'guided') return;
       e.preventDefault();
       // Cancel any running position animation before wheel scrub
@@ -813,16 +847,10 @@ export const DtourViewer = ({
         updateAxesRef.current(next);
       }
       if (wasSuspended && !isTransitioningRef.current()) {
-        // First wheel tick after manual manipulation — blend back to the tour
-        // over 150ms; the transition rAF tick tracks positionRef each frame.
-        // Guard with !isTransitioning: guidedSuspended stays true during the
-        // blend (fix for currentBasisAtom sync), so without the guard every
-        // subsequent wheel tick would restart the 150ms countdown.
         resumeWithTransitionRef.current(150, () => positionRef.current);
       } else if (!wasSuspended && !isTransitioningRef.current()) {
         scatterRef.current?.setTourPosition(positionRef.current);
       }
-      // If transitioning: rAF tick calls setDirectBasis each frame.
       scheduleFlushRef.current();
     };
     container.addEventListener('wheel', handler, { passive: false });
