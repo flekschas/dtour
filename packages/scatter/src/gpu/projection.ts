@@ -74,7 +74,6 @@ export type ProjectionResources = {
 
 export const createProjectionResources = (
   device: GPUDevice,
-  pipeline: ProjectionPipeline,
   numPoints: number,
   numDims: number,
 ): Omit<ProjectionResources, 'bindGroup'> & { bindGroup: null } => {

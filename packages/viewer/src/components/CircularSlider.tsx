@@ -76,7 +76,6 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
     ref,
   ) => {
     const isSubtle = visibility === 'subtle';
-    if (visibility === 'hidden') return null;
     const [isDragging, setIsDragging] = useState(false);
     const hasDraggedRef = useRef(false);
     const svgRef = useRef<SVGSVGElement>(null);
@@ -199,11 +198,6 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       };
     }, [isDragging, angleFromPointer, onChange, onDragStart]);
 
-    // Initial positions from value prop (first paint; updateDom takes over after mount)
-    const handleRad = ((value * 360 + startDeg) * Math.PI) / 180;
-    const handleX = center + radius * Math.cos(handleRad);
-    const handleY = center + radius * Math.sin(handleRad);
-
     // Tick marks — outward facing, positioned at arc-length fractions (geodesic)
     // or evenly spaced (equal). Active tick is longer and wider.
     const ticks = useMemo(() => {
@@ -319,6 +313,13 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       }
       return segments;
     }, [spacingMode, arcLengths, radius, center, startDeg, isSubtle]);
+
+    if (visibility === 'hidden') return null;
+
+    // Initial positions from value prop (first paint; updateDom takes over after mount)
+    const handleRad = ((value * 360 + startDeg) * Math.PI) / 180;
+    const handleX = center + radius * Math.cos(handleRad);
+    const handleY = center + radius * Math.sin(handleRad);
 
     return (
       <svg

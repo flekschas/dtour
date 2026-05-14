@@ -2,7 +2,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { type Plugin, defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 /** Serve files from the monorepo `data/` directory at `/data/*` in dev. */
 function serveDataDir(): Plugin {

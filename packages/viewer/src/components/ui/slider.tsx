@@ -73,7 +73,7 @@ const Slider = forwardRef<
           )}
         >
           {Array.from({ length: ticks }, (_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+            // biome-ignore lint/suspicious/noArrayIndexKey: static tick marks
             <span key={i} className="h-[9px] w-[9px] flex items-center justify-center">
               <span className="h-[3px] w-[3px] rounded-full bg-white/30" />
             </span>

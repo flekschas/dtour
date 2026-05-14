@@ -1,12 +1,12 @@
 import { test } from '@playwright/test';
 import {
-  DATASETS,
-  type Renderer,
   collectMetrics,
   computeStats,
+  DATASETS,
   formatBytes,
   formatHeap,
   loadDataset,
+  type Renderer,
   runPlaybackBenchmark,
   writeResult,
 } from '../lib/helpers.ts';

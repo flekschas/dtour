@@ -1,10 +1,10 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { bitPackIndices } from '@dtour/scatter';
-import { Provider, createStore, useAtomValue, useSetAtom, useStore } from 'jotai';
+import { createStore, Provider, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DtourViewer } from './DtourViewer.tsx';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
+import { DtourViewer } from './DtourViewer.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import { PortalContainerContext, usePortalContainer } from './portal-container.tsx';
@@ -21,7 +21,6 @@ import {
   legendVisibleAtom,
   metadataAtom,
   pointColorByAtom,
-  predefinedTourAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
   tourByAtom,
@@ -343,7 +342,6 @@ const DtourInner = ({
   // Apply tour.dimensions → activeColumnsAtom so the toolbar shows which
   // numeric columns participate in the predefined tour.
   const setActiveColumns = useSetAtom(activeColumnsAtom);
-  const setPredefinedTour = useSetAtom(predefinedTourAtom);
   useEffect(() => {
     if (!metadata) return;
     const tourDims = embeddedConfig?.tour?.dimensions;

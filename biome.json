@@ -9,6 +9,9 @@
         "noDefaultExport": "off",
         "useNamingConvention": "off",
         "noNonNullAssertion": "off"
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off"
       }
     }
   },
@@ -17,6 +20,11 @@
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 100
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   },
   "javascript": {
     "formatter": {
@@ -52,10 +60,10 @@
       "!**/dist",
       "!**/static",
       "!**/.vite",
-      "!**/related-code/**",
-      "!**/papers/**",
-      "!**/figures/**",
-      "!**/.claude/**",
+      "!**/related-code",
+      "!**/papers",
+      "!**/figures",
+      "!**/.claude",
       "!**/*.md"
     ]
   }

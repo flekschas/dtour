@@ -11,9 +11,9 @@ export const Checkbox = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 } & Omit<ComponentPropsWithoutRef<'button'>, 'onClick' | 'role'>) => (
+  // biome-ignore lint/a11y/useSemanticElements: custom styled checkbox using button for flexibility
   <button
     type="button"
-    // biome-ignore lint/a11y/useSemanticElements: <explanation>
     role="checkbox"
     aria-checked={checked}
     onClick={(e) => {

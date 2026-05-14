@@ -16,7 +16,9 @@
     "url": "https://github.com/flekschas/dtour",
     "directory": "packages/scatter"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
     "dev": "vite build --watch"

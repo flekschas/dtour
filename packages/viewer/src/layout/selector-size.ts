@@ -1,8 +1,8 @@
 import {
+  computeLayout,
   GAP,
   LOADING_BAR_HEIGHT,
   MAX_SIZE,
-  computeLayout,
   sizeRatio,
 } from './gallery-positions.ts';
 

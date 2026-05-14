@@ -3,7 +3,9 @@
 
 @font-face {
   font-family: "Manrope";
-  src: url("/manrope.woff2") format("woff2"), url("/manrope.woff") format("woff");
+  src:
+    url("/manrope.woff2") format("woff2"),
+    url("/manrope.woff") format("woff");
   font-weight: 200 800;
   font-display: swap;
 }

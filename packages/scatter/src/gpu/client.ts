@@ -1,12 +1,11 @@
+import type { DataToMain, MainToData } from '../data/messages.ts';
+import type { Metadata } from '../data/types.ts';
 import DataWorkerFactory from '../data/worker.ts?worker&inline';
+import type { GpuToMain, MainToGpu } from './messages.ts';
 // ?worker&inline tells Vite to bundle each worker + all its imports and embed the
 // result as a base64 data URL in the library output. Consumers of @dtour/scatter
 // get a single self-contained JS file — no separate worker files to host.
 import GpuWorkerFactory from './worker.ts?worker&inline';
-
-import type { DataToMain, MainToData } from '../data/messages.ts';
-import type { Metadata } from '../data/types.ts';
-import type { GpuToMain, MainToGpu } from './messages.ts';
 
 export type ScatterOptions = {
   /** The main canvas to render into. */

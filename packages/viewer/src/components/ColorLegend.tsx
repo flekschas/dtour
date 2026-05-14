@@ -1,3 +1,4 @@
+import type { Colormap2DName } from '@dtour/scatter';
 import {
   COLORMAP_2D_INDEX,
   COLORMAP_2D_NAMES,
@@ -5,10 +6,9 @@ import {
   GLASBEY_LIGHT,
   MAGMA_25,
   OKABE_ITO,
-  VIRIDIS_25,
   packColormap2DLut,
+  VIRIDIS_25,
 } from '@dtour/scatter';
-import type { Colormap2DName } from '@dtour/scatter';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useRef } from 'react';
 import { hexToRgb255 } from '../lib/color-utils.ts';
@@ -87,7 +87,7 @@ export const ColorLegend = () => {
   );
 
   // 2D color legend (only when both columns are selected)
-  if (color2dEnabled && color2dColumns && color2dColumns[1]) {
+  if (color2dEnabled && color2dColumns?.[1]) {
     return (
       <Legend2D
         columnX={color2dColumns[0]}

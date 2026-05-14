@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import { tourToVisual } from '../lib/position-remap.ts';
 import { arcPath, keyframeAngle, rectBarPath } from './arc-path.ts';
 import type { ParsedTrack } from './types.ts';
 
@@ -8,8 +7,6 @@ const START_DEG = -135;
 export type RadialChartProps = {
   tracks: ParsedTrack[];
   keyframeCount: number;
-  /** Current tour position [0, 1] for flanking highlight. */
-  position: number;
   /** SVG viewport size (same as selectorSize). */
   size: number;
   /** Inner radius = selector ring radius (selectorSize * 0.4). */
@@ -29,7 +26,6 @@ type HoverInfo = { label: string; value: number; x: number; y: number };
 export const RadialChart = ({
   tracks,
   keyframeCount,
-  position,
   size,
   innerRadius,
   arcLengths,
@@ -88,13 +84,6 @@ export const RadialChart = ({
   );
 
   // Flanking keyframes based on current position
-  const visualPos =
-    spacingMode === 'equal' && arcLengths ? tourToVisual(position, arcLengths) : position;
-  const fractionalIndex = visualPos * keyframeCount;
-  const leftKf = Math.floor(fractionalIndex) % keyframeCount;
-  const rightKf = (leftKf + 1) % keyframeCount;
-
-  const segmentAngle = (2 * Math.PI) / keyframeCount;
   const baseR = innerRadius + STACK_GAP;
 
   if (import.meta.env.DEV) {
@@ -192,6 +181,7 @@ export const RadialChart = ({
 
                       return (
                         <path
+                          // biome-ignore lint/suspicious/noArrayIndexKey: index is fixed
                           key={`${track.label}-${kfIdx}`}
                           d={arcPath(rInner, barOuter, angleStart, angleEnd)}
                           fill={track.color}

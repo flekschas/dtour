@@ -12,8 +12,6 @@ import {
 import { gramSchmidt } from '../lib/gram-schmidt.ts';
 import {
   activeIndicesAtom,
-  cameraPanXAtom,
-  cameraPanYAtom,
   cameraZoomAtom,
   currentBasisAtom,
   metadataAtom,

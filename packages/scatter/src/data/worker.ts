@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { COLORMAP_2D_INDEX, packColormap2DLut } from './colormaps2d.ts';
 import type { Colormap2DName } from './colormaps2d.ts';
+import { COLORMAP_2D_INDEX, packColormap2DLut } from './colormaps2d.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
 import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';

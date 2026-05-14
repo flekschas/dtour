@@ -3,10 +3,10 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import {
-  LOADING_BAR_HEIGHT,
-  PREVIEW_SPACING,
   computeGallerySizes,
   computeLayout,
+  LOADING_BAR_HEIGHT,
+  PREVIEW_SPACING,
 } from '../layout/gallery-positions.ts';
 import { cn } from '../lib/utils.ts';
 import type { KeyframeLoading } from '../spec.ts';

@@ -327,7 +327,7 @@ const computeAdjustedBasis = (
 
 /** Compute per-dimension center values based on the active centering mode. */
 const computeNormCenters = (): Float32Array | null => {
-  if (!state || !state.normMins || !state.normRanges) return null;
+  if (!state?.normMins || !state.normRanges) return null;
   const dims = state.numDims;
   const centers = new Float32Array(dims);
   if (state.centering === 'mean' && state.normMeans) {
@@ -541,7 +541,7 @@ const renderView = (
   camera: CameraState,
   tonemapTarget?: WebGLFramebuffer,
 ): void => {
-  if (!state || !state.dataTexture || !state.normRanges) return;
+  if (!state?.dataTexture || !state.normRanges) return;
 
   const { numPoints, numDims, pointProgram, pointLocs, tonemapProgram, tonemapLocs } = state;
   const gl = state.mainView.gl;
@@ -1161,7 +1161,7 @@ const pointInPolygon = (
 };
 
 const handleLassoSelect = (polygon: Float32Array): void => {
-  if (!state || !state.normRanges || state.numPoints === 0) return;
+  if (!state?.normRanges || state.numPoints === 0) return;
 
   const { numPoints, numDims, dataBuffers, camera } = state;
   const numVertices = polygon.length / 2;
@@ -1291,7 +1291,7 @@ const handleGetMetrics = (): void => {
 // ─── Benchmark ───────────────────────────────────────────────────────────
 
 const handleBenchmark = (numFrames: number): void => {
-  if (!state || !state.tour || !state.dataTexture || state.numPoints === 0) {
+  if (!state?.tour || !state.dataTexture || state.numPoints === 0) {
     postMain({ type: 'error', message: 'No data/tour loaded for benchmark' });
     return;
   }
@@ -1574,7 +1574,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'getProjectedPositions') {
-    if (!state || !state.normRanges || state.numPoints === 0) {
+    if (!state?.normRanges || state.numPoints === 0) {
       postMain({ type: 'projectedPositions', positions: new Float32Array(0) }, []);
       return;
     }

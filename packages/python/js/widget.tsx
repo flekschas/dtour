@@ -1,6 +1,6 @@
 import { createRender, useModel } from '@anywidget/react';
-import { Dtour } from '@dtour/viewer';
 import type { DtourHandle, DtourSpec, KeyframeLoading, RadialTrackConfig } from '@dtour/viewer';
+import { Dtour } from '@dtour/viewer';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -10,6 +10,7 @@ type TourMeta = {
   keyframeDescriptions?: string | string[] | null;
   keyframeLoadings?: KeyframeLoading[] | null;
 };
+
 // Import CSS as strings so we can inject them into the Shadow DOM
 import preflightCss from './preflight.css?inline';
 

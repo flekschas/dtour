@@ -1,8 +1,8 @@
-import { interpolateAtPosition } from '@dtour/scatter';
 import type { Metadata, ScatterInstance } from '@dtour/scatter';
+import { interpolateAtPosition } from '@dtour/scatter';
 import { useStore } from 'jotai';
-import { useCallback, useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   basisTransitioningAtom,
   currentBasisAtom,
@@ -28,7 +28,6 @@ export const useGuidedResume = (
   resolvedViewsRef: RefObject<Float32Array[] | null>,
   arcLengthsRef: RefObject<Float32Array | null>,
   metadataRef: RefObject<Metadata | null>,
-  positionRef: RefObject<number>,
 ) => {
   const store = useStore();
   const rafRef = useRef<number | null>(null);

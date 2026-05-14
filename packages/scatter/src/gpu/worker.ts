@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { DataToGpu } from '../data/messages.ts';
-import { type PcaPipeline, createPcaPipeline, runPCA } from '../pca/pipeline.ts';
+import { createPcaPipeline, type PcaPipeline, runPCA } from '../pca/pipeline.ts';
 import { type CanvasView, configureCanvas, renderPoints, tonemapToCanvas } from '../renderer.ts';
 import { computeArcLengths, interpolateAtPosition } from '../tour/arc-length.ts';
 import {
@@ -16,30 +16,30 @@ import type { GpuToMain, MainToGpu } from './messages.ts';
 import {
   type CameraState,
   type ColorState,
-  type PointStyle,
-  type RawPointStyle,
-  type StyleFlags,
-  type TonemapPipeline,
   createPointBindGroup,
   createPointPipeline,
   createTonemapBindGroup,
   createTonemapPipeline,
+  type PointStyle,
+  type RawPointStyle,
+  type StyleFlags,
+  type TonemapPipeline,
   writeCamera,
   writeTonemapParams,
   writeUniforms,
 } from './pipeline.ts';
 import {
-  type ProjectionResources,
   createProjectionBindGroup,
   createProjectionPipeline,
   createProjectionResources,
   dispatchProjection,
+  type ProjectionResources,
   writeProjectionParams,
 } from './projection.ts';
 import {
-  type ResidualPcPipeline,
   computeResidualPCGpu,
   createResidualPcPipeline,
+  type ResidualPcPipeline,
 } from './residual-pc-pipeline.ts';
 
 // ─── Mutable worker state ──────────────────────────────────────────────────
@@ -358,7 +358,7 @@ const computeAdjustedBasis = (
 
 /** Compute per-dimension center values based on the active centering mode. */
 const computeNormCenters = (): Float32Array | null => {
-  if (!state || !state.normMins || !state.normRanges) return null;
+  if (!state?.normMins || !state?.normRanges) return null;
   const dims = state.numDims;
   const centers = new Float32Array(dims);
   if (state.centering === 'mean' && state.normMeans) {
@@ -523,7 +523,7 @@ const renderView = (
   camera: CameraState,
   renBindGroup: GPUBindGroup,
 ): void => {
-  if (!state || !state.projectionResources || !state.adjBasisBuffer || !state.normRanges) return;
+  if (!state?.projectionResources || !state.adjBasisBuffer || !state.normRanges) return;
 
   const { device, numPoints, numDims } = state;
 
@@ -755,7 +755,7 @@ const renderMainView = (): void => {
 // ─── Build bind groups after data + pipeline are ready ────────────────────
 
 const rebuildBindGroups = (): void => {
-  if (!state || !state.projectionResources || !state.adjBasisBuffer) return;
+  if (!state?.projectionResources || !state.adjBasisBuffer) return;
 
   const { device, projectionPipeline, pointPipeline, projectionResources } = state;
   const colorLutBuf = state.colorLutBuffer ?? pointPipeline.defaultColorLutBuffer;
@@ -1073,7 +1073,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   const { projectionPipeline } = state;
 
   // Create new projection resources
-  const res = createProjectionResources(device, projectionPipeline, rows, dims);
+  const res = createProjectionResources(device, rows, dims);
 
   // Upload each column contiguously into the concatenated data buffer
   for (let d = 0; d < dims; d++) {
@@ -1180,7 +1180,7 @@ const triggerResidualPC = (s: GpuState, basis: Float32Array): void => {
     s.numPoints,
     s.numDims,
   ).then((residualPC) => {
-    if (!state || !state.is3dActive) return;
+    if (!state?.is3dActive) return;
     state.residualPC = residualPC;
     postMain({ type: 'residualPC', residualPC: new Float32Array(residualPC) });
     renderMainView();
@@ -1858,7 +1858,7 @@ const handleGetMetrics = (): void => {
 // ─── Benchmark ───────────────────────────────────────────────────────────
 
 const handleBenchmark = async (numFrames: number): Promise<void> => {
-  if (!state || !state.tour || !state.renderBindGroup || state.numPoints === 0) {
+  if (!state?.tour || !state.renderBindGroup || state.numPoints === 0) {
     postMain({ type: 'error', message: 'No data/tour loaded for benchmark' });
     return;
   }

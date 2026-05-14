@@ -1,10 +1,8 @@
-import DataWorkerFactory from '../data/worker.ts?worker&inline';
-import WebGLWorkerFactory from './worker.ts?worker&inline';
-
 import type { DataToMain, MainToData } from '../data/messages.ts';
-import type { Metadata } from '../data/types.ts';
+import DataWorkerFactory from '../data/worker.ts?worker&inline';
 import type { ScatterInstance, ScatterOptions, ScatterStatus } from '../gpu/client.ts';
 import type { GpuToMain, MainToGpu } from '../gpu/messages.ts';
+import WebGLWorkerFactory from './worker.ts?worker&inline';
 
 const sendToGpu = (worker: Worker, msg: MainToGpu, transfers?: Transferable[]): void => {
   worker.postMessage(msg, transfers ?? []);

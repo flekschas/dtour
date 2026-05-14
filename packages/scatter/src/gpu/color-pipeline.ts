@@ -1,8 +1,6 @@
 import selectCategoricalWgsl from '../shaders/select-categorical.wgsl?raw';
 import selectContinuousWgsl from '../shaders/select-continuous.wgsl?raw';
 
-const WORKGROUP_SIZE = 256;
-
 // Shared bind group layout for selection compute operations:
 //   binding 0: read-only storage  (data / indices source)
 //   binding 1: read-only storage  (ranges / selected-labels)
