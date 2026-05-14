@@ -130,22 +130,19 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const portalContainer = usePortalContainer();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [isMedium, setIsMedium] = useState(false);
   const [isWide, setIsWide] = useState(false);
   useEffect(() => {
-    const mqlMed = window.matchMedia('(min-width: 720px)');
-    const mqlWide = window.matchMedia('(min-width: 960px)');
-    const update = () => {
-      setIsMedium(mqlMed.matches);
-      setIsWide(mqlWide.matches);
-    };
-    update();
-    mqlMed.addEventListener('change', update);
-    mqlWide.addEventListener('change', update);
-    return () => {
-      mqlMed.removeEventListener('change', update);
-      mqlWide.removeEventListener('change', update);
-    };
+    const el = toolbarRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setIsMedium(w >= 720);
+      setIsWide(w >= 960);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   const { cancelAnimation } = useAnimatePosition();
@@ -247,7 +244,10 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   );
 
   return (
-    <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-surface bg-dtour-bg px-3 text-dtour-text">
+    <div
+      ref={toolbarRef}
+      className="grid h-10 grid-cols-[1fr_auto_1fr] items-center border-b border-dtour-surface bg-dtour-bg px-3 text-dtour-text"
+    >
       {/* Hidden file input */}
       {onLoadData && (
         <input
