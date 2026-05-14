@@ -38,13 +38,23 @@ def _():
     import pyarrow as pa
 
     cache_dir = Path(__file__).parent / "__cache__"
+    cache_dir.mkdir(exist_ok=True)
     return cache_dir, dtour, jscatter, np, pa, pd, pl
 
 
 @app.cell
 def _(cache_dir, pd):
     pc_cols = [f"PC{i}" for i in range(1, 9)]
-    df = pd.read_parquet(cache_dir / "lamanno2021.pq").dropna(subset=pc_cols).reset_index(drop=True)
+    _data_url = "https://data.dtour.dev/notebooks/lamanno2021.pq"
+    _local_pq = cache_dir / "lamanno2021.pq"
+
+    if _local_pq.exists():
+        df = pd.read_parquet(_local_pq)
+    else:
+        df = pd.read_parquet(_data_url)
+        df.to_parquet(_local_pq)
+
+    df = df.dropna(subset=pc_cols).reset_index(drop=True)
     df
     return df, pc_cols
 

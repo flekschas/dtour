@@ -1,14 +1,7 @@
 import marimo
 
-__generated_with = "0.21.1"
+__generated_with = "0.23.5"
 app = marimo.App(width="full")
-
-
-@app.cell
-def _():
-    import marimo as mo
-
-    return (mo,)
 
 
 @app.cell(hide_code=True)
@@ -18,12 +11,22 @@ def _(mo):
 
     Interactive exploration of the **alpha=0.5** joint pixel + caption embedding:
 
-    - **Left**: Signed Laplacian Eigenmaps tour (label-aware structure via dtour)
+    - **Left**: Fisher Laplacian Eigenmaps tour (label-aware structure via dtour)
     - **Middle**: 2D DensMAP UMAP at alpha=0.5 (jupyter-scatter)
     - **Right**: 4D DensMAP UMAP tour at alpha=0.5 (dtour, dimensions tour)
 
     Lasso-select points in either dtour widget to highlight them across all views.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(le_widget, mo, scatter_2d, umap_widget):
+    mo.hstack(
+        [le_widget, mo.ui.anywidget(scatter_2d.widget), umap_widget],
+        widths=[1, 1, 1],
+        gap=0,
+    )
     return
 
 
@@ -42,37 +45,52 @@ def _():
 
 @app.cell
 def _(cache_dir, mo, pd, pq):
+    _base_url = "https://data.dtour.dev/notebooks"
+
+    def _load_pq(name, columns=None):
+        local = cache_dir / name
+        if local.exists():
+            return pd.read_parquet(local, columns=columns)
+        df = pd.read_parquet(f"{_base_url}/{name}", columns=columns)
+        df.to_parquet(local)
+        return df
+
+    def _load_pq_table(name):
+        local = cache_dir / name
+        if local.exists():
+            return pq.read_table(local)
+        table = pq.read_table(f"{_base_url}/{name}")
+        pq.write_table(table, local)
+        return table
+
     # Labels (from the combined parquet with all alphas)
-    df_labels = pd.read_parquet(
-        cache_dir / "joint-embeddings-umap-dense-2d-all-alphas.pq",
-        columns=["coco_label_idf"],
-    )
+    df_labels = _load_pq("joint-embeddings-umap-dense-2d-all-alphas.pq", columns=["coco_label_idf"])
 
     # 2D UMAP at alpha=0.5
-    df_2d = pd.read_parquet(cache_dir / "joint-embeddings-umap-dense-2d-alpha0.50.pq")
+    df_2d = _load_pq("joint-embeddings-umap-dense-2d-alpha0.50.pq")
 
     # 4D UMAP at alpha=0.5
-    df_4d = pd.read_parquet(cache_dir / "joint-embeddings-umap-dense-4d-alpha0.50.pq")
+    df_4d = _load_pq("joint-embeddings-umap-dense-4d-alpha0.50.pq")
 
     # Signed LE tour (precomputed with dtour spec in metadata)
-    le_signed_table = pq.read_table(cache_dir / "joint-embeddings-le-signed-tour-alpha0.50.pq")
+    le_fisher_table = _load_pq_table("joint-embeddings-le-fisher-tour-alpha0.50.pq")
 
     mo.md(f"""
     Loaded **{len(df_2d):,}** points (2D UMAP),
     **{len(df_4d):,}** (4D UMAP),
-    **{le_signed_table.num_rows:,}** (signed LE)
+    **{le_fisher_table.num_rows:,}** (fisher LE)
     """)
-    return df_2d, df_4d, df_labels, le_signed_table
+    return df_2d, df_4d, df_labels, le_fisher_table
 
 
 @app.cell
-def _(le_signed_table):
+def _(le_fisher_table):
     import dtour
 
-    le_tour = dtour.TourResult.from_parquet(le_signed_table)
+    le_tour = dtour.TourResult.from_parquet(le_fisher_table)
 
     le_widget = dtour.Widget(
-        data=le_signed_table,
+        data=le_fisher_table,
         tour=le_tour,
         point_color_by="coco_label_idf",
         point_opacity=0.5,
@@ -80,7 +98,7 @@ def _(le_signed_table):
         theme="light",
         height=720,
     )
-    return dtour, le_tour, le_widget
+    return dtour, le_widget
 
 
 @app.cell
@@ -125,34 +143,17 @@ def _(df_2d, df_labels, pd):
         y="y",
         color_by="coco_label_idf",
         height=720,
+        tooltip=True,
+        axes=False
     )
     return (scatter_2d,)
 
 
 @app.cell
-def _(le_widget, scatter_2d, umap_widget):
-    _sel = le_widget.selected_indices
-    umap_widget.select(_sel)
-    scatter_2d.selection(_sel if _sel else None)
-    return
+def _():
+    import marimo as mo
 
-
-@app.cell
-def _(scatter_2d, umap_widget):
-    _sel = umap_widget.selected_indices
-    if _sel:
-        scatter_2d.selection(_sel)
-    return
-
-
-@app.cell
-def _(le_widget, mo, scatter_2d, umap_widget):
-    mo.hstack(
-        [le_widget, mo.ui.anywidget(scatter_2d.widget), umap_widget],
-        widths=[1, 1, 1],
-        gap=0,
-    )
-    return
+    return (mo,)
 
 
 if __name__ == "__main__":

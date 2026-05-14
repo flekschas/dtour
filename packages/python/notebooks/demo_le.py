@@ -39,7 +39,7 @@ def _():
 
 @app.cell
 def _(cache_dir, pl):
-    _data_url = "https://storage.googleapis.com/flekschas/jupyter-scatter-tutorial/mair-2022-tumor-006-ozette.pq"
+    _data_url = "https://data.dtour.dev/notebooks/mair-2022-tumor-006-ozette.pq"
     _local_pq = cache_dir / "mair-2022-tumor-006-ozette.pq"
 
     if _local_pq.exists():
