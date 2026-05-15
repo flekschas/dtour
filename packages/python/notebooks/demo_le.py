@@ -16,8 +16,7 @@ def _(mo):
 
     ## Classic Laplacian Tour
 
-    Each eigenvector is correlated (Pearson *r*) with the original markers so the heatmap below shows which
-    markers drive each LE dimension.
+    The tour cycles through consecutive pairs of eigenvectors — [LE1, LE2] → [LE2, LE3] → … — cumulatively incorporating higher eigenvectors that capture increasingly fine-grained local structure. The heatmap below shows the Pearson correlation of each eigenvector with the original markers.
     """)
     return
 
@@ -87,6 +86,12 @@ def _(mo):
     """)
     return
 
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("Compute a Fisher discriminant LE tour that orders eigenvectors by class-separation power.")
+    return
 
 
 @app.cell
@@ -198,6 +203,12 @@ def _(X_scaled, cache_dir, marker_names):
         )
         le_tour.save(le_tour_path)
     return dtour, le_tour
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Parquet Exports\nExport each tour variant as a self-contained Parquet file with embedded dtour metadata.")
+    return
 
 
 @app.cell
@@ -406,6 +417,12 @@ def _(fisher_tour, np):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Feature Correlation Heatmaps\nEach heatmap shows how strongly original markers correlate (Pearson *r*) with the eigenvectors, along with the per-eigenvector R\u00b2.")
+    return
+
+
 @app.cell
 def _(le_tour, np):
     import matplotlib.pyplot as plt
@@ -447,6 +464,12 @@ def _(le_tour, mo, np):
         _lines.append(f"- **LE{i + 1}** (R\u00b2={_r2[i]:.2f}): {', '.join(_parts)}")
 
     mo.md("## Top Features per Eigenvector\n\n" + "\n".join(_lines))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Small Multiples\nPairwise scatter plots of consecutive eigenvector pairs, colored by phenotype.")
     return
 
 

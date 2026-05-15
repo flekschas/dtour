@@ -11,7 +11,7 @@ def _(mo):
 
     This notebook loads the [Mair 2022 tumor dataset](https://pubmed.ncbi.nlm.nih.gov/35545675/), embeds the 18 winsorized marker columns into 8D with [UMAP](https://umap-learn.readthedocs.io/), then runs a **little tour** through the embedding with points colored by [FAUST label](https://pubmed.ncbi.nlm.nih.gov/34950900/)-derived phenotypes.
 
-    The circular bar charts show the [average or phenotype-specific confusion](https://pmc.ncbi.nlm.nih.gov/articles/PMC11875997/) at each keyframe, which measures how much the points are visually intermixed with others. To see phenotype confusion, select a phenotype by clicking on it's label on the right.
+    The circular bar charts show the [average or phenotype-specific confusion](https://pmc.ncbi.nlm.nih.gov/articles/PMC11875997/) at each keyframe, which measures how much the points are visually intermixed with others. To see phenotype confusion, select a phenotype by clicking on its label on the right.
     """)
     return
 
@@ -42,9 +42,14 @@ def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
     return w, widget_df
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### 2D UMAP Comparison\nA classic 2D UMAP embedding of the same data for comparison with the interactive tour above.")
+    return
+
+
 @app.cell
 def _(X_scaled, cache_dir, np, phenotype_colors, phenotypes):
-    # Classic UMAP Plot
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
     from sklearn.decomposition import PCA
@@ -81,6 +86,12 @@ def _(X_scaled, cache_dir, np, phenotype_colors, phenotypes):
     ax.legend(markerscale=5, fontsize=8, loc="best")
     fig.tight_layout()
     fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Confusion Metrics\nCompute per-keyframe confusion scores and update the metric bars when a phenotype is selected in the legend.")
     return
 
 
@@ -183,9 +194,14 @@ def _(cache_dir, dtour, metrics, np, tour, w, widget_df):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### 4D UMAP Tour Export\nCompute a 4D UMAP tour variant and export it as a self-contained Parquet file with embedded dtour metadata.")
+    return
+
+
 @app.cell
 def _(X_scaled, cache_dir, dtour, phenotype_colors, phenotypes, pl):
-    # Compute a 4D UMAP tour (cached)
     tour_4d_path = cache_dir / "tour_4d.npz"
     if tour_4d_path.exists():
         tour_4d = dtour.TourResult.load(tour_4d_path)

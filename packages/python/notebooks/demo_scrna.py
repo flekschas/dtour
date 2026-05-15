@@ -21,10 +21,6 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo, scatter_2d, tour_widget):
-    mo.hstack(
-        [tour_widget, mo.ui.anywidget(scatter_2d.widget)],
-        gap=0,
-    )
     mo.Html(
         '<div style="display:grid;grid-template-columns: 1fr 1fr;gap:0">'
         f'<div style="position:relative;width:100%">{mo.ui.anywidget(tour_widget)}</div>'
@@ -50,6 +46,12 @@ def _():
 
     height = 640
     return cache_dir, dtour, height, jscatter, np, pa, pd, pl
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Data Loading\nLoad the La Manno 2021 dataset with precomputed PCA coordinates and cell-type annotations.")
+    return
 
 
 @app.cell
@@ -140,6 +142,12 @@ def _(class_cmap, df, embedding_2d, height, jscatter, pd):
     return (scatter_2d,)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Bidirectional Selection\nLink selections between the dtour widget and jupyter-scatter so lasso-selecting in either view highlights points in both.")
+    return
+
+
 @app.cell
 def _(df, scatter_2d, tour_widget):
     def _dtour_indices():
@@ -176,6 +184,12 @@ def _(df, scatter_2d, tour_widget):
         tour_widget.select(new_sel)
 
     scatter_2d.widget.observe(handle_jscatter_selection, names="selection")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("### Parquet Export\nExport the PCA tour as a self-contained Parquet file with embedded dtour metadata.")
     return
 
 

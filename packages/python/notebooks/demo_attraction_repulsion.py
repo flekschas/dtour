@@ -84,7 +84,7 @@ def _():
 
     class ImagesWidget(AnyWidget):
         _esm = """
-        const baseUrl = 'https://storage.googleapis.com/flekschas/regl-scatterplot/fashion-mnist-images/';
+        const baseUrl = 'https://data.dtour.dev/fashion-mnist/';
         function render({ model, el }) {
           const container = document.createElement('div');
           container.classList.add('images-container');
@@ -171,6 +171,15 @@ def _():
     return (ImagesWidget,)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Tour Computation
+    Compute 2D embeddings at several attraction-repulsion levels and align them into a smooth tour.
+    """)
+    return
+
+
 @app.cell
 def _(X_pca, cache_dir, feature_names):
     import dtour
@@ -227,6 +236,15 @@ def _(ImagesWidget, color_map, dtour, label_names, tour):
 
     w.observe(_on_selection, names=["selected_indices"])
     return sp_df, w, w_images
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ### Parquet Export
+    Export the tour as a self-contained Parquet file with embedded dtour metadata.
+    """)
+    return
 
 
 @app.cell
