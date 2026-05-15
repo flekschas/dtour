@@ -268,6 +268,17 @@ class Widget(anywidget.AnyWidget):
             raise ValueError("indices must be 1-dimensional")
         self.send({"type": "select"}, buffers=[idx.tobytes()])
 
+    def select_by_labels(self, labels: list[str]) -> None:
+        """Select points by categorical label names.
+
+        Parameters
+        ----------
+        labels : list of str
+            Label values to select. Resolves against the active color column
+            on the JS frontend.
+        """
+        self.selected_labels = list(labels)
+
     def clear_selection(self) -> None:
         """Clear the current point selection."""
         self.send({"type": "clear_selection"})
