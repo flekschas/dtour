@@ -388,6 +388,10 @@ const DtourInner = ({
 
     const handle: DtourHandle = {
       select: (indicesOrMask, opts) => {
+        if (indicesOrMask.length === 0) {
+          scatterInstance.clearSelection();
+          return;
+        }
         if (opts?.isBitPacked && indicesOrMask instanceof Uint32Array) {
           scatterInstance.setSelectionMask(new Uint32Array(indicesOrMask));
         } else {
