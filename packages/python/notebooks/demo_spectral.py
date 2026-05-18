@@ -87,10 +87,11 @@ def _(mo):
     return
 
 
-
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("Compute a Fisher discriminant LE tour that orders eigenvectors by class-separation power.")
+    mo.md("""
+    Compute a Fisher discriminant LE tour that orders eigenvectors by class-separation power.
+    """)
     return
 
 
@@ -156,7 +157,8 @@ def _(cache_dir):
     if _local.exists():
         faust_to_celltype = json.loads(_local.read_text())
     else:
-        with urllib.request.urlopen(_url) as _resp:
+        _req = urllib.request.Request(_url, headers={"User-Agent": "dtour"})
+        with urllib.request.urlopen(_req) as _resp:
             faust_to_celltype = json.loads(_resp.read())
         _local.write_text(json.dumps(faust_to_celltype))
     return (faust_to_celltype,)
@@ -207,7 +209,10 @@ def _(X_scaled, cache_dir, marker_names):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Parquet Exports\nExport each tour variant as a self-contained Parquet file with embedded dtour metadata.")
+    mo.md("""
+    ### Parquet Exports
+    Export each tour variant as a self-contained Parquet file with embedded dtour metadata.
+    """)
     return
 
 
@@ -419,7 +424,10 @@ def _(fisher_tour, np):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Feature Correlation Heatmaps\nEach heatmap shows how strongly original markers correlate (Pearson *r*) with the eigenvectors, along with the per-eigenvector R\u00b2.")
+    mo.md("""
+    ### Feature Correlation Heatmaps
+    Each heatmap shows how strongly original markers correlate (Pearson *r*) with the eigenvectors, along with the per-eigenvector R².
+    """)
     return
 
 
@@ -469,7 +477,10 @@ def _(le_tour, mo, np):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Small Multiples\nPairwise scatter plots of consecutive eigenvector pairs, colored by phenotype.")
+    mo.md("""
+    ### Small Multiples
+    Pairwise scatter plots of consecutive eigenvector pairs, colored by phenotype.
+    """)
     return
 
 

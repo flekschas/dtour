@@ -318,7 +318,8 @@ def _(cache_dir):
     if _local.exists():
         faust_to_celltype = json.loads(_local.read_text())
     else:
-        with urllib.request.urlopen(_url) as _resp:
+        _req = urllib.request.Request(_url, headers={"User-Agent": "dtour"})
+        with urllib.request.urlopen(_req) as _resp:
             faust_to_celltype = json.loads(_resp.read())
         _local.write_text(json.dumps(faust_to_celltype))
     return (faust_to_celltype,)
