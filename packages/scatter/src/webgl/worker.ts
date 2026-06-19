@@ -1701,6 +1701,9 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         console.warn('EXT_color_buffer_float not available — HDR rendering may fail');
       }
       mainGl.getExtension('OES_texture_float_linear');
+      // Required to blend into float32 render targets (the HDR point pass).
+      // Firefox enables it implicitly but warns; enable explicitly for portability.
+      mainGl.getExtension('EXT_float_blend');
 
       const gl = mainGl;
 

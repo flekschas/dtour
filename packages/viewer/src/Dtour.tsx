@@ -75,8 +75,9 @@ export type DtourProps = {
   portalContainer?: HTMLElement;
   /** Called when the viewer is ready with an API handle for programmatic control. */
   onReady?: (api: DtourHandle) => void;
-  /** Rendering backend. Default 'webgpu'. */
-  backend?: 'webgpu' | 'webgl';
+  /** Rendering backend. Default 'auto' — probes for WebGPU (incl. the
+   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise. */
+  backend?: 'webgpu' | 'webgl' | 'auto';
   /** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
   tourFamily?: 'hyperdimensional' | 'sequential';
   /** Human-readable tour description shown in the description sub-bar. */
@@ -214,7 +215,7 @@ const DtourInner = ({
   onPointSelectionChange: ((mask: Uint32Array) => void) | undefined;
   colorMap: Record<string, string | { light: string; dark: string }> | undefined;
   onReady: ((api: DtourHandle) => void) | undefined;
-  backend: 'webgpu' | 'webgl' | undefined;
+  backend: 'webgpu' | 'webgl' | 'auto' | undefined;
   tourFamily: 'hyperdimensional' | 'sequential' | undefined;
   tourDescription: string | null | undefined;
   keyframeDescriptions: string | string[] | null | undefined;

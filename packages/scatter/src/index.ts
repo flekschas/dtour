@@ -6,6 +6,8 @@ export type { Colormap2DName } from './data/colormaps2d.ts';
 export { COLORMAP_2D_INDEX, COLORMAP_2D_NAMES, packColormap2DLut } from './data/colormaps2d.ts';
 export { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './data/palettes.ts';
 export type { Metadata } from './data/types.ts';
+export type { ScatterBackend } from './detect.ts';
+export { detectBackend } from './detect.ts';
 export type { ScatterInstance, ScatterOptions, ScatterStatus } from './gpu/client.ts';
 export { createScatter } from './gpu/client.ts';
 export { bitPackIndices } from './selection.ts';

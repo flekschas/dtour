@@ -3,6 +3,7 @@ import {
   computeArcLengths,
   createScatter,
   createScatterWebGL,
+  detectBackend,
   GLASBEY_DARK,
   GLASBEY_LIGHT,
   interpolateAtPosition,
@@ -98,9 +99,10 @@ export type DtourViewerProps = {
   toolbarHeight?: number | undefined;
   /** Called when the scatter instance is created (or null on destroy). */
   onScatterReady?: ((scatter: ScatterInstance | null) => void) | undefined;
-  /** Rendering backend. Read once on mount — changing after mount has no effect.
-   *  Default 'webgpu'. */
-  backend?: 'webgpu' | 'webgl' | undefined;
+  /** Rendering backend. Resolved once on mount — changing after mount has no
+   *  effect. 'auto' (the default) probes for WebGPU support (incl. the
+   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise. */
+  backend?: 'webgpu' | 'webgl' | 'auto' | undefined;
 };
 
 const PREVIEW_INITIAL_SIZE = 2; // Placeholder; real size set by ResizeObserver in Gallery
@@ -117,9 +119,26 @@ export const DtourViewer = ({
   onStatus,
   toolbarHeight = 0,
   onScatterReady,
-  backend = 'webgpu',
+  backend = 'auto',
 }: DtourViewerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Resolve 'auto' to a concrete backend via async feature detection. When an
+  // explicit backend is requested we use it directly (no detection). The
+  // scatter lifecycle effect below is gated on this becoming non-null.
+  const [resolvedBackend, setResolvedBackend] = useState<'webgpu' | 'webgl' | null>(
+    backend === 'webgpu' || backend === 'webgl' ? backend : null,
+  );
+  useEffect(() => {
+    if (resolvedBackend) return;
+    let cancelled = false;
+    detectBackend().then((b) => {
+      if (!cancelled) setResolvedBackend(b);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedBackend]);
   const onScatterReadyRef = useRef(onScatterReady);
   onScatterReadyRef.current = onScatterReady;
   const [scatter, setScatter] = useState<ScatterInstance | null>(null);
@@ -496,14 +515,16 @@ export const DtourViewer = ({
   );
 
   // Effect A — Scatter lifecycle: create main canvas + scatter instance.
-  // Runs once on mount, cleans up on unmount. No dependencies — backend is
-  // a static construction prop, store and setCanvasSize are stable singletons.
+  // Runs once, after backend detection resolves (resolvedBackend goes
+  // null→concrete exactly once and never changes after, so this fires a single
+  // time). store and setCanvasSize are stable singletons.
   // NOTE: This effect is NOT StrictMode-safe. transferControlToOffscreen()
   // and ArrayBuffer transfers are one-shot ownership operations that cannot
   // survive StrictMode's mount→cleanup→remount cycle. Consumers must either
   // avoid StrictMode or accept a one-time dev-mode data copy.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally empty — all captured values are stable or refs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: gated on resolvedBackend; other captured values are stable or refs
   useEffect(() => {
+    if (!resolvedBackend) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -519,7 +540,7 @@ export const DtourViewer = ({
     mainCanvas.style.display = 'block';
     container.prepend(mainCanvas);
 
-    const factory = backend === 'webgl' ? createScatterWebGL : createScatter;
+    const factory = resolvedBackend === 'webgl' ? createScatterWebGL : createScatter;
     const instance = factory({
       canvas: mainCanvas,
       zoom: store.get(cameraZoomAtom),
@@ -584,7 +605,7 @@ export const DtourViewer = ({
       onScatterReadyRef.current?.(null);
       mainCanvas.remove();
     };
-  }, []);
+  }, [resolvedBackend]);
 
   // Effect B — Preview canvas lifecycle: add/remove preview canvases dynamically.
   // Uses effectivePreviewCount so predefined tours create the right number of canvases.
@@ -864,8 +885,8 @@ export const DtourViewer = ({
   const is3dEnabledRef = useRef(false);
   const revertAnimRef = useRef<number | null>(null);
   const residualPCRef = useRef<Float32Array | null>(null);
-  const backendRef = useRef(backend);
-  backendRef.current = backend;
+  const backendRef = useRef(resolvedBackend);
+  backendRef.current = resolvedBackend;
   const effectiveToolbarHeightRef = useRef(effectiveToolbarHeight);
   effectiveToolbarHeightRef.current = effectiveToolbarHeight;
 

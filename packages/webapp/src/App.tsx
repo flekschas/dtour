@@ -191,7 +191,9 @@ const urlParams = new URLSearchParams(globalThis.location?.search ?? '');
 const benchmarkMode = urlParams.has('benchmark');
 const datasetSlug = urlParams.get('dataset');
 const urlParam = urlParams.get('url');
-const rendererParam = urlParams.get('renderer') === 'webgl' ? 'webgl' : 'webgpu';
+const rendererQuery = urlParams.get('renderer');
+const rendererParam =
+  rendererQuery === 'webgl' ? 'webgl' : rendererQuery === 'webgpu' ? 'webgpu' : 'auto';
 const pointsParam = Number(urlParams.get('points')) || null;
 
 // In benchmark mode, expose flag so DtourViewer conditionally sets window.scatter

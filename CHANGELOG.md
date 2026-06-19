@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.1
+
+### scatter
+- fix: detect WebGPU support (`detectBackend()`) and fall back to the WebGL2 backend when WebGPU or the `float32-blendable` feature is unavailable
+- fix: explicitly enable the `EXT_float_blend` extension in the WebGL backend
+
+### viewer
+- fix: `backend` now defaults to `'auto'`, falling back to WebGL2 when WebGPU is unsupported (e.g. Firefox) instead of rendering nothing
+
+### webapp
+- fix: default renderer to auto-detection (WebGPU with WebGL2 fallback)
+
 ## v0.4.0
 
 ### BREAKING CHANGES
