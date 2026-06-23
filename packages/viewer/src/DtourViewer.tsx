@@ -16,6 +16,7 @@ import { AxisOverlay } from './components/AxisOverlay.tsx';
 import type { CircularSliderHandle } from './components/CircularSlider.tsx';
 import { CircularSlider } from './components/CircularSlider.tsx';
 import { Gallery } from './components/Gallery.tsx';
+import { GrandTourExitButtons } from './components/GrandTourExitButtons.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { RevertCameraButton } from './components/RevertCameraButton.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
@@ -1105,6 +1106,9 @@ export const DtourViewer = ({
 
         {/* Revert camera button — shown when 3D camera is rotated in manual mode */}
         {tourTraversal === 'manual' && <RevertCameraButton onRevert={revertCamera} />}
+
+        {/* Grand tour exit buttons — top-left, auto-fades, reappears on mouse move */}
+        <GrandTourExitButtons />
 
         {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
         {isGuidedMode && hasData && (

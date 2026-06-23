@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.2
+
+### viewer
+
+- chore: add a visible button to exit grand mode
+
 ## v0.4.1
 
 ### scatter
