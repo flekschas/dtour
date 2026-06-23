@@ -6,6 +6,9 @@ import { grandExitTargetAtom, tourTraversalAtom } from '../state/atoms.ts';
 import { Button } from './ui/button.tsx';
 
 const VISIBLE_DURATION_MS = 3000;
+// Wait for the chrome (toolbar + legend) to slide out before fading in —
+// appearing while the toolbar is still sliding looks disjointed.
+const ENTRY_DELAY_MS = 300;
 
 /**
  * Translucent button group shown in grand tour mode, top-left corner.
@@ -22,9 +25,12 @@ export const GrandTourExitButtons = () => {
   useEffect(() => {
     if (tourTraversal !== 'grand') return;
 
-    // Delay by a frame so the CSS transition from opacity-0 → opacity-100 fires
-    const rafId = requestAnimationFrame(() => setVisible(true));
-    timerRef.current = setTimeout(() => setVisible(false), VISIBLE_DURATION_MS);
+    // Hold off until the chrome has slid out, then fade in and start the
+    // inactivity countdown (state false→true replays the opacity transition).
+    const entryTimer = setTimeout(() => {
+      setVisible(true);
+      timerRef.current = setTimeout(() => setVisible(false), VISIBLE_DURATION_MS);
+    }, ENTRY_DELAY_MS);
 
     const handleMouseMove = () => {
       setVisible(true);
@@ -34,7 +40,7 @@ export const GrandTourExitButtons = () => {
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
-      cancelAnimationFrame(rafId);
+      clearTimeout(entryTimer);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
       window.removeEventListener('mousemove', handleMouseMove);
       // Reset so re-entering grand mode always starts from opacity-0 and

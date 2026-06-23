@@ -12,6 +12,9 @@ import {
 } from '../state/atoms.ts';
 
 const EASE_DURATION = 0.5; // seconds
+// Defer the ease-in until the chrome (toolbar + legend) has finished sliding
+// out, so the projection doesn't start moving while the canvas is resizing.
+const ENTRY_DELAY_MS = 300;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -95,7 +98,7 @@ export const useGrandTour = (
     gramSchmidt(basis, dims);
 
     let prevTime: number | null = null;
-    let rafId: number;
+    let rafId = 0;
     let easeT = 0; // 0 = stopped, 1 = full speed
 
     const animate = (time: number) => {
@@ -156,9 +159,12 @@ export const useGrandTour = (
       rafId = requestAnimationFrame(animate);
     };
 
-    rafId = requestAnimationFrame(animate);
+    const startTimer = setTimeout(() => {
+      rafId = requestAnimationFrame(animate);
+    }, ENTRY_DELAY_MS);
 
     return () => {
+      clearTimeout(startTimer);
       cancelAnimationFrame(rafId);
       // Store basis on cleanup so mode transitions always have the latest
       store.set(currentBasisAtom, new Float32Array(basis));

@@ -451,12 +451,27 @@ const DtourInner = ({
   // Sidebar width state — remembered across open/close cycles
   const [sidebarWidth, setSidebarWidth] = useState(200);
   const [dragging, setDragging] = useState(false);
+  // Grand mode slides the legend out with the rest of the chrome; hovering the
+  // right edge peeks it back in. Transient, so no persistent atom needed.
+  const [legendPeek, setLegendPeek] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // In grand mode the legend collapses with the chrome unless the user is
+  // peeking it via the right-edge hover strip. Resizing/peeking is disabled
+  // in grand mode (the hover strip drives visibility instead).
+  const legendInteractive = legendVisible && !isGrand;
+  const legendShown = legendVisible && (!isGrand || legendPeek);
+  const displayWidth = legendShown ? sidebarWidth : 0;
+
+  // Reset any peek when leaving grand mode
+  useEffect(() => {
+    if (!isGrand) setLegendPeek(false);
+  }, [isGrand]);
 
   // Drag-to-resize handler
   const onHandleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (!legendVisible) return;
+      if (!legendInteractive) return;
       e.preventDefault();
       setDragging(true);
 
@@ -478,10 +493,8 @@ const DtourInner = ({
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     },
-    [legendVisible],
+    [legendInteractive],
   );
-
-  const displayWidth = legendVisible ? sidebarWidth : 0;
 
   return (
     <div
@@ -527,7 +540,7 @@ const DtourInner = ({
       {/* Drag handle */}
       <div
         className={`w-px shrink-0 transition-colors ${
-          legendVisible
+          legendInteractive
             ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-dtour-highlight'
             : 'pointer-events-none'
         }`}
@@ -540,11 +553,19 @@ const DtourInner = ({
           width: displayWidth,
           transition: dragging ? 'none' : 'width 300ms cubic-bezier(.1,.1,0,1)',
         }}
+        onMouseLeave={isGrand ? () => setLegendPeek(false) : undefined}
       >
         <div className="h-full" style={{ width: sidebarWidth }}>
           <ColorLegend />
         </div>
       </div>
+      {/* Grand mode: hover the right edge to peek the collapsed legend back in */}
+      {isGrand && legendVisible && !legendPeek && (
+        <div
+          className="absolute top-0 right-0 bottom-0 w-4 z-20"
+          onMouseEnter={() => setLegendPeek(true)}
+        />
+      )}
     </div>
   );
 };
