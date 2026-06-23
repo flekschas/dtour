@@ -652,7 +652,11 @@ export const LassoOverlay = ({
     <div
       ref={overlayRef}
       className="absolute top-0 left-0 touch-none"
-      style={{ width, height, cursor: lassoMode ? 'crosshair' : panning ? 'grabbing' : 'grab' }}
+      style={{
+        width,
+        height,
+        cursor: lassoMode ? 'crosshair' : panning ? 'move' : hover ? 'pointer' : 'default',
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

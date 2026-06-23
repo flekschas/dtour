@@ -71,6 +71,9 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
     const rotationMatRef = useRef<Float32Array | null>(null);
     const [, forceRender] = useState(0);
     const draggingRef = useRef<number | null>(null);
+    // State-backed mirrors of hover/drag for handle styling (cursor + highlight).
+    const [hoveredDim, setHoveredDim] = useState<number | null>(null);
+    const [activeDim, setActiveDim] = useState<number | null>(null);
 
     const dims = metadata?.dimCount ?? 0;
     const columnNames = metadata?.columnNames ?? [];
@@ -220,6 +223,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       e.stopPropagation();
       (e.target as Element).setPointerCapture(e.pointerId);
       draggingRef.current = dimIndex;
+      setActiveDim(dimIndex);
     }, []);
 
     const handlePointerMove = useCallback(
@@ -246,6 +250,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
 
     const handlePointerUp = useCallback(() => {
       draggingRef.current = null;
+      setActiveDim(null);
     }, []);
 
     const handleAltClick = useCallback(
@@ -304,6 +309,9 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
           const color = AXIS_COLORS[d % AXIS_COLORS.length]!;
           const label = columnNames[d] ?? `dim${d}`;
 
+          const isActive = !readOnly && activeDim === d;
+          const isHighlighted = !readOnly && (isActive || hoveredDim === d);
+
           return (
             <g key={label}>
               {/* Axis line outline */}
@@ -329,18 +337,34 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
                 strokeOpacity={0.6}
                 strokeDasharray={readOnly ? '2,2' : '0'}
               />
+              {/* Hover/drag highlight ring — signals the handle is interactive */}
+              {isHighlighted && (
+                <circle
+                  cx={lineEndX}
+                  cy={lineEndY}
+                  r={HANDLE_RADIUS + 3}
+                  fill={color}
+                  className="pointer-events-none"
+                />
+              )}
               {/* Handle: draggable in interactive mode, decorative dot in read-only */}
               <circle
                 ref={setElementRef(d, 'circle')}
                 cx={lineEndX}
                 cy={lineEndY}
-                r={HANDLE_RADIUS}
+                r={isHighlighted ? HANDLE_RADIUS + 1 : HANDLE_RADIUS}
                 fill={readOnly ? 'var(--color-dtour-bg)' : color}
                 stroke={readOnly ? color : 'var(--color-dtour-bg)'}
-                strokeWidth={1}
+                strokeWidth={isHighlighted ? 2 : 1}
                 strokeDasharray={readOnly ? '2,2' : '0'}
-                className={readOnly ? undefined : 'cursor-grab pointer-events-auto'}
+                className={
+                  readOnly
+                    ? undefined
+                    : `pointer-events-auto ${isActive ? 'cursor-grabbing' : 'cursor-grab'}`
+                }
                 onPointerDown={readOnly ? undefined : (e) => handlePointerDown(d, e)}
+                onPointerEnter={readOnly ? undefined : () => setHoveredDim(d)}
+                onPointerLeave={readOnly ? undefined : () => setHoveredDim(null)}
                 onKeyDown={
                   readOnly
                     ? undefined
