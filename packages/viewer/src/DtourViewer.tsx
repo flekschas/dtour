@@ -66,7 +66,7 @@ import {
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
-  previewScaleAtom,
+  resolvedPreviewScaleAtom,
   resolvedThemeAtom,
   resumeGuidedAtom,
   showAxesAtom,
@@ -149,7 +149,7 @@ export const DtourViewer = ({
   const metadata = useAtomValue(metadataAtom);
   const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const previewCount = useAtomValue(previewCountAtom);
-  const previewScale = useAtomValue(previewScaleAtom);
+  const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
   const [guidedSuspended, setGuidedSuspended] = useAtom(guidedSuspendedAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);

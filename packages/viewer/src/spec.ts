@@ -35,7 +35,9 @@ export const dtourSpecSchema = z.object({
   tourSliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   tourSliderVisibility: z.enum(['visible', 'subtle', 'hidden']).optional(),
   previewCount: previewCountSchema.optional(),
-  previewScale: z.union([z.literal(1), z.literal(0.75), z.literal(0.5)]).optional(),
+  previewScale: z
+    .union([z.literal('auto'), z.literal(1), z.literal(0.75), z.literal(0.5)])
+    .optional(),
   previewPadding: z.number().nonnegative().optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
@@ -232,7 +234,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourSpeed: 1,
   tourDirection: 'forward',
   previewCount: 4,
-  previewScale: 1,
+  previewScale: 'auto',
   previewPadding: 12,
   pointSize: 'auto',
   pointOpacity: 'auto',

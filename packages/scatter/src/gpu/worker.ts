@@ -154,9 +154,18 @@ const computeAutoStyle = (
     return { pointSize: 0.012, opacity: 0.7 };
   }
 
-  const physW = canvasWidth * dpr;
   const physH = canvasHeight * dpr;
-  const totalBudget = physW * physH * fillTarget;
+  // Budget over a physH×physH square, NOT the full physW×physH canvas.
+  // The data projection is aspect-corrected (x is divided by aspect in the
+  // shader), so a data displacement maps to pixels at scale physH/2 in BOTH
+  // axes — the rendered data square is governed purely by canvas *height*.
+  // Sizing the budget by the full canvas area would make point size scale as
+  // √(physW·physH), leaving a stray √(physW/physH) factor relative to the
+  // plot: on tall/portrait canvases points render too small and too faint,
+  // while square preview canvases (physW === physH) look correct. Using
+  // physH² keeps point size proportional to the plot scale on any aspect
+  // ratio, and is identical to the old formula for square canvases.
+  const totalBudget = physH * physH * fillTarget;
   const perPoint = totalBudget / rowCount;
   const idealRadius = Math.sqrt(perPoint / Math.PI);
   const minRadius = minPointSizeCss * dpr * 0.5; // CSS px diameter → physical radius

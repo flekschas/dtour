@@ -20,6 +20,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
+import type { PreviewScaleSetting } from '../layout/gallery-positions.ts';
 import { usePortalContainer } from '../portal-container.tsx';
 import type { PreviewCount } from '../spec.ts';
 import { DTOUR_DEFAULTS } from '../spec.ts';
@@ -43,6 +44,7 @@ import {
   predefinedTourAtom,
   previewCountAtom,
   previewScaleAtom,
+  resolvedPreviewScaleAtom,
   resumeGuidedAtom,
   selectedKeyframeAtom,
   showAxesAtom,
@@ -105,6 +107,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
   const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
+  const resolvedPreviewScale = useAtomValue(resolvedPreviewScaleAtom);
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
@@ -653,7 +656,9 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <div className="flex w-full items-center justify-between">
                     <span className="text-xs">Size</span>
                     <span className="text-xs font-medium text-dtour-highlight">
-                      {SCALE_LABELS[previewScale] ?? previewScale}
+                      {previewScale === 'auto'
+                        ? `Auto · ${SCALE_LABELS[String(resolvedPreviewScale)]}`
+                        : (SCALE_LABELS[String(previewScale)] ?? previewScale)}
                     </span>
                   </div>
                   <Slider
@@ -1005,8 +1010,8 @@ const SLIDER_VIS_LABELS: Record<string, string> = {
 };
 
 const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const PREVIEW_SCALE_STEPS: (1 | 0.75 | 0.5)[] = [0.5, 0.75, 1];
-const SCALE_LABELS: Record<number, string> = { 1: 'L', 0.75: 'M', 0.5: 'S' };
+const PREVIEW_SCALE_STEPS: PreviewScaleSetting[] = ['auto', 0.5, 0.75, 1];
+const SCALE_LABELS: Record<string, string> = { auto: 'Auto', 1: 'L', 0.75: 'M', 0.5: 'S' };
 
 // ---------------------------------------------------------------------------
 // Speed / distance step helpers

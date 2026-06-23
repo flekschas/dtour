@@ -548,7 +548,7 @@ const App = () => {
       {/* Content overlay (upload button + examples) — hidden during logo move/settle */}
       {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
-          className={`absolute inset-0 flex flex-col items-center z-20 pointer-events-none ${
+          className={`absolute inset-0 flex flex-col items-center px-4 z-20 pointer-events-none ${
             logoPhase === 'done' ? 'justify-center' : 'justify-start'
           }`}
           style={logoPhase !== 'done' ? { paddingTop: `${CONTENT_TOP_VH * 100}vh` } : undefined}
@@ -561,7 +561,7 @@ const App = () => {
             <>
               {/* 1. Description */}
               <motion.p
-                className="w-128 text-sm text-dtour-text-muted/80 text-center mb-6 pointer-events-auto"
+                className="w-full max-w-lg text-sm text-dtour-text-muted/80 text-center mb-6 pointer-events-auto"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{
@@ -585,7 +585,7 @@ const App = () => {
               >
                 <Button
                   variant="ghost"
-                  className="w-128 cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
+                  className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
                   onClick={() => inputRef.current?.click()}
                 >
                   <UploadSimple size={36} />
@@ -608,12 +608,12 @@ const App = () => {
                 or try
               </motion.span>
               {/* 4. Example grid */}
-              <div className="grid grid-cols-3 gap-4 mt-3 pointer-events-auto">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mt-3 w-full max-w-lg pointer-events-auto">
                 {EXAMPLES.map((example, i) => (
                   <motion.button
                     key={example.fileName}
                     type="button"
-                    className="w-40 p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                    className="w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{
@@ -726,7 +726,7 @@ const App = () => {
                 if (e.key === 'Escape') setHomeOpen(false);
               }}
             />
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-4 pointer-events-none">
               {loading ? (
                 <div className="flex flex-col items-center gap-3 px-6 py-4">
                   <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
@@ -735,7 +735,7 @@ const App = () => {
                 <>
                   <Button
                     variant="ghost"
-                    className="w-128 cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                    className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
                     onClick={() => inputRef.current?.click()}
                   >
                     <UploadSimple size={36} />
@@ -744,12 +744,12 @@ const App = () => {
                     </span>
                   </Button>
                   <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
-                  <div className="grid grid-cols-3 gap-4 mt-3 pointer-events-auto">
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mt-3 w-full max-w-lg pointer-events-auto">
                     {EXAMPLES.map((example) => (
                       <button
                         key={example.fileName}
                         type="button"
-                        className="w-40 p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                        className="w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                         onClick={() => {
                           setHomeOpen(false);
                           loadExample(example);

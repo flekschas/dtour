@@ -85,8 +85,13 @@ export const AnimatedLogo = ({
     const rect = targetEl.getBoundingClientRect();
     setTargetRect(rect);
 
-    const width = rect.width * SCALE;
-    const height = rect.height * SCALE;
+    // Cap the hero logo to the content block width so it never overflows the
+    // viewport or exceeds the example grid below it. Matches the landing
+    // content cap (max-w-lg = 512px) minus the overlay's px-4 padding.
+    const maxWidth = Math.min(512, window.innerWidth - 32);
+    const scale = Math.min(SCALE, maxWidth / rect.width);
+    const width = rect.width * scale;
+    const height = rect.height * scale;
     const x = (window.innerWidth - width) / 2;
     const y = window.innerHeight * CONTENT_TOP_VH - height;
     setInitialRect({ x, y, width, height });

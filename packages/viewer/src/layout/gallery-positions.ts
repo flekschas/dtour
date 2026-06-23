@@ -1,3 +1,24 @@
+/** Concrete preview size factor: L (1), M (0.75), or S (0.5). */
+export type PreviewScale = 1 | 0.75 | 0.5;
+/** User-facing preview size setting: a concrete factor or viewport-derived 'auto'. */
+export type PreviewScaleSetting = PreviewScale | 'auto';
+
+/**
+ * Resolve a preview-size setting to a concrete S/M/L factor. For 'auto', the
+ * factor is derived from the gallery's smaller dimension (the axis that
+ * actually constrains preview size): phones get S, tablets M, desktops L.
+ * Concrete settings pass through unchanged.
+ */
+export function resolvePreviewScale(scale: PreviewScaleSetting, minorDim: number): PreviewScale {
+  if (scale !== 'auto') return scale;
+  // Unmeasured container (0×0 before first layout) — assume L to avoid a
+  // large→small flash on the common desktop case before the size is known.
+  if (minorDim <= 0) return 1;
+  if (minorDim < 520) return 0.5;
+  if (minorDim < 900) return 0.75;
+  return 1;
+}
+
 /** Gap between adjacent previews (CSS px). */
 export const GAP = 32;
 /** Maximum preview size (CSS px). */

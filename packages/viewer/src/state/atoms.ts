@@ -1,5 +1,10 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
+import {
+  type PreviewScale,
+  type PreviewScaleSetting,
+  resolvePreviewScale,
+} from '../layout/gallery-positions.ts';
 import type { EmbeddedConfig, KeyframeLoading, PreviewCount } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
@@ -25,8 +30,19 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // ---------------------------------------------------------------------------
 
 export const previewCountAtom = atom<PreviewCount>(4);
-export const previewScaleAtom = atom<1 | 0.75 | 0.5>(1);
+/** User setting for preview size: explicit S/M/L factor or viewport-derived 'auto'. */
+export const previewScaleAtom = atom<PreviewScaleSetting>('auto');
 export const previewPaddingAtom = atom(12);
+
+/**
+ * Resolved preview-size factor (S/M/L). Resolves 'auto' from the main canvas's
+ * smaller dimension so the Gallery and the circular-selector sizing agree.
+ */
+export const resolvedPreviewScaleAtom = atom<PreviewScale>((get) => {
+  const setting = get(previewScaleAtom);
+  const { width, height } = get(canvasSizeAtom);
+  return resolvePreviewScale(setting, Math.min(width, height));
+});
 export const selectedKeyframeAtom = atom<number | null>(null);
 
 /** Which gallery preview is currently hovered (index), or null. */

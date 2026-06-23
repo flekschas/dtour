@@ -7,6 +7,8 @@
 - chore: add a visible button to exit grand mode
 - chore: improve axis drag handle hover indication from panning
 - chore: auto-fade out legend sidebar in grand tour mode
+- chore: automatically color the generated "Gaussian blobs" and "Rings" examples
+- chore: optimize landing page for portrait small screens (such that it displays nicely on a smartphone)
 
 ## v0.4.1
 

@@ -19,7 +19,7 @@ import {
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
-  previewScaleAtom,
+  resolvedPreviewScaleAtom,
   selectedKeyframeAtom,
   showKeyframeLoadingsAtom,
   showKeyframeNumbersAtom,
@@ -78,7 +78,7 @@ export const Gallery = ({
   const basePreviewCount = useAtomValue(previewCountAtom);
   const predefinedTour = useAtomValue(predefinedTourAtom);
   const previewCount = predefinedTour?.keyframeCount ?? basePreviewCount;
-  const previewScale = useAtomValue(previewScaleAtom);
+  const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
