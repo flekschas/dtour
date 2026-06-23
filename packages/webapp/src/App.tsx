@@ -23,6 +23,10 @@ type ExampleDataset = {
   numDims: string;
   size?: string;
   tourDescription?: string;
+  // Default color encoding for examples whose data can't embed a dtour spec
+  // (e.g. generated Arrow tables). Applied on first load; overridden by any
+  // persisted user choice.
+  pointColorBy?: string;
 } & (
   | { type: 'remote'; url: string }
   | { type: 'generate'; worker: 'lorenz' | 'gaussian-blobs' | 'linked-rings' }
@@ -36,6 +40,7 @@ const EXAMPLES: ExampleDataset[] = [
     fileName: 'gaussian-blobs-5d.arrow',
     numPoints: '500K',
     numDims: '5',
+    pointColorBy: 'cluster',
     tourDescription:
       'Five Gaussian clusters in 5D. The tour rotates through projections that reveal how the groups separate and overlap from different angles.',
   },
@@ -46,6 +51,7 @@ const EXAMPLES: ExampleDataset[] = [
     fileName: 'linked-rings-4d.arrow',
     numPoints: '500K',
     numDims: '4',
+    pointColorBy: 'ring',
     tourDescription:
       'Two interlocking rings in 4D. The tour reveals the linked topology that is invisible in any single 2D projection.',
   },
@@ -147,6 +153,21 @@ function readPersistedTheme(): ThemeMode {
   return 'dark';
 }
 
+// Default spec for examples whose data format can't embed a dtour config
+// (generated Arrow tables). Matched by exact fileName or, for generated
+// examples loaded with a custom point count, by the `<worker>-` prefix.
+function exampleDefaultSpec(fileName: string | undefined): DtourSpec {
+  if (!fileName) return {};
+  for (const example of EXAMPLES) {
+    if (!example.pointColorBy) continue;
+    const matches =
+      example.fileName === fileName ||
+      (example.type === 'generate' && fileName.startsWith(`${example.worker}-`));
+    if (matches) return { pointColorBy: example.pointColorBy };
+  }
+  return {};
+}
+
 function loadPersistedSpec(fileName: string): DtourSpec {
   try {
     const raw = localStorage.getItem(SPEC_STORAGE_PREFIX + fileName);
@@ -234,7 +255,7 @@ const App = () => {
   // runs with the persisted spec before the first render (no flash of defaults).
   const spec = useMemo<DtourSpec>(() => {
     const persisted = fileName ? loadPersistedSpec(fileName) : {};
-    return { ...persisted, themeMode: readPersistedTheme() };
+    return { ...exampleDefaultSpec(fileName), ...persisted, themeMode: readPersistedTheme() };
   }, [fileName]);
 
   useEffect(() => {
