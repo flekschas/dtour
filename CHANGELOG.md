@@ -8,6 +8,7 @@
 
 ### viewer
 - fix: `backend` now defaults to `'auto'`, falling back to WebGL2 when WebGPU is unsupported (e.g. Firefox) instead of rendering nothing
+- fix: logo in Safari which struggles hard with `stroke-dashoffset` and multi-path `<clipPath>`. Sad.
 
 ### webapp
 - fix: default renderer to auto-detection (WebGPU with WebGL2 fallback)
