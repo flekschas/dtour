@@ -4,6 +4,7 @@ import {
   ChartScatterIcon,
   CompassIcon,
   CursorIcon,
+  DatabaseIcon,
   GaugeIcon,
   MagnifyingGlassIcon,
   MonitorIcon,
@@ -136,6 +137,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [isMedium, setIsMedium] = useState(false);
   const [isWide, setIsWide] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
@@ -143,6 +145,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
       const w = entries[0]?.contentRect.width ?? 0;
       setIsMedium(w >= 720);
       setIsWide(w >= 960);
+      setIsCompact(w < 480);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -246,6 +249,35 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
     [metadata, setActiveColumns],
   );
 
+  // Single mode-switch handler shared by the segmented control and the
+  // collapsed dropdown. Preserves the grand-exit choreography: switching
+  // away from grand sets an exit target (animated) rather than snapping.
+  const switchToMode = (mode: ViewMode) => {
+    if (mode === 'guided') {
+      if (tourTraversal === 'grand') {
+        setGrandExitTarget('guided');
+      } else if (tourTraversal !== 'guided') {
+        setGuidedSuspended(true);
+        setTourTraversal('guided');
+      }
+      return;
+    }
+    if (tourTraversal === 'grand') {
+      if (mode === 'grand') {
+        setGrandExitTarget(null);
+        return;
+      }
+      setGrandExitTarget(mode);
+    } else {
+      if (tourTraversal === 'guided') setPlaying(false);
+      if (mode === 'grand') setGrandExitTarget(null);
+      setTourTraversal(mode);
+    }
+  };
+
+  const activeMode = MODE_CONFIG.find((m) => m.mode === tourTraversal) ?? MODE_CONFIG[0]!;
+  const ActiveModeIcon = activeMode.icon;
+
   return (
     <div
       ref={toolbarRef}
@@ -287,134 +319,221 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             </div>
           </div>
         )}
-        <div className="group/modes ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
-          {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
-          <div
-            className={`group flex gap-0 items-center ${tourTraversal === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'} ${!isMedium && tourTraversal !== 'guided' ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out' : ''}`}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`rounded-none ${tourTraversal === 'guided' ? 'text-dtour-highlight' : ''}`}
-              onClick={() => {
-                if (tourTraversal === 'grand') {
-                  setGrandExitTarget('guided');
-                } else if (tourTraversal !== 'guided') {
-                  setGuidedSuspended(true);
-                  setTourTraversal('guided');
-                }
-              }}
-              title="Guided"
+        {isWide ? (
+          <div className="group/modes ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
+            {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
+            <div
+              className={`group flex gap-0 items-center ${tourTraversal === 'guided' ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'} ${!isMedium && tourTraversal !== 'guided' ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out' : ''}`}
             >
-              {isWide && (
-                <PathIcon size={14} weight={tourTraversal === 'guided' ? 'fill' : 'regular'} />
-              )}
-              <span className="text-xs">
-                Guided
-                {tourTraversal === 'guided' ? (
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out">
-                    :
-                  </span>
-                ) : (
-                  ''
-                )}
-              </span>
-            </Button>
-            {tourTraversal === 'guided' && tourBy === 'parameter' && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-xs text-dtour-highlight cursor-default px-1">Params</span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    In parameter touring, only guided tour is available
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {tourTraversal === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
-              <div
-                className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`rounded-none ${tourTraversal === 'guided' ? 'text-dtour-highlight' : ''}`}
+                onClick={() => {
+                  if (tourTraversal === 'grand') {
+                    setGrandExitTarget('guided');
+                  } else if (tourTraversal !== 'guided') {
+                    setGuidedSuspended(true);
+                    setTourTraversal('guided');
+                  }
+                }}
+                title="Guided"
               >
+                {isWide && (
+                  <PathIcon size={14} weight={tourTraversal === 'guided' ? 'fill' : 'regular'} />
+                )}
+                <span className="text-xs">
+                  Guided
+                  {tourTraversal === 'guided' ? (
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out">
+                      :
+                    </span>
+                  ) : (
+                    ''
+                  )}
+                </span>
+              </Button>
+              {tourTraversal === 'guided' && tourBy === 'parameter' && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-xs text-dtour-highlight cursor-default px-1">
-                        Planned
+                        Params
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">This tour was precomputed</TooltipContent>
+                    <TooltipContent side="bottom">
+                      In parameter touring, only guided tour is available
+                    </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              </div>
-            )}
-            {tourTraversal === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
-              <div
-                className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`rounded-none px-0 ${tourBy === 'dimensions' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
-                  onClick={() => setTourBy('dimensions')}
-                  title="Tour by dimensions"
-                >
-                  <span className="text-xs">Dims</span>
-                </Button>
-                <span className="text-[10px] text-dtour-text-muted select-none px-1">/</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`rounded-none px-0 ${tourBy === 'pca' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
-                  onClick={() => setTourBy('pca')}
-                  title="Tour by principal components"
-                >
-                  <span className="text-xs">PCA</span>
-                </Button>
-                <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none" />
-              </div>
-            )}
-          </div>
-          {/* Manual + Grand buttons (hidden for parameter tours) */}
-          {tourBy !== 'parameter' &&
-            MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
-              ({ mode, label, icon: Icon }) => (
+              )}
+              {tourTraversal === 'guided' && isPredefinedTour && tourBy !== 'parameter' && (
                 <div
-                  key={mode}
-                  className={
-                    !isMedium && tourTraversal !== mode
-                      ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out'
-                      : ''
-                  }
+                  className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
+                >
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs text-dtour-highlight cursor-default px-1">
+                          Planned
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">This tour was precomputed</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
+              {tourTraversal === 'guided' && !isPredefinedTour && tourBy !== 'parameter' && (
+                <div
+                  className={`-ml-1 flex items-center overflow-hidden max-w-0 group-hover:max-w-24 transition-[max-width] duration-200 ease-in-out ${!isMedium ? 'group-hover/modes:max-w-24' : ''}`}
                 >
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`rounded-none ${tourTraversal === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
-                    onClick={() => {
-                      if (tourTraversal === 'grand') {
-                        if (mode === 'grand') {
-                          setGrandExitTarget(null);
-                          return;
-                        }
-                        setGrandExitTarget(mode);
-                      } else {
-                        if (mode !== 'guided' && tourTraversal === 'guided') setPlaying(false);
-                        if (mode === 'grand') setGrandExitTarget(null);
-                        setTourTraversal(mode);
-                      }
-                    }}
-                    title={label}
+                    className={`rounded-none px-0 ${tourBy === 'dimensions' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                    onClick={() => setTourBy('dimensions')}
+                    title="Tour by dimensions"
                   >
-                    {isWide && (
-                      <Icon size={14} weight={tourTraversal === mode ? 'fill' : 'regular'} />
-                    )}
-                    <span className="text-xs">{label}</span>
+                    <span className="text-xs">Dims</span>
                   </Button>
+                  <span className="text-[10px] text-dtour-text-muted select-none px-1">/</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`rounded-none px-0 ${tourBy === 'pca' ? 'text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                    onClick={() => setTourBy('pca')}
+                    title="Tour by principal components"
+                  >
+                    <span className="text-xs">PCA</span>
+                  </Button>
+                  <div className="w-1.5 h-full text-[10px] text-dtour-text-muted select-none" />
                 </div>
-              ),
-            )}
-        </div>
+              )}
+            </div>
+            {/* Manual + Grand buttons (hidden for parameter tours) */}
+            {tourBy !== 'parameter' &&
+              MODE_CONFIG.filter(({ mode }) => mode !== 'guided').map(
+                ({ mode, label, icon: Icon }) => (
+                  <div
+                    key={mode}
+                    className={
+                      !isMedium && tourTraversal !== mode
+                        ? 'overflow-hidden max-w-0 group-hover/modes:max-w-24 transition-[max-width] duration-200 ease-in-out'
+                        : ''
+                    }
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`rounded-none ${tourTraversal === mode ? 'bg-dtour-surface text-dtour-highlight' : 'text-dtour-text-muted'}`}
+                      onClick={() => {
+                        if (tourTraversal === 'grand') {
+                          if (mode === 'grand') {
+                            setGrandExitTarget(null);
+                            return;
+                          }
+                          setGrandExitTarget(mode);
+                        } else {
+                          if (mode !== 'guided' && tourTraversal === 'guided') setPlaying(false);
+                          if (mode === 'grand') setGrandExitTarget(null);
+                          setTourTraversal(mode);
+                        }
+                      }}
+                      title={label}
+                    >
+                      {isWide && (
+                        <Icon size={14} weight={tourTraversal === mode ? 'fill' : 'regular'} />
+                      )}
+                      <span className="text-xs">{label}</span>
+                    </Button>
+                  </div>
+                ),
+              )}
+          </div>
+        ) : tourBy === 'parameter' ? (
+          <div className="ml-2 flex items-center gap-1 rounded-md border border-dtour-surface bg-dtour-surface px-2 py-1 text-dtour-highlight">
+            <PathIcon size={14} weight="fill" />
+            {!isCompact && <span className="text-xs">Guided</span>}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-default text-xs text-dtour-text-muted">Params</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  In parameter touring, only guided tour is available
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-2 rounded-md border border-dtour-surface text-dtour-highlight"
+                title={`Mode: ${activeMode.label}`}
+              >
+                <ActiveModeIcon size={14} weight="fill" />
+                {!isCompact && <span className="text-xs">{activeMode.label}</span>}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {MODE_CONFIG.map(({ mode, label, icon: Icon }) => (
+                <DropdownMenuItem
+                  key={mode}
+                  className={`gap-2 text-xs ${tourTraversal === mode ? 'text-dtour-highlight' : ''}`}
+                  onSelect={() => switchToMode(mode)}
+                >
+                  <Icon size={14} weight={tourTraversal === mode ? 'fill' : 'regular'} />
+                  <span className="flex-1">{label}</span>
+                </DropdownMenuItem>
+              ))}
+              {tourTraversal === 'guided' &&
+                (isPredefinedTour ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs font-normal text-dtour-text-muted">
+                      Planned tour (precomputed)
+                    </DropdownMenuLabel>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="gap-2" onSelect={(e) => e.preventDefault()}>
+                      <span className="flex-1 text-xs">Tour by</span>
+                      <div className="flex overflow-hidden rounded-md border border-dtour-border text-[10px] font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setTourBy('dimensions')}
+                          className={`cursor-pointer px-1.5 py-0.5 transition-colors ${
+                            tourBy === 'dimensions'
+                              ? 'bg-dtour-border text-dtour-text'
+                              : 'text-dtour-text-muted hover:text-dtour-highlight'
+                          }`}
+                          title="Tour by dimensions"
+                        >
+                          Dims
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTourBy('pca')}
+                          className={`cursor-pointer border-l border-dtour-border px-1.5 py-0.5 transition-colors ${
+                            tourBy === 'pca'
+                              ? 'bg-dtour-border text-dtour-text'
+                              : 'text-dtour-text-muted hover:text-dtour-highlight'
+                          }`}
+                          title="Tour by principal components"
+                        >
+                          PCA
+                        </button>
+                      </div>
+                    </DropdownMenuItem>
+                  </>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Center: Settings | Play | Zoom (+ Speed & Axes at ≥960px) */}
@@ -688,6 +807,35 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 </DropdownMenuItem>
               </>
             )}
+            {isCompact && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-semibold">Appearance</DropdownMenuLabel>
+                <DropdownMenuItem className="gap-4" onSelect={(e) => e.preventDefault()}>
+                  <span className="flex-1 text-xs">Theme</span>
+                  <div className="flex overflow-hidden rounded-md border border-dtour-border">
+                    {(['light', 'dark', 'system'] as const).map((m) => {
+                      const Icon = m === 'light' ? SunIcon : m === 'dark' ? MoonIcon : MonitorIcon;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setThemeMode(m)}
+                          className={`cursor-pointer px-2 py-1 transition-colors ${
+                            themeMode === m
+                              ? 'bg-dtour-border text-dtour-text'
+                              : 'text-dtour-text-muted hover:text-dtour-highlight'
+                          }`}
+                          title={`${m.charAt(0).toUpperCase()}${m.slice(1)} theme`}
+                        >
+                          <Icon size={14} weight="fill" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-xs"
@@ -805,19 +953,19 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         {metadata ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                {isWide ? (
-                  <>
-                    {metadata.rowCount.toLocaleString()} pts &times;{' '}
-                    {activeCount === metadata.dimCount
-                      ? `${metadata.dimCount} dims`
-                      : `${activeCount}/${metadata.dimCount} dims`}
-                  </>
-                ) : (
-                  'Data'
-                )}
-                <CaretDownIcon size={12} />
-              </Button>
+              {isWide ? (
+                <Button variant="ghost" size="sm">
+                  {metadata.rowCount.toLocaleString()} pts &times;{' '}
+                  {activeCount === metadata.dimCount
+                    ? `${metadata.dimCount} dims`
+                    : `${activeCount}/${metadata.dimCount} dims`}
+                  <CaretDownIcon size={12} />
+                </Button>
+              ) : (
+                <Button variant="ghost" size="icon" title="Data">
+                  <DatabaseIcon size={16} />
+                </Button>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-h-[60vh] w-64 overflow-y-auto">
               {/* Numeric columns */}
@@ -924,22 +1072,24 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             No data
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() =>
-            setThemeMode((m) => (m === 'dark' ? 'light' : m === 'light' ? 'system' : 'dark'))
-          }
-          title={`Theme: ${themeMode === 'dark' ? 'Dark' : themeMode === 'light' ? 'Light' : 'System'}`}
-        >
-          {themeMode === 'dark' ? (
-            <MoonIcon size={16} weight="fill" />
-          ) : themeMode === 'light' ? (
-            <SunIcon size={16} weight="fill" />
-          ) : (
-            <MonitorIcon size={16} weight="fill" />
-          )}
-        </Button>
+        {!isCompact && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              setThemeMode((m) => (m === 'dark' ? 'light' : m === 'light' ? 'system' : 'dark'))
+            }
+            title={`Theme: ${themeMode === 'dark' ? 'Dark' : themeMode === 'light' ? 'Light' : 'System'}`}
+          >
+            {themeMode === 'dark' ? (
+              <MoonIcon size={16} weight="fill" />
+            ) : themeMode === 'light' ? (
+              <SunIcon size={16} weight="fill" />
+            ) : (
+              <MonitorIcon size={16} weight="fill" />
+            )}
+          </Button>
+        )}
         {(activeColorColumn || (color2dEnabled && color2dColumns?.[1])) && (
           <Button
             variant="ghost"

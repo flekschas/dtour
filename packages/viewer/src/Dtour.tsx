@@ -463,6 +463,21 @@ const DtourInner = ({
   const legendShown = legendVisible && (!isGrand || legendPeek);
   const displayWidth = legendShown ? sidebarWidth : 0;
 
+  // Below 720px the legend overlays the canvas instead of pushing the canvas +
+  // toolbar narrower, so the toolbar (and its legend toggle) stay put. Measured
+  // on the container so the threshold is stable whether or not the legend is open.
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0]?.contentRect.width ?? 0);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const legendOverlay = containerWidth > 0 && containerWidth < 720;
+
   // Reset any peek when leaving grand mode
   useEffect(() => {
     if (!isGrand) setLegendPeek(false);
@@ -537,21 +552,29 @@ const DtourInner = ({
           />
         </div>
       </div>
-      {/* Drag handle */}
+      {/* Drag handle — hidden in overlay mode (resize is a desktop affordance) */}
+      {!legendOverlay && (
+        <div
+          className={`w-px shrink-0 transition-colors ${
+            legendInteractive
+              ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-dtour-highlight'
+              : 'pointer-events-none'
+          }`}
+          onMouseDown={onHandleMouseDown}
+        />
+      )}
+      {/* Legend sidebar — flex column (pushes canvas) at ≥720px, absolute
+          overlay over the canvas (below the toolbar) under 720px. */}
       <div
-        className={`w-px shrink-0 transition-colors ${
-          legendInteractive
-            ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-dtour-highlight'
-            : 'pointer-events-none'
-        }`}
-        onMouseDown={onHandleMouseDown}
-      />
-      {/* Legend sidebar */}
-      <div
-        className="shrink-0 overflow-hidden"
+        className={
+          legendOverlay
+            ? 'absolute right-0 z-30 overflow-hidden border-l border-dtour-surface bg-dtour-bg'
+            : 'shrink-0 overflow-hidden'
+        }
         style={{
           width: displayWidth,
           transition: dragging ? 'none' : 'width 300ms cubic-bezier(.1,.1,0,1)',
+          ...(legendOverlay ? { top: effectiveToolbarHeight, bottom: 0 } : {}),
         }}
         onMouseLeave={isGrand ? () => setLegendPeek(false) : undefined}
       >

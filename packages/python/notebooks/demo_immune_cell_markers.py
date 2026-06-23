@@ -44,7 +44,9 @@ def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 2D UMAP Comparison\nA classic 2D UMAP embedding of the same data for comparison with the interactive tour above.")
+    mo.md(
+        "### 2D UMAP Comparison\nA classic 2D UMAP embedding of the same data for comparison with the interactive tour above."
+    )
     return
 
 
@@ -91,7 +93,9 @@ def _(X_scaled, cache_dir, np, phenotype_colors, phenotypes):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Confusion Metrics\nCompute per-keyframe confusion scores and update the metric bars when a phenotype is selected in the legend.")
+    mo.md(
+        "### Confusion Metrics\nCompute per-keyframe confusion scores and update the metric bars when a phenotype is selected in the legend."
+    )
     return
 
 
@@ -196,7 +200,9 @@ def _(cache_dir, dtour, metrics, np, tour, w, widget_df):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### 4D UMAP Tour Export\nCompute a 4D UMAP tour variant and export it as a self-contained Parquet file with embedded dtour metadata.")
+    mo.md(
+        "### 4D UMAP Tour Export\nCompute a 4D UMAP tour variant and export it as a self-contained Parquet file with embedded dtour metadata."
+    )
     return
 
 

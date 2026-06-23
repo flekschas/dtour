@@ -23,10 +23,16 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(le_widget, mo, scatter_2d, umap_widget, w_images):
-    mo.vstack([
-        mo.hstack([le_widget, mo.ui.anywidget(scatter_2d.widget), umap_widget], widths=[1, 1, 1], gap=0),
-        w_images,
-    ])
+    mo.vstack(
+        [
+            mo.hstack(
+                [le_widget, mo.ui.anywidget(scatter_2d.widget), umap_widget],
+                widths=[1, 1, 1],
+                gap=0,
+            ),
+            w_images,
+        ]
+    )
     return
 
 

@@ -518,7 +518,7 @@ const App = () => {
 
   return (
     <div
-      className={`flex flex-col w-screen h-screen ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
+      className={`flex flex-col w-screen h-[100dvh] ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
     >

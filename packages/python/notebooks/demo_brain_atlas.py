@@ -50,7 +50,9 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Data Loading\nLoad the La Manno 2021 dataset with precomputed PCA coordinates and cell-type annotations.")
+    mo.md(
+        "### Data Loading\nLoad the La Manno 2021 dataset with precomputed PCA coordinates and cell-type annotations."
+    )
     return
 
 
@@ -144,7 +146,9 @@ def _(class_cmap, df, embedding_2d, height, jscatter, pd):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Bidirectional Selection\nLink selections between the dtour widget and jupyter-scatter so lasso-selecting in either view highlights points in both.")
+    mo.md(
+        "### Bidirectional Selection\nLink selections between the dtour widget and jupyter-scatter so lasso-selecting in either view highlights points in both."
+    )
     return
 
 
@@ -189,7 +193,9 @@ def _(df, scatter_2d, tour_widget):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("### Parquet Export\nExport the PCA tour as a self-contained Parquet file with embedded dtour metadata.")
+    mo.md(
+        "### Parquet Export\nExport the PCA tour as a self-contained Parquet file with embedded dtour metadata."
+    )
     return
 
 

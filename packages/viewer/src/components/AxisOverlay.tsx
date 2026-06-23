@@ -282,7 +282,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
         height={height}
         role="img"
         aria-label={readOnly ? 'Axis overlay' : 'Axis overlay for manual projection control'}
-        className="absolute top-0 left-0 pointer-events-none"
+        className="absolute top-0 left-0 pointer-events-none touch-none"
         onPointerMove={readOnly ? undefined : handlePointerMove}
         onPointerUp={readOnly ? undefined : handlePointerUp}
       >
@@ -360,7 +360,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
                 className={
                   readOnly
                     ? undefined
-                    : `pointer-events-auto ${isActive ? 'cursor-grabbing' : 'cursor-grab'}`
+                    : `pointer-events-auto touch-none ${isActive ? 'cursor-grabbing' : 'cursor-grab'}`
                 }
                 onPointerDown={readOnly ? undefined : (e) => handlePointerDown(d, e)}
                 onPointerEnter={readOnly ? undefined : () => setHoveredDim(d)}
