@@ -722,6 +722,10 @@ export const DtourViewer = ({
       bases = createDefaultViews(dims, previewCount, activeIndices);
     }
     scatter.setBases(bases, tourFamily);
+    // setBases resets the GPU's tour position to 0 on first load; re-apply the
+    // current (possibly persisted/restored) position so the rendered projection
+    // matches the slider instead of snapping back to the first keyframe.
+    scatter.setTourPosition(positionRef.current);
     scatter.render();
   }, [
     scatter,

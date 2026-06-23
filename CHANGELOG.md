@@ -4,6 +4,7 @@
 
 ### viewer
 
+- fix: set tour position on first load
 - chore: add a visible button to exit grand mode
 - chore: improve axis drag handle hover indication from panning
 - chore: auto-fade out legend sidebar in grand tour mode
