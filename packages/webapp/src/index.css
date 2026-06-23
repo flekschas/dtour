@@ -33,7 +33,7 @@ body,
 
 @keyframes dtour-d-dash {
   0% {
-    stroke-dashoffset: -26;
+    stroke-dashoffset: 28;
     stroke-width: 1.245;
   }
   50% {
@@ -114,8 +114,8 @@ body,
 }
 
 .anim-d {
-  stroke-dasharray: 26;
-  stroke-dashoffset: 26;
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
 }
 .anim-t1 {
   stroke-dasharray: 4.43;
