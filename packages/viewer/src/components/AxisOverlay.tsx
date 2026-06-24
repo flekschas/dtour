@@ -1,5 +1,5 @@
 import type { ScatterInstance } from '@dtour/scatter';
-import { useAtomValue, useSetAtom, useStore } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import {
   forwardRef,
   useCallback,
@@ -63,7 +63,6 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
     const metadata = useAtomValue(metadataAtom);
     const zoom = useAtomValue(cameraZoomAtom);
     const activeIndices = useAtomValue(activeIndicesAtom);
-    const store = useStore();
     const setCurrentBasis = useSetAtom(currentBasisAtom);
 
     const basisRef = useRef<Float32Array | null>(null);
@@ -180,14 +179,25 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       }
     }, [readOnly, currentBasis, dims]);
 
-    // Interactive mode: initialize basis once from the current projection
-    // (read imperatively to avoid subscribing). Preserves the view when
-    // switching into manual mode. Re-runs when activeIndices change to
-    // zero out inactive dimensions.
+    // Interactive mode: initialize basis from the current projection, preserving
+    // the view when entering manual mode. Re-runs on entering manual, on
+    // activeIndices changes (to zero inactive dims), and when the current basis
+    // first becomes available — the latter handles loading directly into manual
+    // mode, where the parent seeds currentBasisAtom asynchronously after mount.
+    // The initKey guard prevents re-initialization on the per-frame currentBasis
+    // writes that dragging itself produces (which would fight the drag).
+    const initKeyRef = useRef<string | null>(null);
     useEffect(() => {
-      if (readOnly) return;
+      if (readOnly) {
+        initKeyRef.current = null;
+        return;
+      }
       if (dims < 2 || activeIndices.length < 2) return;
-      const current = store.get(currentBasisAtom);
+      const current = currentBasis;
+      const haveReal = current !== null && current.length === dims * 2;
+      const key = `${activeIndices.join(',')}|${haveReal}`;
+      if (initKeyRef.current === key) return;
+      initKeyRef.current = key;
       let basis: Float32Array;
       if (current && current.length === dims * 2) {
         basis = new Float32Array(current);
@@ -207,7 +217,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
       basisRef.current = basis;
       forceRender((n) => n + 1);
       // No setDirectBasis here — the GPU already shows this projection
-    }, [readOnly, dims, activeIndices, activeSet, store]);
+    }, [readOnly, dims, activeIndices, activeSet, currentBasis]);
 
     const sendBasis = useCallback(() => {
       if (!scatter || !basisRef.current) return;

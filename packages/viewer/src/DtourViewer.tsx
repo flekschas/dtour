@@ -366,6 +366,32 @@ export const DtourViewer = ({
     setCurrentBasis,
   ]);
 
+  // First-load seed for manual mode. The guided sync effect above is gated to
+  // guided mode, so when the app starts directly in manual mode (tourTraversal
+  // restored from a spec) currentBasisAtom is never populated — leaving the
+  // axis overlay to initialize from a default basis and jump on the first drag.
+  // Seed it once from the interpolated projection at the restored position.
+  // The length check also re-seeds after a data reload changes the dim count.
+  useEffect(() => {
+    if (tourTraversal !== 'manual') return;
+    if (!resolvedViews || !arcLengths || !metadata) return;
+    const dims = metadata.dimCount;
+    const cur = store.get(currentBasisAtom);
+    if (cur && cur.length === dims * 2) return;
+    const out = new Float32Array(dims * 2);
+    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position, orthonormalize);
+    setCurrentBasis(out);
+  }, [
+    tourTraversal,
+    resolvedViews,
+    arcLengths,
+    metadata,
+    position,
+    orthonormalize,
+    setCurrentBasis,
+    store,
+  ]);
+
   // Parse metrics Arrow IPC into renderable tracks
   const parsedTracks = useMemo(() => {
     if (!metrics) return [];
