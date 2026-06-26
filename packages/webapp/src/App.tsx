@@ -3,6 +3,7 @@ import { Dtour } from '@dtour/viewer';
 import {
   GithubLogoIcon,
   PlayCircleIcon,
+  ScrollIcon,
   SpinnerIcon,
   UploadSimpleIcon,
   XIcon,
@@ -704,6 +705,16 @@ const App = () => {
               <GithubLogoIcon size={14} weight="fill" />
               GitHub
             </a>
+            <span className="bg-dtour-text-muted/30 w-px h-4 mx-1" />
+            <a
+              href="https://arxiv.org/abs/2605.04306"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+            >
+              <ScrollIcon size={14} weight="fill" />
+              arXiv
+            </a>
           </p>
         </motion.div>
       )}
@@ -822,6 +833,16 @@ const App = () => {
                 >
                   <GithubLogoIcon size={14} weight="fill" />
                   GitHub
+                </a>
+                <span className="text-dtour-text-muted/30 mx-1">|</span>
+                <a
+                  href="https://arxiv.org/abs/2605.04306"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
+                >
+                  <ScrollIcon size={14} weight="fill" />
+                  arXiv
                 </a>
               </p>
             </div>
