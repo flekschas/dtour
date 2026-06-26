@@ -1,6 +1,12 @@
 import type { DtourSpec } from '@dtour/viewer';
 import { Dtour } from '@dtour/viewer';
-import { GithubLogo, PlayCircle, SpinnerIcon, UploadSimple, X } from '@phosphor-icons/react';
+import {
+  GithubLogoIcon,
+  PlayCircleIcon,
+  SpinnerIcon,
+  UploadSimpleIcon,
+  XIcon,
+} from '@phosphor-icons/react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import 'plyr-react/plyr.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -588,7 +594,7 @@ const App = () => {
                   className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
                   onClick={() => inputRef.current?.click()}
                 >
-                  <UploadSimple size={36} />
+                  <UploadSimpleIcon size={36} />
                   <span className="text-sm select-none">
                     Drop a Parquet, Arrow, or CSV file to start
                   </span>
@@ -661,7 +667,7 @@ const App = () => {
                 }}
                 onClick={() => setVideoOpen(true)}
               >
-                <PlayCircle size={16} weight="fill" />
+                <PlayCircleIcon size={16} weight="fill" />
                 <span>Intro Video</span>
               </motion.button>
             </>
@@ -695,7 +701,7 @@ const App = () => {
               rel="noopener noreferrer"
               className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
             >
-              <GithubLogo size={14} weight="fill" />
+              <GithubLogoIcon size={14} weight="fill" />
               GitHub
             </a>
           </p>
@@ -738,7 +744,7 @@ const App = () => {
                     className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
                     onClick={() => inputRef.current?.click()}
                   >
-                    <UploadSimple size={36} />
+                    <UploadSimpleIcon size={36} />
                     <span className="text-sm select-none">
                       Drop a Parquet, Arrow, or CSV file to start
                     </span>
@@ -779,7 +785,7 @@ const App = () => {
                         setVideoOpen(true);
                       }}
                     >
-                      <PlayCircle size={16} weight="fill" />
+                      <PlayCircleIcon size={16} weight="fill" />
                       <span>Intro Video</span>
                     </button>
                   </div>
@@ -814,7 +820,7 @@ const App = () => {
                   rel="noopener noreferrer"
                   className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
                 >
-                  <GithubLogo size={14} weight="fill" />
+                  <GithubLogoIcon size={14} weight="fill" />
                   GitHub
                 </a>
               </p>
@@ -846,7 +852,7 @@ const App = () => {
                 className="absolute -top-10 right-0 text-dtour-text-muted hover:text-dtour-text transition-colors cursor-pointer"
                 onClick={() => setVideoOpen(false)}
               >
-                <X size={24} />
+                <XIcon size={24} />
               </button>
               <div
                 className="rounded-lg overflow-hidden"
