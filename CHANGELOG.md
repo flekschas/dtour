@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.3
+
+### python
+
+- chore: make `umap-learn` optional via `pip install 'dtour[umap]'`
+- chore: set a minimum numba version for Python 3.12 support
+
 ## v0.4.2
 
 ### viewer

@@ -325,6 +325,19 @@ def _to_float32(X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table) -> np.nd
     return np.asarray(X, dtype=np.float32)
 
 
+def _import_umap():
+    """Import ``umap`` lazily with a clear hint if the optional extra is missing."""
+    try:
+        import umap
+    except ImportError as err:
+        msg = (
+            "UMAP-based tours require the optional 'umap' extra. "
+            "Install it with: pip install 'dtour[umap]'"
+        )
+        raise ImportError(msg) from err
+    return umap
+
+
 def little_tour(
     X: np.ndarray | pd.DataFrame | pl.DataFrame | pa.Table,
     n_components: int | None = None,
@@ -390,7 +403,7 @@ def umap_little_tour(
         n_components: UMAP output dimensions (= tour dimensionality).
         umap_kwargs: Extra keyword arguments passed to ``umap.UMAP``.
     """
-    import umap
+    umap = _import_umap()
 
     arr = _to_float32(X)
 
@@ -1297,7 +1310,7 @@ def _seq_embed_umap(
     kwargs: dict,
 ) -> np.ndarray:
     """Run UMAP with optional warm-start from *prev*."""
-    import umap
+    umap = _import_umap()
 
     kw = {"n_components": 2, **kwargs}
     if prev is not None:
@@ -1759,7 +1772,7 @@ def aligned_umap_tour(
         The embedding is an ``n x (2K)`` matrix of stacked
         Procrustes-aligned 2D embeddings.
     """
-    import umap
+    umap = _import_umap()
 
     if len(data) < 2:
         msg = "aligned_umap_tour requires at least 2 datasets."

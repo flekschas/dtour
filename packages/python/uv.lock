@@ -626,7 +626,6 @@ dependencies = [
     { name = "pyamg" },
     { name = "pyarrow" },
     { name = "scikit-learn" },
-    { name = "umap-learn" },
 ]
 
 [package.optional-dependencies]
@@ -634,15 +633,21 @@ dev = [
     { name = "jupyterlab" },
     { name = "marimo" },
     { name = "matplotlib" },
+    { name = "numba" },
     { name = "pandas" },
     { name = "polars" },
     { name = "pymde" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "ty" },
+    { name = "umap-learn" },
 ]
 pymde = [
     { name = "pymde" },
+]
+umap = [
+    { name = "numba" },
+    { name = "umap-learn" },
 ]
 
 [package.metadata]
@@ -657,6 +662,8 @@ requires-dist = [
     { name = "marimo", marker = "extra == 'dev'", specifier = ">=0.20.2" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.9" },
+    { name = "numba", marker = "extra == 'dev'", specifier = ">=0.61" },
+    { name = "numba", marker = "extra == 'umap'", specifier = ">=0.61" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "opentsne", specifier = ">=1.0" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.0" },
@@ -669,9 +676,10 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.2" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.18" },
-    { name = "umap-learn", specifier = ">=0.5" },
+    { name = "umap-learn", marker = "extra == 'dev'", specifier = ">=0.5" },
+    { name = "umap-learn", marker = "extra == 'umap'", specifier = ">=0.5" },
 ]
-provides-extras = ["pymde", "dev"]
+provides-extras = ["umap", "pymde", "dev"]
 
 [[package]]
 name = "executing"

@@ -22,14 +22,22 @@ dependencies = [
   "pyamg>=5.3",
   "pyarrow>=24.0.0",
   "scikit-learn>=1.8.0",
-  "umap-learn>=0.5",
 ]
 
 [project.optional-dependencies]
+# umap-learn pulls in the numba/llvmlite native-build chain. Kept optional so the
+# base install stays wheel-only; numba is floored so resolvers can't backtrack to
+# the ancient pre-wheel numba 0.53 / llvmlite 0.36 (no wheels, cap at Python <3.10).
+umap = [
+  "umap-learn>=0.5",
+  "numba>=0.61",
+]
 pymde = [
   "pymde>=0.1.0",
 ]
 dev = [
+  "umap-learn>=0.5",
+  "numba>=0.61",
   "pymde>=0.1.0",
   "matplotlib>=3.9",
   "pandas>=2.0",
