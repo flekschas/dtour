@@ -1,9 +1,16 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
 import { bitPackIndices } from '@dtour/scatter';
+import { QuestionMarkIcon } from '@phosphor-icons/react';
 import { createStore, Provider, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ColorLegend } from './components/ColorLegend.tsx';
 import { DtourToolbar } from './components/DtourToolbar.tsx';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from './components/ui/tooltip.tsx';
 import { DtourViewer } from './DtourViewer.tsx';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
@@ -13,6 +20,7 @@ import type { DtourSpec, KeyframeLoading } from './spec.ts';
 import {
   activeColumnsAtom,
   backgroundColorAtom,
+  betweenKeyframesAtom,
   colorMapAtom,
   embeddedConfigAtom,
   keyframeDescriptionsAtom,
@@ -91,6 +99,10 @@ export type DtourProps = {
 
 // Minimal inline markdown: [text](url), **bold**/__bold__, *italic*/_italic_
 const MD_INLINE = /\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|__(.+?)__|\*(.+?)\*|_(.+?)_/g;
+
+/** Caveat surfaced via the golden question-mark icon while a sequential tour is between keyframes. */
+const SEQUENTIAL_TOUR_CAVEAT =
+  "Between keyframes, dtour interpolates only to help you follow points across embeddings. These intermediate frames are not meaningful embeddings—don't read structure into them.";
 
 function InlineMarkdown({ text }: { text: string }) {
   const parts: ReactNode[] = [];
@@ -442,6 +454,8 @@ const DtourInner = ({
   const showTourDescriptionPref = useAtomValue(showTourDescriptionAtom);
   const tourDescription = useAtomValue(tourDescriptionAtom);
   const tourFamily = useAtomValue(tourFamilyAtom);
+  const isSequential = tourFamily === 'sequential';
+  const betweenKeyframes = useAtomValue(betweenKeyframesAtom);
   const descriptionVisible =
     (showTourDescriptionPref ?? tourDescription !== null) &&
     tourTraversal === 'guided' &&
@@ -530,12 +544,35 @@ const DtourInner = ({
           {descriptionVisible && (
             <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
               <span className="text-[11px] text-dtour-text-muted">
-                <strong>
-                  {tourFamily === 'sequential' ? 'Sequential tour:' : 'Hyperdimensional tour:'}
-                </strong>{' '}
-                <InlineMarkdown text={tourDescription} />
+                <strong>{isSequential ? 'Sequential tour:' : 'Hyperdimensional tour:'}</strong>{' '}
+                <InlineMarkdown text={tourDescription ?? ''} />
               </span>
             </div>
+          )}
+          {/* Sequential tours: a golden help icon straddles the bottom of the chrome
+              (description bar if shown, otherwise the toolbar), fading in only while
+              the tour is between keyframes. */}
+          {isSequential && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="About sequential tour transitions"
+                    className={`absolute left-1/2 bottom-0 z-20 flex size-4 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full bg-dtour-bg text-[#d4af37] ring-1 ring-[#d4af37] cursor-help transition-[opacity,transform] duration-200 ease-out ${
+                      betweenKeyframes
+                        ? 'opacity-100 scale-100'
+                        : 'pointer-events-none opacity-0 scale-75'
+                    }`}
+                  >
+                    <QuestionMarkIcon size={10} weight="bold" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[260px]">
+                  {SEQUENTIAL_TOUR_CAVEAT}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
         <div className="absolute inset-0 overflow-hidden">

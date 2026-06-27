@@ -73,6 +73,21 @@ export const currentKeyframeAtom = atom((get) => {
   return best;
 });
 
+/** Derived: true when the tour position is >0.5% (arc-length) from every keyframe. */
+export const betweenKeyframesAtom = atom((get) => {
+  const position = get(tourPositionAtom);
+  const arcLengths = get(arcLengthsAtom);
+  if (!arcLengths || arcLengths.length < 2) return false;
+  const n = arcLengths.length - 1;
+  let best = 1;
+  for (let i = 0; i < n; i++) {
+    let dist = Math.abs(position - arcLengths[i]!);
+    dist = Math.min(dist, 1 - dist);
+    if (dist < best) best = dist;
+  }
+  return best > 0.005;
+});
+
 // ---------------------------------------------------------------------------
 // Point style — visual appearance of scatter points
 // ---------------------------------------------------------------------------

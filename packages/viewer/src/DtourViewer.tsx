@@ -46,6 +46,7 @@ import {
   activeIndicesAtom,
   animationGenAtom,
   arcLengthsAtom,
+  betweenKeyframesAtom,
   cameraPanXAtom,
   cameraPanYAtom,
   cameraZoomAtom,
@@ -206,6 +207,7 @@ export const DtourViewer = ({
   const setCurrentBasis = useSetAtom(currentBasisAtom);
   const tourBy = useAtomValue(tourByAtom);
   const tourFamily = useAtomValue(tourFamilyAtom);
+  const betweenKeyframes = useAtomValue(betweenKeyframesAtom);
   const [pcaResult, setPcaResult] = useState<{
     eigenvectors: Float32Array[];
     numDims: number;
@@ -1093,6 +1095,21 @@ export const DtourViewer = ({
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-dtour-bg">
+      {/* Sequential-tour transition cue: a gold inset glow that fades in while the
+          tour is between keyframes, signaling the view is an interpolated transition,
+          not a cohesive embedding. Sits above the canvas but below the UI overlays. */}
+      {tourFamily === 'sequential' && (
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute left-0 right-0 bottom-0 transition-opacity duration-300 ease-out ${
+            betweenKeyframes ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{
+            top: `${overlayOffsetY}px`,
+            boxShadow: 'inset 0 0 1.5em rgba(212, 175, 55, 0.5)',
+          }}
+        />
+      )}
       {/* Overlay wrapper — positioned below the toolbar so overlays
           are visually centered in the area below the toolbar. */}
       <div className="absolute left-0 right-0 bottom-0" style={{ top: `${overlayOffsetY}px` }}>

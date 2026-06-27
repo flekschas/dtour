@@ -7,6 +7,10 @@
 - chore: make `umap-learn` optional via `pip install 'dtour[umap]'`
 - chore: set a minimum numba version for Python 3.12 support
 
+### viewer
+
+- feat: show a between-keyframe indicator for sequential tools to inform the user that between-keyframe projections should not be interpreted structurally for sequential tours
+
 ## v0.4.2
 
 ### viewer
