@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from './components/ui/tooltip.tsx';
 import { DtourViewer } from './DtourViewer.tsx';
+import { useIsTruncated } from './hooks/useIsTruncated.ts';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import { PortalContainerContext, usePortalContainer } from './portal-container.tsx';
@@ -460,6 +461,8 @@ const DtourInner = ({
     (showTourDescriptionPref ?? tourDescription !== null) &&
     tourTraversal === 'guided' &&
     tourDescription !== null;
+  // Show a tooltip with the full text only when the description bar clips it.
+  const [descriptionRef, descriptionTruncated] = useIsTruncated<HTMLSpanElement>(tourDescription);
   const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
 
   // Sidebar width state — remembered across open/close cycles
@@ -543,10 +546,28 @@ const DtourInner = ({
           </div>
           {descriptionVisible && (
             <div className="h-8 flex items-center justify-center border-b border-dtour-surface bg-dtour-bg px-3">
-              <span className="text-[11px] text-dtour-text-muted">
-                <strong>{isSequential ? 'Sequential tour:' : 'Hyperdimensional tour:'}</strong>{' '}
-                <InlineMarkdown text={tourDescription ?? ''} />
-              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      ref={descriptionRef}
+                      className={`max-w-full min-w-0 truncate text-[11px] text-dtour-text-muted ${
+                        descriptionTruncated ? 'cursor-help' : ''
+                      }`}
+                    >
+                      <strong>
+                        {isSequential ? 'Sequential tour:' : 'Hyperdimensional tour:'}
+                      </strong>{' '}
+                      <InlineMarkdown text={tourDescription ?? ''} />
+                    </span>
+                  </TooltipTrigger>
+                  {descriptionTruncated && (
+                    <TooltipContent side="bottom" className="max-w-[360px]">
+                      <InlineMarkdown text={tourDescription ?? ''} />
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
           {/* Sequential tours: a golden help icon straddles the bottom of the chrome
