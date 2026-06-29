@@ -632,7 +632,6 @@ cev = [
     { name = "cev-metrics" },
 ]
 dev = [
-    { name = "cev-metrics" },
     { name = "jupyterlab" },
     { name = "marimo" },
     { name = "matplotlib" },
@@ -659,7 +658,6 @@ requires-dist = [
     { name = "arro3-core", specifier = ">=0.6.0" },
     { name = "arro3-io", specifier = ">=0.6.0" },
     { name = "cev-metrics", marker = "extra == 'cev'", specifier = ">=0.1.5" },
-    { name = "cev-metrics", marker = "extra == 'dev'", specifier = ">=0.1.5" },
     { name = "jupyter-scatter", specifier = ">=0.22.3" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.5.5" },
     { name = "marimo", specifier = ">=0.21.1" },

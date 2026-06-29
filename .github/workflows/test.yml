@@ -36,7 +36,7 @@ jobs:
         # umap/numba, pymde, and cev-metrics tests skip gracefully when their
         # deps are absent (these don't all ship wheels on 3.13+).
         #
-        # The extra 3.12 entry installs all extras (`--extra dev`) so the
+        # The extra 3.12 entry installs all extras (dev + cev) so the
         # optional-dependency code paths (aligned_umap_tour, pymde, confusion)
         # are actually exercised on the one Python where every dep has wheels.
         include:
@@ -44,7 +44,7 @@ jobs:
           - python-version: '3.13'
           - python-version: '3.14'
           - python-version: '3.12'
-            extra: 'dev'
+            mode: 'full'
     steps:
       - uses: actions/checkout@v6
 
@@ -68,5 +68,5 @@ jobs:
         working-directory: packages/python
         run: >
           uv run --python ${{ matrix.python-version }}
-          ${{ matrix.extra && format('--extra {0}', matrix.extra) || '--no-default-groups --with pytest' }}
+          ${{ matrix.mode == 'full' && '--extra dev --extra cev' || '--no-default-groups --with pytest' }}
           pytest
