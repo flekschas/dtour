@@ -617,7 +617,6 @@ dependencies = [
     { name = "anywidget" },
     { name = "arro3-core" },
     { name = "arro3-io" },
-    { name = "cev-metrics" },
     { name = "jupyter-scatter" },
     { name = "marimo" },
     { name = "matplotlib" },
@@ -629,7 +628,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cev = [
+    { name = "cev-metrics" },
+]
 dev = [
+    { name = "cev-metrics" },
     { name = "jupyterlab" },
     { name = "marimo" },
     { name = "matplotlib" },
@@ -655,7 +658,8 @@ requires-dist = [
     { name = "anywidget", specifier = ">=0.9.21" },
     { name = "arro3-core", specifier = ">=0.6.0" },
     { name = "arro3-io", specifier = ">=0.6.0" },
-    { name = "cev-metrics", specifier = ">=0.1.5" },
+    { name = "cev-metrics", marker = "extra == 'cev'", specifier = ">=0.1.5" },
+    { name = "cev-metrics", marker = "extra == 'dev'", specifier = ">=0.1.5" },
     { name = "jupyter-scatter", specifier = ">=0.22.3" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.5.5" },
     { name = "marimo", specifier = ">=0.21.1" },
@@ -679,7 +683,7 @@ requires-dist = [
     { name = "umap-learn", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "umap-learn", marker = "extra == 'umap'", specifier = ">=0.5" },
 ]
-provides-extras = ["umap", "pymde", "dev"]
+provides-extras = ["umap", "pymde", "cev", "dev"]
 
 [[package]]
 name = "executing"

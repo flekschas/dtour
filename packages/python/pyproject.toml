@@ -13,7 +13,6 @@ dependencies = [
   "anywidget>=0.9.21",
   "arro3-core>=0.6.0",
   "arro3-io>=0.6.0",
-  "cev-metrics>=0.1.5",
   "jupyter-scatter>=0.22.3",
   "marimo>=0.21.1",
   "matplotlib>=3.10.8",
@@ -35,10 +34,17 @@ umap = [
 pymde = [
   "pymde>=0.1.0",
 ]
+# cev-metrics powers the (non-default) `confusion` metric. It only ships wheels
+# for Python <=3.12, so it's kept out of the base deps to keep the core install
+# wheel-only on 3.13+. Install with: pip install 'dtour[cev]'
+cev = [
+  "cev-metrics>=0.1.5",
+]
 dev = [
   "umap-learn>=0.5",
   "numba>=0.61",
   "pymde>=0.1.0",
+  "cev-metrics>=0.1.5",
   "matplotlib>=3.9",
   "pandas>=2.0",
   "polars>=1.38.1",

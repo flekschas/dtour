@@ -235,7 +235,14 @@ def _confusion(proj: np.ndarray, labels: np.ndarray) -> float:
     each row by its row sum, then averages ``1 - diag`` across labels.
     Labels with 2 or fewer points are excluded (assigned 0 confusion).
     """
-    import cev_metrics
+    try:
+        import cev_metrics
+    except ImportError as err:
+        msg = (
+            "The 'confusion' metric requires the optional 'cev' extra. "
+            "Install it with: pip install 'dtour[cev]'"
+        )
+        raise ImportError(msg) from err
     import pandas as pd
 
     cat = pd.Categorical(labels)

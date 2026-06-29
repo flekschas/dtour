@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.4
+
+### python
+
+- chore: make `cev-metrics` optional via `pip install 'dtour[cev]'` — it's only needed for the `confusion` metric and ships wheels only for Python ≤3.12, so keeping it out of the base deps keeps the core install wheel-only on Python 3.13+
+- ci: test the base install against Python 3.12, 3.13, and 3.14
+
 ## v0.4.3
 
 ### python

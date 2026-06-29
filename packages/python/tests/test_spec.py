@@ -130,7 +130,7 @@ def test_add_spec_rejects_non_arrow():
 
 def test_add_spec_accepts_polars():
     """Polars DataFrames implement __arrow_c_stream__."""
-    import polars as pl
+    pl = pytest.importorskip("polars")
 
     df = pl.DataFrame({"a": [1, 2, 3]})
     result = add_spec_to_parquet(df, point_size=5)

@@ -934,6 +934,7 @@ def test_sequential_tour_kwargs_passed_to_callable():
 
 def test_aligned_umap_tour_basic():
     """aligned_umap_tour with identity relations should produce valid result."""
+    pytest.importorskip("umap")
     rng = np.random.default_rng(42)
     n, p = 80, 8
     slices = [rng.standard_normal((n, p)).astype(np.float32) for _ in range(3)]
@@ -956,6 +957,7 @@ def test_aligned_umap_tour_basic():
 
 def test_aligned_umap_tour_explicit_relations():
     """aligned_umap_tour with explicit relations should work."""
+    pytest.importorskip("umap")
     rng = np.random.default_rng(42)
     n = 60
     slices = [rng.standard_normal((n, 5)).astype(np.float32) for _ in range(2)]
@@ -1085,6 +1087,7 @@ def test_attraction_repulsion_tour_too_few_frames():
 
 def test_attraction_repulsion_tour_pymde_basic():
     """attraction_repulsion_tour with method='pymde' should produce valid TourResult."""
+    pytest.importorskip("pymde")
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(
         X,
@@ -1101,6 +1104,7 @@ def test_attraction_repulsion_tour_pymde_basic():
 
 def test_attraction_repulsion_tour_pymde_regularization():
     """Higher regularization should produce less movement between frames."""
+    pytest.importorskip("pymde")
     X = make_data(n=200, p=10)
 
     result_free = attraction_repulsion_tour(

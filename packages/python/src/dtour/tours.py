@@ -1772,8 +1772,6 @@ def aligned_umap_tour(
         The embedding is an ``n x (2K)`` matrix of stacked
         Procrustes-aligned 2D embeddings.
     """
-    umap = _import_umap()
-
     if len(data) < 2:
         msg = "aligned_umap_tour requires at least 2 datasets."
         raise ValueError(msg)
@@ -1802,6 +1800,7 @@ def aligned_umap_tour(
         )
         raise ValueError(msg)
 
+    umap = _import_umap()
     kw = {"n_components": 2, **(umap_kwargs or {})}
     embeddings = list(umap.AlignedUMAP(**kw).fit_transform(arrays, relations=relations))
 

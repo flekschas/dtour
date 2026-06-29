@@ -145,7 +145,7 @@ w = dtour.Widget(data=X, tour=tour)
 w.set_metrics(metrics)
 ```
 
-Supported metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`, `neighborhood_hit`, `confusion` (require `labels`), `hdbscan_score` (unsupervised).
+Supported metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`, `neighborhood_hit`, `confusion` (require `labels`), `hdbscan_score` (unsupervised). `confusion` needs the optional `cev` extra (`pip install dtour[cev]`).
 
 #### Color maps
 

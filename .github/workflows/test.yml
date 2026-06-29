@@ -7,8 +7,44 @@ on:
       - main
 
 jobs:
-  build:
+  js:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Lint
+        run: pnpm run lint
+
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Base (wheel-only) install across supported Pythons — no extras. The
+        # umap/numba, pymde, and cev-metrics tests skip gracefully when their
+        # deps are absent (these don't all ship wheels on 3.13+).
+        #
+        # The extra 3.12 entry installs all extras (`--extra dev`) so the
+        # optional-dependency code paths (aligned_umap_tour, pymde, confusion)
+        # are actually exercised on the one Python where every dep has wheels.
+        include:
+          - python-version: '3.12'
+          - python-version: '3.13'
+          - python-version: '3.14'
+          - python-version: '3.12'
+            extra: 'dev'
     steps:
       - uses: actions/checkout@v6
 
@@ -23,12 +59,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # Builds packages/python/src/dtour/static/widget.js, which the widget
+      # imports via anywidget's _esm.
       - name: Build
         run: pnpm run build
 
-      - name: Lint
-        run: pnpm run lint
-
       - name: Test Python
         working-directory: packages/python
-        run: uv run --extra dev pytest
+        run: >
+          uv run --python ${{ matrix.python-version }}
+          ${{ matrix.extra && format('--extra {0}', matrix.extra) || '--no-default-groups --with pytest' }}
+          pytest
