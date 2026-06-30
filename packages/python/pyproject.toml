@@ -7,15 +7,18 @@ name = "dtour"
 version = "0.4.3"
 description = "Guided tours through high-dimensional data — interactive WebGPU scatter in Jupyter"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
   "anywidget>=0.9.21",
   "arro3-core>=0.6.0",
   "arro3-io>=0.6.0",
-  "numpy>=2.4.2",
+  # numpy 2.2 / scikit-learn 1.7 are the last series with Python 3.10 wheels
+  # (numpy dropped 3.10 in 2.3, scikit-learn in 1.8). Don't raise these floors
+  # without also bumping requires-python.
+  "numpy>=2.2",
   "pyamg>=5.3",
-  "scikit-learn>=1.8.0",
+  "scikit-learn>=1.7",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +64,7 @@ artifacts = ["src/dtour/static/*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "RUF"]

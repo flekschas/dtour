@@ -47,6 +47,7 @@ jobs:
         # optional-dependency code paths (aligned_umap_tour, pymde, confusion)
         # are actually exercised on the one Python where every dep has wheels.
         include:
+          - python-version: '3.10'
           - python-version: '3.11'
           - python-version: '3.12'
           - python-version: '3.13'
