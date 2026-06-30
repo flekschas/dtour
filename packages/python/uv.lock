@@ -879,7 +879,7 @@ wheels = [
 
 [[package]]
 name = "dtour"
-version = "0.4.3"
+version = "0.4.4"
 source = { editable = "." }
 dependencies = [
     { name = "anywidget" },
