@@ -7,26 +7,18 @@ name = "dtour"
 version = "0.4.3"
 description = "Guided tours through high-dimensional data — interactive WebGPU scatter in Jupyter"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
   "anywidget>=0.9.21",
   "arro3-core>=0.6.0",
   "arro3-io>=0.6.0",
-  "jupyter-scatter>=0.22.3",
-  "marimo>=0.21.1",
-  "matplotlib>=3.10.8",
   "numpy>=2.4.2",
-  "openTSNE>=1.0",
   "pyamg>=5.3",
-  "pyarrow>=24.0.0",
   "scikit-learn>=1.8.0",
 ]
 
 [project.optional-dependencies]
-# umap-learn pulls in the numba/llvmlite native-build chain. Kept optional so the
-# base install stays wheel-only; numba is floored so resolvers can't backtrack to
-# the ancient pre-wheel numba 0.53 / llvmlite 0.36 (no wheels, cap at Python <3.10).
 umap = [
   "umap-learn>=0.5",
   "numba>=0.61",
@@ -34,18 +26,25 @@ umap = [
 pymde = [
   "pymde>=0.1.0",
 ]
-# cev-metrics powers the (non-default) `confusion` metric. It only ships wheels
-# for Python <=3.12 (and can't build from source on 3.13+ — pyo3 0.21 caps at
-# 3.12), so it's kept out of both the base deps and the `dev` extra to keep
-# those installable on 3.13+. Add it explicitly to test the `confusion` metric:
-# `uv run --extra dev --extra cev pytest` (on Python <=3.12).
+tsne = [
+  "openTSNE>=1.0",
+]
 cev = [
   "cev-metrics>=0.1.5",
+]
+# Dependencies for running the bundled demo notebooks (notebooks/). None of
+# these are used by the dtour package itself.
+demo = [
+  "jupyter-scatter>=0.22.3",
+  "marimo>=0.21.1",
+  "matplotlib>=3.10.8",
 ]
 dev = [
   "umap-learn>=0.5",
   "numba>=0.61",
   "pymde>=0.1.0",
+  "openTSNE>=1.0",
+  "jupyter-scatter>=0.22.3",
   "matplotlib>=3.9",
   "pandas>=2.0",
   "polars>=1.38.1",
@@ -62,7 +61,7 @@ artifacts = ["src/dtour/static/*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "RUF"]

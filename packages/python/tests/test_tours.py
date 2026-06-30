@@ -62,7 +62,7 @@ def test_little_tour_views_raw_roundtrip():
 
 
 def test_little_tour_with_dataframe():
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
 
     df = pd.DataFrame(make_data(), columns=[f"c{i}" for i in range(5)])
     result = little_tour(df)
@@ -97,7 +97,7 @@ def test_le_tour_with_feature_names():
 
 
 def test_le_tour_extracts_pandas_names():
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
 
     X = make_data(n=200, p=4)
     df = pd.DataFrame(X, columns=["alpha", "beta", "gamma", "delta"])
@@ -251,7 +251,7 @@ def test_from_numpy_column_count_mismatch():
 
 
 def test_from_pandas():
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
 
     df = pd.DataFrame(make_data(), columns=[f"c{i}" for i in range(5)])
     ipc = from_pandas(df)
@@ -1030,6 +1030,7 @@ def test_procrustes_align_rotation():
 
 def test_attraction_repulsion_tour_basic():
     """attraction_repulsion_tour with default params should produce valid TourResult."""
+    pytest.importorskip("openTSNE")
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
     assert isinstance(result, TourResult)
@@ -1044,6 +1045,7 @@ def test_attraction_repulsion_tour_basic():
 
 def test_attraction_repulsion_tour_frame_summaries():
     """Keyframe descriptions should include rho values and landmarks."""
+    pytest.importorskip("openTSNE")
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, rhos=[100, 4, 1], n_neighbors=10, random_state=42)
     assert result.keyframe_descriptions is not None
@@ -1056,6 +1058,7 @@ def test_attraction_repulsion_tour_frame_summaries():
 
 def test_attraction_repulsion_tour_custom_rhos_override_n_frames():
     """Explicit rhos should override n_frames."""
+    pytest.importorskip("openTSNE")
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(
         X, n_frames=99, rhos=[10, 5, 2, 1], n_neighbors=10, random_state=42
@@ -1065,6 +1068,7 @@ def test_attraction_repulsion_tour_custom_rhos_override_n_frames():
 
 def test_attraction_repulsion_tour_pca_init():
     """attraction_repulsion_tour with init='pca' should work."""
+    pytest.importorskip("openTSNE")
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, rhos=[4, 1], n_neighbors=10, init="pca", random_state=42)
     assert isinstance(result, TourResult)

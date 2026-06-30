@@ -4,8 +4,13 @@
 
 ### python
 
+- chore: lower the minimum Python to 3.11 (from 3.12) for broader availability
+- chore: slim the base dependencies to only what `dtour` imports at runtime (`anywidget`, `arro3-core`, `arro3-io`, `numpy`, `pyamg`, `scikit-learn`)
+- chore: make `openTSNE` optional via `pip install 'dtour[tsne]'` — it's only used by the t-SNE tour engine (the default for `attraction_repulsion_tour`), like `umap`/`pymde`
+- chore: drop `pyarrow` from the dependencies — all Arrow work (IPC, Parquet) goes through `arro3`; pyarrow is only consumed as an optional input format (duck-typed via `__arrow_c_stream__`), so it needs no declared dependency, same as pandas/polars
+- chore: drop `jupyter-scatter`, `marimo`, and `matplotlib` from the package dependencies — none are used by `dtour` itself; they're only needed to run the demo notebooks (`pip install 'dtour[demo]'`). Jupyter/Marimo are host environments the consumer already provides. Dropping `jupyter-scatter` also unblocks Python 3.14, since it pulled in `geoindex-rs`, which has no 3.14 wheels
 - chore: make `cev-metrics` optional via `pip install 'dtour[cev]'` — it's only needed for the `confusion` metric and ships wheels only for Python ≤3.12, so keeping it out of the base deps keeps the core install wheel-only on Python 3.13+
-- ci: test the base install against Python 3.12, 3.13, and 3.14
+- ci: test the base install against Python 3.11, 3.12, 3.13, and 3.14 (3.14 is allowed to fail until native deps like `pyamg` ship wheels for it)
 
 ## v0.4.3
 

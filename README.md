@@ -4,9 +4,6 @@
 <p align="center">
   <em>take a detour from your usual 2D embedding visualization → <a href="https://dtour.dev" target="_blank">dtour.dev</a></em>
 </p>
-<p align="center">
-  <em>Still work in progress but feel free to play with it.</em>
-</p>
 
 ---
 

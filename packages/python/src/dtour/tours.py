@@ -1324,7 +1324,14 @@ def _seq_embed_tsne(
     kwargs: dict,
 ) -> np.ndarray:
     """Run openTSNE with optional warm-start from *prev*."""
-    from openTSNE import TSNE
+    try:
+        from openTSNE import TSNE
+    except ImportError as err:
+        msg = (
+            "t-SNE tours require the optional 'tsne' extra. "
+            "Install it with: pip install 'dtour[tsne]'"
+        )
+        raise ImportError(msg) from err
 
     kw = {"n_components": 2, **kwargs}
     if prev is not None:

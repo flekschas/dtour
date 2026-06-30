@@ -18,6 +18,9 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
+      # Needed for `pnpm run lint:py`, which runs `uvx ruff`.
+      - uses: astral-sh/setup-uv@v7
+
       - name: Install dependencies
         run: pnpm install
 
@@ -29,6 +32,10 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
+    # 3.14 is allowed to fail: some native base deps (e.g. pyamg) don't yet ship
+    # cp314 wheels. It runs for visibility and turns green once upstream catches
+    # up, without blocking CI.
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,9 +47,11 @@ jobs:
         # optional-dependency code paths (aligned_umap_tour, pymde, confusion)
         # are actually exercised on the one Python where every dep has wheels.
         include:
+          - python-version: '3.11'
           - python-version: '3.12'
           - python-version: '3.13'
           - python-version: '3.14'
+            experimental: true
           - python-version: '3.12'
             mode: 'full'
     steps:
