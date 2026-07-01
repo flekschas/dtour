@@ -33,15 +33,14 @@ dtour has three viewing modes:
 
 ## Python
 
-**dtour** integrates with Jupyter and Marimo notebooks through [anywidget](https://github.com/manzt/anywidget).
+> [!TIP]
+> See the [Python package](packages/python) for details and several [example notebooks](packages/python/notebooks).
 
-#### Install
+**dtour** integrates with Jupyter and Marimo notebooks through [anywidget](https://github.com/manzt/anywidget).
 
 ```sh
 pip install dtour
 ```
-
-#### Quick start
 
 Load a dataset and instantiate the widget:
 
@@ -54,108 +53,32 @@ df = pl.read_parquet("https://github.com/uwdata/mosaic/raw/main/data/athletes.pa
 dtour.Widget(data=df)
 ```
 
-#### Widget API
+That's the simplest hello-world example to get started and visualize a high-dimensional dataset. For something more interesting, compute a **PCA tour** over the numeric columns and color points by a category:
 
 ```py
+import dtour
+import polars as pl
+
+df = pl.read_parquet(
+    "https://github.com/uwdata/mosaic/raw/main/data/athletes.parquet"
+).drop_nulls(["height", "weight"])
+
+# A little tour cycles through consecutive pairs of principal components.
+features = ["height", "weight", "gold", "silver", "bronze"]
+tour = dtour.little_tour(df.select(features))
+
+# Color points by a categorical column, with a matching legend color map.
 dtour.Widget(
-    data=...,             # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
-    tour=...,             # TourResult from little_tour() / umap_little_tour()
-    # display
-    height=720,           # canvas height in pixels
-    preview_count=4,      # keyframe previews: 2–16
-    preview_size="large", # "small" | "medium" | "large"
-    preview_padding=12.0, # gap between previews
-    # point style
-    point_size="auto",    # point radius or "auto"
-    point_opacity="auto", # point alpha or "auto"
-    point_color=[0.25, 0.5, 0.9],  # default RGB color
-    point_color_by=None,  # column name for categorical coloring
-    color_map={},         # label → color mapping (see build_color_map())
-    # tour playback
-    tour_by="dimensions", # "dimensions" | "pca" | "parameter"
-    tour_position=0.0,    # 0–1 position along the tour
-    tour_playing=False,   # auto-play on load
-    tour_speed=1.0,       # playback speed multiplier
-    tour_direction="forward",  # "forward" | "backward"
-    tour_dimensions=[],   # explicit column names for the tour
-    # camera
-    camera_pan_x=0.0,
-    camera_pan_y=0.0,
-    camera_zoom=1/1.5,
-    centering="midrange", # "midrange" | "mean"
-    # mode & appearance
-    tour_traversal="guided",   # "guided" | "manual" | "grand"
-    show_legend=True,     # show/hide color legend
-    show_keyframe_loadings=True,  # show/hide feature loadings
-    theme="dark",         # "light" | "dark" | "system"
+    data=df,
+    tour=tour,
+    point_color_by="sex",
+    color_map=dtour.build_color_map(sorted(df["sex"].unique()), theme="dark"),
 )
 ```
 
-#### Widget methods
+Swap `little_tour` for `umap_little_tour` (needs `pip install "dtour[umap]"`) to tour a UMAP embedding instead.
 
-```py
-w = dtour.Widget(data=X, tour=tour)
-w.set_data(df)                    # load new data
-w.set_tour(tour)                  # set tour views
-w.set_metrics(metrics)            # display radial quality charts
-w.select([0, 1, 2])              # select points by index
-w.clear_selection()               # clear selection
-```
-
-#### Tour computation
-
-dtour ships with two tour generators:
-
-```py
-# PCA-based: cycles through consecutive pairs of principal components
-tour = dtour.little_tour(
-    X,                    # (n_samples, n_features) array or DataFrame
-    n_components=None,    # defaults to min(n_features, 10)
-)
-
-# UMAP + PCA: reduce to n_components with UMAP first (pip install dtour[umap])
-tour = dtour.umap_little_tour(
-    X,
-    n_components=10,
-    umap_kwargs=None,     # extra kwargs passed to umap.UMAP
-)
-```
-
-Both return a `TourResult` with `.views` (list of p×2 float32 arrays), `.n_views`, `.n_dims`, `.explained_variance_ratio`, and `.save(path)` / `TourResult.load(path)` for persistence.
-
-#### Quality metrics
-
-Compute per-view quality scores and display them as radial bar charts on the circular slider:
-
-```py
-metrics = dtour.compute_metrics(
-    X,                    # (n_samples, n_features) float32
-    views=tour.views,     # from TourResult
-    labels=None,          # cluster/class labels for supervised metrics
-    metrics=None,         # list of metric names; defaults to ["silhouette", "trustworthiness"]
-    k=7,                  # neighbors for neighborhood-based metrics
-    subsample=None,       # int, per-metric dict, or None for built-in defaults
-    exclude_labels=None,  # label values to exclude from label-based metrics
-)
-
-w = dtour.Widget(data=X, tour=tour)
-w.set_metrics(metrics)
-```
-
-Supported metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`, `neighborhood_hit`, `confusion` (require `labels`), `hdbscan_score` (unsupervised). `confusion` needs the optional `cev` extra (`pip install dtour[cev]`).
-
-#### Color maps
-
-Build a label → color mapping that matches the engine's auto-assignment:
-
-```py
-cmap = dtour.build_color_map(
-    labels=sorted_unique_labels,  # same order the engine sees
-    theme=None,                   # "light" | "dark" | None (theme-aware dicts)
-    overrides=None,               # per-label color overrides
-)
-dtour.Widget(data=df, point_color_by="cluster", color_map=cmap)
-```
+For more details see the [Python package](packages/python) and [example notebooks](packages/python/notebooks).
 
 ## JavaScript
 
