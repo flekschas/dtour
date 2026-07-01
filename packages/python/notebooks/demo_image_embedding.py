@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "dtour",
+#     "marimo",
+#     "jupyter-scatter>=0.22.3",
+#     "pandas>=2.0",
+#     "pyarrow>=14",
+# ]
+# ///
 import marimo
 
 __generated_with = "0.23.5"

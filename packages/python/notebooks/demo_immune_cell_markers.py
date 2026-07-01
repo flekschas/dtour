@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "dtour[umap,cev]",
+#     "marimo",
+#     "matplotlib>=3.10.8",
+#     "pandas>=2.0",
+#     "polars>=1.38.1",
+# ]
+# ///
 import marimo
 
 __generated_with = "0.23.5"

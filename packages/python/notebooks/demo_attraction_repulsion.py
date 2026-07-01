@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "dtour[tsne]",
+#     "marimo",
+#     "polars>=1.38.1",
+#     "pyarrow>=14",
+# ]
+# ///
 import marimo
 
 __generated_with = "0.23.5"
