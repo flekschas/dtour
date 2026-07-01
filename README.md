@@ -82,82 +82,38 @@ For more details see the [Python package](packages/python) and [example notebook
 
 ## JavaScript
 
-**dtour** is also published as a ready-to-use React component.
+> [!TIP]
+> dtour's frontend is split into three packages: [`@dtour/scatter`](packages/scatter) (the framework-agnostic WebGPU/WebGL2 rendering engine), [`@dtour/viewer`](packages/viewer) (the React component with the full tour UI), and [`webapp`](packages/webapp) (the app behind [dtour.dev](https://dtour.dev)).
 
-#### Install
+To get started, you'd likely want the use the React component. Install it and import its styles:
 
 ```sh
-npm install dtour
+npm install @dtour/viewer
 ```
 
-#### Quick start
-
 ```tsx
-import { Dtour } from "dtour";
+import { Dtour } from "@dtour/viewer";
+import "@dtour/viewer/dist/viewer.css";
 
 <Dtour data={arrowBuffer} />
 ```
 
-#### Component API
+That renders the full viewer for an Arrow IPC or Parquet `ArrayBuffer`, auto-generating a tour. For something more interesting, pass precomputed views, color points by a column, and react to selections:
 
 ```tsx
+import { Dtour } from "@dtour/viewer";
+import "@dtour/viewer/dist/viewer.css";
+
 <Dtour
-  data={arrowBuffer}          // Arrow IPC or Parquet ArrayBuffer
-  views={views}               // Float32Array[] of p×2 column-major view matrices
-  metrics={metricsBuffer}     // Arrow IPC ArrayBuffer with per-view quality metrics
-  metricTracks={tracks}       // RadialTrackConfig[] for radial bar chart customization
-  metricBarWidth="full"       // "full" | number — global bar width for radial charts
-  colorMap={colorMap}         // Record<string, string | {light, dark}> per-label colors
-  spec={spec}                 // partial DtourSpec to control component state
-  onSpecChange={handleSpec}   // fires on state change (debounced ~250ms)
-  onStatus={handleStatus}     // called on every renderer status event
-  onSelectionChange={fn}      // fires when legend selection changes (label names)
-  onPointSelectionChange={fn} // fires when point selection changes (Uint32Array mask)
-  onLoadData={fn}             // called when user loads a file via the toolbar
-  onReady={fn}                // called with a DtourHandle for programmatic control
-  hideToolbar={false}         // hide the top toolbar
-  backend="webgpu"            // "webgpu" | "webgl"
-  tourFamily="hyperdimensional" // "hyperdimensional" | "sequential"
-  keyframeDescriptions={[...]} // per-keyframe descriptions or template string
-  keyframeLoadings={[...]}    // per-keyframe feature loadings
+  data={arrowBuffer}
+  views={views}  // Float32Array[] of p×2 column-major bases
+  colorMap={{ setosa: "#0072b2", versicolor: "#009e73", virginica: "#e69f00" }}
+  spec={{ pointColorBy: "species", tourPlaying: true }}
+  onPointSelectionChange={(mask) => console.log(mask)}
 />
 ```
 
-#### DtourSpec
-
-All fields are optional. Omitted fields use defaults.
-
-```ts
-type DtourSpec = {
-  tourTraversal?: "guided" | "manual" | "grand"; // default "guided"
-  tourBy?: "dimensions" | "pca" | "parameter";   // default "dimensions"
-  tourPosition?: number;              // 0–1, default 0
-  tourPlaying?: boolean;              // default false
-  tourSpeed?: number;                 // 0.1–5, default 1
-  tourDirection?: "forward" | "backward";
-  tourSliderSpacing?: "equal" | "geodesic"; // default "equal"
-  tourSliderVisibility?: "visible" | "subtle" | "hidden";
-  previewCount?: 2–16;               // default 4
-  previewScale?: 1 | 0.75 | 0.5;     // default 1
-  previewPadding?: number;            // default 12
-  pointSize?: number | "auto";        // default "auto"
-  pointOpacity?: number | "auto";     // 0–1, default "auto"
-  minPointSize?: number;              // 1–20, default 2
-  pointColor?: [number, number, number]; // default [0.25, 0.5, 0.9]
-  pointColorBy?: string | null;       // column name for categorical coloring
-  pointColorMap?: Record<string, string>; // label → hex color
-  cameraPanX?: number;                // default 0
-  cameraPanY?: number;                // default 0
-  cameraZoom?: number;                // default 1/1.5
-  centering?: "midrange" | "mean";    // default "midrange"
-  showLegend?: boolean;               // default true
-  showAxes?: boolean;                 // default false
-  showKeyframeNumbers?: boolean;      // default false
-  showKeyframeLoadings?: boolean;     // default true
-  showTourDescription?: boolean | null; // default null
-  themeMode?: "light" | "dark" | "system"; // default "dark"
-};
-```
+Need just the renderer without React? Use [`@dtour/scatter`](packages/scatter) directly. See each package's README for the full API: [`@dtour/scatter`](packages/scatter), [`@dtour/viewer`](packages/viewer), and [`webapp`](packages/webapp).
 
 ## Why Take a _Tour de Vis_ Through High-Dimensional Data?
 
