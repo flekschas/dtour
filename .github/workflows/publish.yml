@@ -144,6 +144,8 @@ jobs:
         working-directory: packages/python/notebooks
         env:
           VERSION: ${{ github.ref_name }}
+          # Force matplotlib's non-interactive backend (no display on CI runners).
+          MPLBACKEND: Agg
         run: |
           ver="${VERSION#v}"
           uv run --python 3.12 --refresh-package dtour \
