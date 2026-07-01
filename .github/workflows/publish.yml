@@ -86,3 +86,65 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/python/dist/
+
+  # Smoke-test the demo notebooks against the just-published PyPI release.
+  #
+  # marimo notebooks are plain Python: `uv run <notebook>.py` executes every
+  # cell in dataflow order and exits non-zero if any cell raises. Each notebook
+  # declares its own deps via inline PEP 723 metadata (including the relevant
+  # dtour extras) and downloads/caches its data on first run, so nothing is
+  # bundled here.
+  #
+  # This runs after publish-pypi (not before) on purpose: it verifies the real
+  # published artifact — that the declared extras (dtour[tsne], dtour[umap,cev])
+  # resolve and the notebooks run on a fresh machine, i.e. the exact `uvx marimo`
+  # cold-start path a user hits. A failure here means "fix the notebook" (a repo
+  # commit; notebooks aren't shipped in the wheel) and does not block the release.
+  test-notebooks:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook:
+          - demo_attraction_repulsion
+          - demo_brain_atlas
+          - demo_image_embedding
+          - demo_immune_cell_markers
+          - demo_spectral
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      # PyPI's index can lag a bit behind a fresh publish; wait for the tagged
+      # version to be queryable before pinning to it.
+      - name: Wait for dtour ${{ github.ref_name }} on PyPI
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          ver="${VERSION#v}"
+          for attempt in $(seq 1 20); do
+            if curl -sf "https://pypi.org/pypi/dtour/${ver}/json" >/dev/null; then
+              echo "dtour ${ver} is available on PyPI"
+              exit 0
+            fi
+            echo "Waiting for dtour ${ver} on PyPI (attempt ${attempt}/20)…"
+            sleep 15
+          done
+          echo "dtour ${ver} did not appear on PyPI in time"
+          exit 1
+
+      # Pin dtour to the released version: uv unifies `--with dtour==<ver>` with
+      # each notebook's `dtour[...]` requirement, so the extras resolve from the
+      # exact published artifact. 3.12 is the Python where every native dep
+      # (pyamg, numba, openTSNE, cev-metrics, umap-learn) ships wheels.
+      - name: Run ${{ matrix.notebook }}
+        working-directory: packages/python/notebooks
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          ver="${VERSION#v}"
+          uv run --python 3.12 --refresh-package dtour \
+            --with "dtour==${ver}" "${{ matrix.notebook }}.py"
