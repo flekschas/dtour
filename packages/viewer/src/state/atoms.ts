@@ -1,6 +1,7 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
 import {
+  MAX_PREVIEW_COUNT,
   type PreviewScale,
   type PreviewScaleSetting,
   resolvePreviewScale,
@@ -263,6 +264,13 @@ export const predefinedTourAtom = atom<{
   /** Number of keyframes in the tour. */
   keyframeCount: number;
 } | null>(null);
+
+/** Number of previews shown: one per keyframe of a predefined tour, otherwise
+ *  {@link previewCountAtom}. Tours with more keyframes only preview their
+ *  first {@link MAX_PREVIEW_COUNT} keyframes. */
+export const resolvedPreviewCountAtom = atom((get) =>
+  Math.min(get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom), MAX_PREVIEW_COUNT),
+);
 
 /** Per-keyframe descriptions: string[] of literals, or a template string with
  *  {primary}, {secondary}, {relation} placeholders. */

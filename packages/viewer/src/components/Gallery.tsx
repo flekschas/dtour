@@ -16,9 +16,8 @@ import {
   hoveredKeyframeAtom,
   keyframeDescriptionsAtom,
   keyframeLoadingsAtom,
-  predefinedTourAtom,
   previewCentersAtom,
-  previewCountAtom,
+  resolvedPreviewCountAtom,
   resolvedPreviewScaleAtom,
   selectedKeyframeAtom,
   showKeyframeLoadingsAtom,
@@ -75,9 +74,7 @@ export const Gallery = ({
   toolbarHeight,
   onResumeGuided,
 }: GalleryProps) => {
-  const basePreviewCount = useAtomValue(previewCountAtom);
-  const predefinedTour = useAtomValue(predefinedTourAtom);
-  const previewCount = predefinedTour?.keyframeCount ?? basePreviewCount;
+  const previewCount = useAtomValue(resolvedPreviewCountAtom);
   const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
   const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);

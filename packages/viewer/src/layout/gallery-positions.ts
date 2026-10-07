@@ -27,6 +27,8 @@ export const MAX_SIZE = 320;
 export const LOADING_BAR_HEIGHT = 18;
 /** Space between previews and the container edges. */
 export const PREVIEW_SPACING = 8;
+/** Most previews the gallery layout supports. */
+export const MAX_PREVIEW_COUNT = 16;
 /**
  * Per-edge-count ratio arrays.
  *   k=1 (4 previews)  → [1]             all same
@@ -164,10 +166,12 @@ export function computeLayout(n: number): LayoutInfo {
  * Compute the circular slider start angle (SVG degrees) for n previews.
  *
  * The right-center item is anchored at SVG 0° (3 o'clock) and items are
- * evenly spaced at 360/n degrees.  For n=4,8,12,16 this returns −135°,
- * matching the previous hard-coded constant.
+ * evenly spaced at 360/n degrees.  For n=4,8,12,16 this returns −135°.
+ * Counts above {@link MAX_PREVIEW_COUNT} use the largest layout, so the first
+ * keyframe still points at the first preview.
  */
-export function computeStartAngle(n: number): number {
+export function computeStartAngle(keyframeCount: number): number {
+  const n = Math.min(keyframeCount, MAX_PREVIEW_COUNT);
   if (n <= 1) return -135;
   const { rows, positions } = computeLayout(n);
   const topCount = positions.filter((p) => p.row === 0).length;

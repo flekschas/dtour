@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 _STATIC = Path(__file__).parent / "static"
 _BUNDLE = _STATIC / "widget.js"
+# Most gallery previews the viewer can lay out.
+_MAX_PREVIEW_COUNT = 16
+
 # Repo root for a checkout (dtour/ → src/ → python/ → packages/ → root). Only a
 # checkout has the bundle's inputs, where the locally built bundle can go stale.
 _REPO = (Path(__file__).parent / "../../../..").resolve()
@@ -148,8 +151,10 @@ class Widget(anywidget.AnyWidget):
     @t.validate("preview_count")
     def _validate_preview_count(self, proposal: t.Bunch) -> int:
         value = proposal["value"]
-        if not (2 <= value <= 16):
-            raise t.TraitError(f"preview_count must be between 2 and 16; got {value}")
+        if not (2 <= value <= _MAX_PREVIEW_COUNT):
+            raise t.TraitError(
+                f"preview_count must be between 2 and {_MAX_PREVIEW_COUNT}; got {value}"
+            )
         return value
 
     @t.validate("preview_size")
@@ -246,6 +251,13 @@ class Widget(anywidget.AnyWidget):
 
     def set_tour(self, tour: TourResult) -> None:
         """Set tour views from a :class:`~dtour.tours.TourResult`."""
+        if tour.n_views > _MAX_PREVIEW_COUNT:
+            warnings.warn(
+                f"The tour has {tour.n_views} keyframes but the gallery shows at most "
+                f"{_MAX_PREVIEW_COUNT}. Only the first {_MAX_PREVIEW_COUNT} keyframes "
+                "get a preview.",
+                stacklevel=2,
+            )
         self._views_buf = tour.views_raw
 
         msg: dict = {"type": "views", "n_dims": tour.n_dims}

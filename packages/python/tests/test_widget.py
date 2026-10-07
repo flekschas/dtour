@@ -110,6 +110,20 @@ def test_widget_set_tour_syncs_tour_family_and_tour_by():
     assert (w._tour_family, w.tour_by) == ("hyperdimensional", "dimensions")
 
 
+def test_widget_set_tour_warns_when_keyframes_exceed_gallery():
+    rng = np.random.default_rng(42)
+    frames = [rng.standard_normal((50, 2)).astype(np.float32) for _ in range(18)]
+    tour = sequential_tour(frames, method=lambda embedding, _previous: embedding)
+    w = Widget()
+    with pytest.warns(UserWarning, match="18 keyframes"):
+        w.set_tour(tour)
+    assert w._views_msg is not None
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        w.set_tour(_sequential_tour())
+
+
 def test_widget_ready_resends_full_views_message():
     w = Widget(tour=_sequential_tour())
     sent = []

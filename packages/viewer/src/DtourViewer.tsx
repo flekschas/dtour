@@ -25,6 +25,7 @@ import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
+import { MAX_PREVIEW_COUNT } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
   arcballQuat,
@@ -67,6 +68,7 @@ import {
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
+  resolvedPreviewCountAtom,
   resolvedPreviewScaleAtom,
   resolvedThemeAtom,
   resumeGuidedAtom,
@@ -246,15 +248,17 @@ export const DtourViewer = ({
       const tourNDims = predefinedViews[0]!.length / 2;
       const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
       setPredefinedTour({ dimensions: dims, keyframeCount: predefinedViews.length });
+      if (predefinedViews.length > MAX_PREVIEW_COUNT) {
+        console.warn(
+          `[dtour] The tour has ${predefinedViews.length} keyframes but the gallery shows at most ${MAX_PREVIEW_COUNT}. Only the first ${MAX_PREVIEW_COUNT} keyframes get a preview.`,
+        );
+      }
     } else {
       setPredefinedTour(null);
     }
   }, [views, embeddedViews, metadata, embeddedConfig, setPredefinedTour]);
 
-  // Effective preview count: predefined tours use their own view count,
-  // auto-generated tours use the user-configurable previewCount atom.
-  const predefinedTour = useAtomValue(predefinedTourAtom);
-  const effectivePreviewCount = predefinedTour?.keyframeCount ?? previewCount;
+  const resolvedPreviewCount = useAtomValue(resolvedPreviewCountAtom);
 
   const { resolvedViews, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
@@ -525,7 +529,7 @@ export const DtourViewer = ({
       computeSelectorSize(
         containerSize.width,
         containerSize.height - effectiveToolbarHeight,
-        effectivePreviewCount,
+        resolvedPreviewCount,
         0,
         SELECTOR_PADDING,
         previewScale,
@@ -535,7 +539,7 @@ export const DtourViewer = ({
     [
       containerSize.width,
       containerSize.height,
-      effectivePreviewCount,
+      resolvedPreviewCount,
       effectiveToolbarHeight,
       previewScale,
       coloredTracks.length,
@@ -637,12 +641,11 @@ export const DtourViewer = ({
   }, [resolvedBackend]);
 
   // Effect B — Preview canvas lifecycle: add/remove preview canvases dynamically.
-  // Uses effectivePreviewCount so predefined tours create the right number of canvases.
   useEffect(() => {
     if (!scatter) return;
 
     const previews: HTMLCanvasElement[] = [];
-    for (let i = 0; i < effectivePreviewCount; i++) {
+    for (let i = 0; i < resolvedPreviewCount; i++) {
       const c = document.createElement('canvas');
       c.width = PREVIEW_INITIAL_SIZE;
       c.height = PREVIEW_INITIAL_SIZE;
@@ -682,7 +685,7 @@ export const DtourViewer = ({
       }
       setPreviewCanvases([]);
     };
-  }, [scatter, effectivePreviewCount]);
+  }, [scatter, resolvedPreviewCount]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {

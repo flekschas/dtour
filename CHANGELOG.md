@@ -12,10 +12,16 @@
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
 - chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
 - chore: update `uv.lock` to match `pyproject.toml`
+- fix: `set_tour()` warns when a tour has more keyframes than the viewer can preview (16)
 
 ### scatter
 
 - fix: treat string columns whose first value is null as categorical
+
+### viewer
+
+- fix: tours with more than 16 keyframes no longer stack all previews in the top-left corner. The gallery previews the first 16 keyframes, the slider keeps a tick for every keyframe and starts at the first preview, and the console warns about the missing previews
+- fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
 
 ## v0.4.4
 
