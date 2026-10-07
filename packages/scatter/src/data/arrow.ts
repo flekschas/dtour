@@ -40,7 +40,7 @@ export const loadArrow = (buffer: ArrayBuffer): ArrowResult => {
     }
 
     // Plain arrays (string/dictionary columns) → categorical
-    if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'string') {
+    if (Array.isArray(arr) && typeof arr.find((v) => v != null) === 'string') {
       const labelSet = new Map<string, number>();
       const indices = new Uint32Array(arr.length);
       for (let i = 0; i < arr.length; i++) {

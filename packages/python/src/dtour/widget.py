@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,38 @@ if TYPE_CHECKING:
     from .tours import TourResult
 
 _STATIC = Path(__file__).parent / "static"
+_BUNDLE = _STATIC / "widget.js"
+# Repo root for a checkout (dtour/ → src/ → python/ → packages/ → root). Only a
+# checkout has the bundle's inputs, where the locally built bundle can go stale.
+_REPO = (Path(__file__).parent / "../../../..").resolve()
+_BUNDLE_INPUTS = (
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "packages/scatter/package.json",
+    "packages/scatter/vite.config.ts",
+    "packages/scatter/src",
+    "packages/viewer/package.json",
+    "packages/viewer/vite.config.ts",
+    "packages/viewer/src",
+    "packages/python/package.json",
+    "packages/python/vite.config.ts",
+    "packages/python/js",
+)
+
+
+def _check_bundle() -> None:
+    build_hint = "Build it from the repository root with `pnpm build:widget`."
+    if not _BUNDLE.exists():
+        raise FileNotFoundError(f"The dtour widget bundle {_BUNDLE} is missing. {build_hint}")
+    if not (_REPO / "packages" / "python" / "js").is_dir():
+        return
+    paths = [_REPO / p for p in _BUNDLE_INPUTS]
+    inputs = [f for p in paths for f in (p, *p.rglob("*")) if f.is_file()]
+    if max(f.stat().st_mtime for f in inputs) > _BUNDLE.stat().st_mtime:
+        warnings.warn(f"The dtour widget bundle is older than its sources. {build_hint}")
+
+
+_check_bundle()
 
 
 class Widget(anywidget.AnyWidget):
@@ -47,7 +80,7 @@ class Widget(anywidget.AnyWidget):
     >>> w
     """
 
-    _esm = _STATIC / "widget.js"
+    _esm = _BUNDLE
     # CSS is inlined into the JS bundle and injected into the Shadow DOM
     # at runtime — no separate _css file needed.
 
@@ -86,6 +119,10 @@ class Widget(anywidget.AnyWidget):
 
     # ── Projected columns ────────────────────────────────────────────────
     tour_dimensions = t.List(t.Unicode(), default_value=[]).tag(sync=True)
+    # Synced as state, not with the views message, so the frontend knows the
+    # tour family on first render, before the views arrive. Unset until
+    # set_tour(), so a family embedded in the data can apply.
+    _tour_family = t.Unicode(None, allow_none=True).tag(sync=True)
 
     # ── Selection state (bidirectional) ───────────────────────────────────
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
@@ -178,14 +215,23 @@ class Widget(anywidget.AnyWidget):
         super().__init__(**kwargs)
         self._data_buf: bytes | None = None
         self._views_buf: bytes | None = None
+        self._views_msg: dict | None = None
         self._metrics_buf: bytes | None = None
         self._tour: TourResult | None = None
-        self._n_dims: int = 0
         self.on_msg(self._handle_custom_msg)
         if data is not None:
             self.set_data(data)
         if tour is not None:
             self.set_tour(tour)
+
+    # ── Public properties ────────────────────────────────────────────────
+    @property
+    def tour_family(self) -> str | None:
+        """Family of the current tour (``"hyperdimensional"`` or ``"sequential"``).
+
+        ``None`` until a tour is set. Read-only because it follows from the tour.
+        """
+        return self._tour_family
 
     # ── Public methods ───────────────────────────────────────────────────
     def set_data(self, data: object) -> None:
@@ -201,12 +247,9 @@ class Widget(anywidget.AnyWidget):
     def set_tour(self, tour: TourResult) -> None:
         """Set tour views from a :class:`~dtour.tours.TourResult`."""
         self._views_buf = tour.views_raw
-        self._n_dims = tour.n_dims
 
-        msg: dict = {"type": "views", "n_dims": self._n_dims}
+        msg: dict = {"type": "views", "n_dims": tour.n_dims}
 
-        if tour.tour_family is not None:
-            msg["tour_family"] = tour.tour_family
         if tour.description is not None:
             msg["tour_description"] = tour.description
         if tour.keyframe_descriptions is not None:
@@ -231,16 +274,21 @@ class Widget(anywidget.AnyWidget):
                 )
             msg["keyframe_loadings"] = keyframe_loadings
 
-        self.send(msg, buffers=[self._views_buf])
-
-        # Auto-switch tour_by to match the tour type
-        if tour.tour_family == "sequential":
-            self.tour_by = "parameter"
-        elif self.tour_by == "parameter":
-            self.tour_by = "dimensions"
-
-        # Cache the full TourResult for save_spec_to_parquet
+        # Cache the full TourResult for save_spec_to_parquet. Set before
+        # tour_by because its validator coerces against the active tour.
         self._tour = tour
+
+        # Sync the family and tour_by together so the frontend never sees a
+        # mismatched pair
+        with self.hold_sync():
+            self._tour_family = tour.tour_family or "hyperdimensional"
+            if tour.tour_family == "sequential":
+                self.tour_by = "parameter"
+            elif self.tour_by == "parameter":
+                self.tour_by = "dimensions"
+
+        self._views_msg = msg
+        self.send(msg, buffers=[self._views_buf])
 
         # Auto-set tour_dimensions from the tour's feature names
         if tour.feature_names is not None:
@@ -388,6 +436,6 @@ class Widget(anywidget.AnyWidget):
         if self._data_buf is not None:
             self.send({"type": "data"}, buffers=[self._data_buf])
         if self._views_buf is not None:
-            self.send({"type": "views", "n_dims": self._n_dims}, buffers=[self._views_buf])
+            self.send(self._views_msg, buffers=[self._views_buf])
         if self._metrics_buf is not None:
             self.send({"type": "metrics"}, buffers=[self._metrics_buf])

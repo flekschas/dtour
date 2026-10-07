@@ -157,6 +157,18 @@ ways to run them.
 
 ## Development
 
+`dtour` loads the widget's JavaScript bundle from `src/dtour/static/widget.js`, which
+is not checked in. Build it, together with the `@dtour/scatter` and `@dtour/viewer`
+packages it bundles, from the repo root:
+
+```sh
+pnpm install
+pnpm build:widget
+```
+
+Rebuild after changing any frontend code. Importing `dtour` warns when the bundle is
+older than the frontend sources.
+
 Edit a notebook against the local source with all dev extras:
 
 ```sh
