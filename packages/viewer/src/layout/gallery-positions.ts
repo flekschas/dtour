@@ -1,22 +1,29 @@
-/** Concrete preview size factor: L (1), M (0.75), or S (0.5). */
-export type PreviewScale = 1 | 0.75 | 0.5;
-/** User-facing preview size setting: a concrete factor or viewport-derived 'auto'. */
-export type PreviewScaleSetting = PreviewScale | 'auto';
+/** Concrete preview size. */
+export type PreviewSize = 'small' | 'medium' | 'large';
+/** User-facing preview size setting: a concrete size or viewport-derived 'auto'. */
+export type PreviewSizeSetting = PreviewSize | 'auto';
+
+/** Factor applied to the largest preview ({@link MAX_SIZE}) for each size. */
+export const PREVIEW_SIZE_SCALE: Record<PreviewSize, number> = {
+  small: 0.5,
+  medium: 0.75,
+  large: 1,
+};
 
 /**
- * Resolve a preview-size setting to a concrete S/M/L factor. For 'auto', the
- * factor is derived from the gallery's smaller dimension (the axis that
- * actually constrains preview size): phones get S, tablets M, desktops L.
+ * Resolve a preview-size setting to a concrete size. For 'auto', the size is
+ * derived from the gallery's smaller dimension (the axis that actually
+ * constrains preview size): phones get small, tablets medium, desktops large.
  * Concrete settings pass through unchanged.
  */
-export function resolvePreviewScale(scale: PreviewScaleSetting, minorDim: number): PreviewScale {
-  if (scale !== 'auto') return scale;
-  // Unmeasured container (0×0 before first layout) — assume L to avoid a
+export function resolvePreviewSize(size: PreviewSizeSetting, minorDim: number): PreviewSize {
+  if (size !== 'auto') return size;
+  // Unmeasured container (0×0 before first layout) — assume large to avoid a
   // large→small flash on the common desktop case before the size is known.
-  if (minorDim <= 0) return 1;
-  if (minorDim < 520) return 0.5;
-  if (minorDim < 900) return 0.75;
-  return 1;
+  if (minorDim <= 0) return 'large';
+  if (minorDim < 520) return 'small';
+  if (minorDim < 900) return 'medium';
+  return 'large';
 }
 
 /** Gap between adjacent previews (CSS px). */

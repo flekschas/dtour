@@ -55,8 +55,8 @@ export type DtourProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
   data?: ArrayBuffer;
   /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
-  views?: Float32Array[];
-  /** Arrow IPC ArrayBuffer with per-view quality metrics (columns = metrics, rows = views). */
+  keyframes?: Float32Array[];
+  /** Arrow IPC ArrayBuffer with per-keyframe quality metrics (columns = metrics, rows = keyframes). */
   metrics?: ArrayBuffer;
   /** Track configuration for radial bar charts. When omitted, all metrics are shown with defaults. */
   metricTracks?: RadialTrackConfig[];
@@ -130,7 +130,7 @@ function InlineMarkdown({ text }: { text: string }) {
 
 export const Dtour = ({
   data,
-  views,
+  keyframes,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -165,7 +165,7 @@ export const Dtour = ({
       <Provider store={store}>
         <DtourInner
           data={data}
-          views={views}
+          keyframes={keyframes}
           metrics={metrics}
           metricTracks={metricTracks}
           metricBarWidth={metricBarWidth}
@@ -193,7 +193,7 @@ export const Dtour = ({
 /** Inner component that lives inside the Provider so hooks bind to the store. */
 const DtourInner = ({
   data,
-  views,
+  keyframes,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -214,7 +214,7 @@ const DtourInner = ({
   keyframeLoadings: keyframeLoadingsProp,
 }: {
   data: ArrayBuffer | undefined;
-  views: Float32Array[] | undefined;
+  keyframes: Float32Array[] | undefined;
   metrics: ArrayBuffer | undefined;
   metricTracks: RadialTrackConfig[] | undefined;
   metricBarWidth: 'full' | number | undefined;
@@ -599,7 +599,7 @@ const DtourInner = ({
         <div className="absolute inset-0 overflow-hidden">
           <DtourViewer
             data={data}
-            views={views}
+            keyframes={keyframes}
             metrics={metrics}
             metricTracks={metricTracks}
             metricBarWidth={metricBarWidth}

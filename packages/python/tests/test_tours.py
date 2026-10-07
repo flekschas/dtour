@@ -1,5 +1,7 @@
 """Tests for tour computation helpers and data utilities."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from dtour.data import _to_ipc_bytes, from_numpy, from_pandas
@@ -30,35 +32,35 @@ def test_little_tour_returns_result():
     X = make_data()
     result = little_tour(X)
     assert isinstance(result, TourResult)
-    assert result.n_views > 0
+    assert result.n_keyframes > 0
     assert result.n_dims == X.shape[1]
     assert len(result.explained_variance_ratio) > 0
 
 
-def test_little_tour_n_views():
+def test_little_tour_n_keyframes():
     X = make_data(p=6)
     result = little_tour(X, n_components=4)
-    assert result.n_views == 4
+    assert result.n_keyframes == 4
 
 
-def test_little_tour_views_shapes():
+def test_little_tour_keyframes_shapes():
     X = make_data(p=5)
     result = little_tour(X)
-    assert len(result.views) == result.n_views
-    for basis in result.views:
+    assert len(result.keyframes) == result.n_keyframes
+    for basis in result.keyframes:
         assert basis.shape == (5, 2)
         assert basis.dtype == np.float32
 
 
-def test_little_tour_views_raw_roundtrip():
+def test_little_tour_keyframes_raw_roundtrip():
     X = make_data(p=5)
     result = little_tour(X)
-    raw = result.views_raw
+    raw = result.keyframes_raw
     flat = np.frombuffer(raw, dtype=np.float32)
-    assert flat.shape == (result.n_views * 5 * 2,)
+    assert flat.shape == (result.n_keyframes * 5 * 2,)
     # Reconstruct and verify first view matches (column-major wire format)
     first = flat[: 5 * 2].reshape(5, 2, order="F")
-    np.testing.assert_array_equal(first, result.views[0])
+    np.testing.assert_array_equal(first, result.keyframes[0])
 
 
 def test_little_tour_with_dataframe():
@@ -67,7 +69,7 @@ def test_little_tour_with_dataframe():
     df = pd.DataFrame(make_data(), columns=[f"c{i}" for i in range(5)])
     result = little_tour(df)
     assert result.n_dims == 5
-    assert result.n_views > 0
+    assert result.n_keyframes > 0
 
 
 # ── le_tour ──────────────────────────────────────────────────────────────
@@ -77,8 +79,8 @@ def test_le_tour_returns_result():
     X = make_data(n=200, p=6)
     result = le_tour(X, n_components=4, n_neighbors=10)
     assert isinstance(result, TourResult)
-    # Always cumulative: n_components=4 → n_frames=3 (k=2..4) → 3 views
-    assert result.n_views == 3
+    # Always cumulative: n_components=4 → n_frames=3 (k=2..4) → 3 keyframes
+    assert result.n_keyframes == 3
     assert result.embedding is not None
     assert result.embedding.shape == (200, 4)
     assert result.feature_loadings is not None
@@ -105,6 +107,21 @@ def test_le_tour_extracts_pandas_names():
     assert result.feature_names == ["alpha", "beta", "gamma", "delta"]
 
 
+def test_tour_result_deprecated_view_aliases():
+    result = little_tour(make_data(), n_components=3)
+    with pytest.warns(DeprecationWarning, match="TourResult.views"):
+        assert result.views is result.keyframes
+    with pytest.warns(DeprecationWarning, match="TourResult.n_views"):
+        assert result.n_views == result.n_keyframes == 3
+    with pytest.warns(DeprecationWarning, match="TourResult.views_raw"):
+        assert result.views_raw == result.keyframes_raw
+
+
+def test_load_tour_saved_by_older_version():
+    loaded = TourResult.load(Path(__file__).parents[1] / "tour_cache.npz")
+    assert loaded.n_keyframes == len(loaded.keyframes) > 0
+
+
 def test_le_tour_save_load_roundtrip(tmp_path):
     X = make_data(n=200, p=5)
     result = le_tour(X, n_components=3, n_neighbors=10, feature_names=["a", "b", "c", "d", "e"])
@@ -127,26 +144,26 @@ def test_save_load_backwards_compat(tmp_path):
     assert loaded.feature_loadings is None
     assert loaded.feature_names is None
     assert loaded.feature_r2 is None
-    assert loaded.n_views == 3
+    assert loaded.n_keyframes == 3
 
 
 def test_le_tour_cumulative_view_count():
-    """n_frames should produce exactly n_frames build-up views."""
+    """n_frames should produce exactly n_frames build-up keyframes."""
     X = make_data(n=200, p=5)
     result = le_tour(X, n_neighbors=10, n_frames=4)
-    # n_frames=4 → 5 eigenvectors, build-up k=2..5 → 4 views
-    assert result.n_views == 4
+    # n_frames=4 → 5 eigenvectors, build-up k=2..5 → 4 keyframes
+    assert result.n_keyframes == 4
     assert result.n_dims == 5  # n_frames + 1 eigenvectors
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (5, 2)
         assert basis.dtype == np.float32
 
 
-def test_le_tour_cumulative_views_orthonormal():
+def test_le_tour_cumulative_keyframes_orthonormal():
     """Each cumulative view basis should have orthonormal columns."""
     X = make_data(n=200, p=6)
     result = le_tour(X, n_neighbors=10, n_frames=4)
-    for basis in result.views:
+    for basis in result.keyframes:
         gram = basis.T @ basis
         np.testing.assert_allclose(gram, np.eye(2), atol=1e-5)
 
@@ -155,7 +172,7 @@ def test_le_tour_cumulative_equal_row_norms():
     """Final cumulative view should have equal row norms (equal eigenvector contribution)."""
     X = make_data(n=200, p=6)
     result = le_tour(X, n_neighbors=10, n_frames=4)
-    final_view = result.views[-1]  # all 5 eigenvectors active
+    final_view = result.keyframes[-1]  # all 5 eigenvectors active
     row_norms = np.linalg.norm(final_view, axis=1)
     expected_norm = np.sqrt(2.0 / 5)
     np.testing.assert_allclose(row_norms, expected_norm, atol=1e-5)
@@ -165,10 +182,10 @@ def test_le_tour_cumulative_with_removal():
     """Removal phase should add extra frames stripping low-frequency eigenvectors."""
     X = make_data(n=200, p=6)
     result = le_tour(X, n_neighbors=10, n_frames=4, n_remove=3)
-    # Build-up: 4 views (k=2..5), removal: 3 views (strip LE0, LE0+1, LE0+1+2)
-    assert result.n_views == 4 + 3
+    # Build-up: 4 keyframes (k=2..5), removal: 3 keyframes (strip LE0, LE0+1, LE0+1+2)
+    assert result.n_keyframes == 4 + 3
     # Last view should only have LE3 and LE4 active (3 removed from 5)
-    last = result.views[-1]
+    last = result.keyframes[-1]
     # First 3 rows should be zero
     np.testing.assert_array_equal(last[:3], 0.0)
     # Last 2 rows should be non-zero with equal norms
@@ -183,8 +200,8 @@ def test_le_tour_subsample():
     result = le_tour(X, n_components=3, n_neighbors=10, subsample=100, random_state=42)
     assert result.embedding.shape == (300, 3)
     assert result.feature_loadings.shape == (3, 5)
-    # n_components=3 → 2 cumulative views
-    assert result.n_views == 2
+    # n_components=3 → 2 cumulative keyframes
+    assert result.n_keyframes == 2
 
 
 def test_le_tour_subsample_noop_when_small():
@@ -360,13 +377,13 @@ def test_le_tour_signed_basic():
     X = make_data(n=300, p=6)
     labels = np.array(["A"] * 150 + ["B"] * 150)
     result = le_tour(X, n_neighbors=10, n_frames=7, labels=labels)
-    # n_frames=7 → 8 eigenvectors, 7 cumulative views
+    # n_frames=7 → 8 eigenvectors, 7 cumulative keyframes
     assert result.n_dims == 8
-    assert result.n_views == 7
+    assert result.n_keyframes == 7
     assert result.tour_family == "hyperdimensional"
     assert result.embedding is not None
     assert result.embedding.shape == (300, 8)
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (8, 2)
         assert basis.dtype == np.float32
         gram = basis.T @ basis
@@ -406,7 +423,7 @@ def test_le_tour_signed_frame_summaries():
         feature_names=names,
     )
     assert result.keyframe_descriptions is not None
-    assert len(result.keyframe_descriptions) == result.n_views
+    assert len(result.keyframe_descriptions) == result.n_keyframes
     for s in result.keyframe_descriptions:
         assert s.startswith("Structure:"), s
 
@@ -454,7 +471,7 @@ def test_le_tour_signed_save_load(tmp_path):
     assert loaded.tour_family == "hyperdimensional"
     assert loaded.keyframe_descriptions == result.keyframe_descriptions
     assert loaded.n_dims == result.n_dims
-    assert loaded.n_views == result.n_views
+    assert loaded.n_keyframes == result.n_keyframes
     np.testing.assert_allclose(loaded.feature_loadings, result.feature_loadings, atol=1e-6)
 
 
@@ -472,11 +489,11 @@ def test_le_tour_discriminative_basic():
         labels=labels,
         discriminative=True,
     )
-    assert result.n_views == 5
+    assert result.n_keyframes == 5
     assert result.n_dims == 6  # n_frames + 1
     assert result.embedding.shape == (300, 6)
     assert result.tour_family == "hyperdimensional"
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (6, 2)
         gram = basis.T @ basis
         np.testing.assert_allclose(gram, np.eye(2), atol=1e-5)
@@ -618,7 +635,7 @@ def test_le_tour_frame_summaries():
     names = ["a", "b", "c", "d", "e", "f"]
     result = le_tour(X, n_neighbors=10, n_frames=4, feature_names=names)
     assert result.keyframe_descriptions is not None
-    assert len(result.keyframe_descriptions) == result.n_views
+    assert len(result.keyframe_descriptions) == result.n_keyframes
     for s in result.keyframe_descriptions:
         assert s.startswith("Structure:"), s
 
@@ -686,7 +703,7 @@ def test_le_tour_mutual_knn():
     X = make_data(n=200, p=6)
     result = le_tour(X, n_neighbors=10, n_frames=4, affinity="mutual_knn")
     assert isinstance(result, TourResult)
-    assert result.n_views == 4
+    assert result.n_keyframes == 4
     assert result.embedding.shape == (200, 5)
 
 
@@ -695,7 +712,7 @@ def test_le_tour_adaptive_sigma():
     X = make_data(n=200, p=6)
     result = le_tour(X, n_neighbors=10, n_frames=4, adaptive_sigma=True)
     assert isinstance(result, TourResult)
-    assert result.n_views == 4
+    assert result.n_keyframes == 4
     assert result.embedding.shape == (200, 5)
 
 
@@ -711,7 +728,7 @@ def test_le_tour_signed_adaptive_sigma():
         adaptive_sigma=True,
     )
     assert result.tour_family == "hyperdimensional"
-    assert result.n_views == 5
+    assert result.n_keyframes == 5
     assert result.embedding.shape == (300, 6)
 
 
@@ -728,7 +745,7 @@ def test_le_tour_discriminative_mutual_knn():
         affinity="mutual_knn",
     )
     assert result.tour_family == "hyperdimensional"
-    assert result.n_views == 5
+    assert result.n_keyframes == 5
 
 
 def test_le_tour_invalid_affinity():
@@ -844,12 +861,12 @@ def test_sequential_tour_basic_callable():
         keyframe_descriptions=["a", "b", "c"],
     )
     assert isinstance(result, TourResult)
-    assert result.n_views == 3
+    assert result.n_keyframes == 3
     assert result.n_dims == 6  # 2 * 3
     assert result.embedding.shape == (n, 6)
     assert result.tour_family == "sequential"
     assert result.keyframe_descriptions == ["a", "b", "c"]
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (6, 2)
         assert basis.dtype == np.float32
 
@@ -883,7 +900,7 @@ def test_sequential_tour_per_step_override():
         ],
     )
     assert call_log == ["a", "b"]
-    assert result.n_views == 2
+    assert result.n_keyframes == 2
 
 
 def test_sequential_tour_warm_start_passed():
@@ -1028,12 +1045,12 @@ def test_aligned_umap_tour_basic():
         keyframe_descriptions=["t0", "t1", "t2"],
     )
     assert isinstance(result, TourResult)
-    assert result.n_views == 3
+    assert result.n_keyframes == 3
     assert result.n_dims == 6
     assert result.embedding.shape == (n, 6)
     assert result.tour_family == "sequential"
     assert result.keyframe_descriptions == ["t0", "t1", "t2"]
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (6, 2)
         assert basis.dtype == np.float32
 
@@ -1051,7 +1068,7 @@ def test_aligned_umap_tour_explicit_relations():
         relations=relations,
         umap_kwargs={"n_neighbors": 10, "random_state": 42},
     )
-    assert result.n_views == 2
+    assert result.n_keyframes == 2
     assert result.embedding.shape == (n, 4)
 
 
@@ -1118,10 +1135,10 @@ def test_attraction_repulsion_tour_basic():
     result = attraction_repulsion_tour(X, n_frames=2, rhos=[4, 1], n_neighbors=10, random_state=42)
     assert isinstance(result, TourResult)
     assert result.tour_family == "sequential"
-    assert result.n_views == 2
+    assert result.n_keyframes == 2
     assert result.n_dims == 4  # 2 * n_frames
     assert result.embedding.shape == (200, 4)
-    for basis in result.views:
+    for basis in result.keyframes:
         assert basis.shape == (4, 2)
         assert basis.dtype == np.float32
 
@@ -1146,7 +1163,7 @@ def test_attraction_repulsion_tour_custom_rhos_override_n_frames():
     result = attraction_repulsion_tour(
         X, n_frames=99, rhos=[10, 5, 2, 1], n_neighbors=10, random_state=42
     )
-    assert result.n_views == 4
+    assert result.n_keyframes == 4
 
 
 def test_attraction_repulsion_tour_pca_init():
@@ -1155,7 +1172,7 @@ def test_attraction_repulsion_tour_pca_init():
     X = make_data(n=200, p=10)
     result = attraction_repulsion_tour(X, rhos=[4, 1], n_neighbors=10, init="pca", random_state=42)
     assert isinstance(result, TourResult)
-    assert result.n_views == 2
+    assert result.n_keyframes == 2
 
 
 def test_attraction_repulsion_tour_invalid_init():
@@ -1185,7 +1202,7 @@ def test_attraction_repulsion_tour_pymde_basic():
     )
     assert isinstance(result, TourResult)
     assert result.tour_family == "sequential"
-    assert result.n_views == 2
+    assert result.n_keyframes == 2
     assert result.embedding.shape == (200, 4)
 
 
@@ -1244,7 +1261,7 @@ def test_attraction_repulsion_tour_negative_rho():
 
 
 def test_from_parquet_roundtrip(tmp_path):
-    """Embedding a tour in Parquet metadata and reading it back should preserve views."""
+    """Embedding a tour in Parquet metadata and reading it back should preserve keyframes."""
     import arro3.core as ac
     import arro3.io
     from dtour.spec import add_spec_to_parquet
@@ -1267,12 +1284,12 @@ def test_from_parquet_roundtrip(tmp_path):
     # Read back
     restored = TourResult.from_parquet(path)
 
-    assert restored.n_views == original.n_views
+    assert restored.n_keyframes == original.n_keyframes
     assert restored.n_dims == original.n_dims
     assert restored.feature_names == original.feature_names
     assert restored.tour_family == original.tour_family
     assert restored.keyframe_descriptions == original.keyframe_descriptions
-    for orig_v, rest_v in zip(original.views, restored.views):
+    for orig_v, rest_v in zip(original.keyframes, restored.keyframes):
         np.testing.assert_allclose(rest_v, orig_v, atol=1e-6)
 
 

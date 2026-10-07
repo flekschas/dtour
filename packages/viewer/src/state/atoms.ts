@@ -2,9 +2,10 @@ import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
 import {
   MAX_PREVIEW_COUNT,
-  type PreviewScale,
-  type PreviewScaleSetting,
-  resolvePreviewScale,
+  PREVIEW_SIZE_SCALE,
+  type PreviewSize,
+  type PreviewSizeSetting,
+  resolvePreviewSize,
 } from '../layout/gallery-positions.ts';
 import type { EmbeddedConfig, KeyframeLoading, PreviewCount } from '../spec.ts';
 
@@ -31,19 +32,23 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // ---------------------------------------------------------------------------
 
 export const previewCountAtom = atom<PreviewCount>(4);
-/** User setting for preview size: explicit S/M/L factor or viewport-derived 'auto'. */
-export const previewScaleAtom = atom<PreviewScaleSetting>('auto');
+/** User setting for preview size: explicit small/medium/large or viewport-derived 'auto'. */
+export const previewSizeAtom = atom<PreviewSizeSetting>('auto');
 export const previewPaddingAtom = atom(12);
 
 /**
- * Resolved preview-size factor (S/M/L). Resolves 'auto' from the main canvas's
- * smaller dimension so the Gallery and the circular-selector sizing agree.
+ * Resolved preview size. Resolves 'auto' from the main canvas's smaller
+ * dimension so the Gallery and the circular-selector sizing agree.
  */
-export const resolvedPreviewScaleAtom = atom<PreviewScale>((get) => {
-  const setting = get(previewScaleAtom);
+export const resolvedPreviewSizeAtom = atom<PreviewSize>((get) => {
   const { width, height } = get(canvasSizeAtom);
-  return resolvePreviewScale(setting, Math.min(width, height));
+  return resolvePreviewSize(get(previewSizeAtom), Math.min(width, height));
 });
+
+/** Scale factor of the resolved preview size. */
+export const resolvedPreviewScaleAtom = atom(
+  (get) => PREVIEW_SIZE_SCALE[get(resolvedPreviewSizeAtom)],
+);
 export const selectedKeyframeAtom = atom<number | null>(null);
 
 /** Which gallery preview is currently hovered (index), or null. */
@@ -234,11 +239,11 @@ export const showLegendAtom = atom(true);
 /** User preference for showing axis biplot in guided mode. */
 export const showAxesAtom = atom(false);
 
-/** User preference for showing keyframe numbers on preview thumbnails. */
-export const showKeyframeNumbersAtom = atom(false);
+/** Keyframe numbers on previews. 'auto' shows them only when some keyframes have no preview. */
+export const previewKeyframeNumbersAtom = atom<'auto' | 'visible' | 'hidden'>('auto');
 
-/** User preference for showing feature loading pills on preview thumbnails. */
-export const showKeyframeLoadingsAtom = atom(true);
+/** Preview label content. 'auto' shows feature loadings when available, else the keyframe description. */
+export const previewLabelContentAtom = atom<'auto' | 'description' | 'loadings'>('auto');
 
 /** User preference for showing the tour description sub-bar. null = derive from tourDescription. */
 export const showTourDescriptionAtom = atom<boolean | null>(null);
@@ -272,9 +277,26 @@ export const resolvedPreviewCountAtom = atom((get) =>
   Math.min(get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom), MAX_PREVIEW_COUNT),
 );
 
+/** Whether previews show keyframe numbers, with 'auto' resolved. */
+export const resolvedPreviewKeyframeNumbersAtom = atom((get) => {
+  const setting = get(previewKeyframeNumbersAtom);
+  if (setting !== 'auto') return setting;
+  const keyframeCount = get(predefinedTourAtom)?.keyframeCount ?? 0;
+  return keyframeCount > get(resolvedPreviewCountAtom) ? 'visible' : 'hidden';
+});
+
 /** Per-keyframe descriptions: string[] of literals, or a template string with
  *  {primary}, {secondary}, {relation} placeholders. */
 export const keyframeDescriptionsAtom = atom<string | string[] | null>(null);
+
+/** What preview labels show, with 'auto' resolved. null when there is nothing to show. */
+export const resolvedPreviewLabelContentAtom = atom((get) => {
+  const setting = get(previewLabelContentAtom);
+  const loadings = get(keyframeLoadingsAtom);
+  if (setting !== 'description' && loadings && loadings.length > 0) return 'loadings';
+  if (setting !== 'loadings' && Array.isArray(get(keyframeDescriptionsAtom))) return 'description';
+  return null;
+});
 
 /** Tour description string from embedded config (shown in description sub-bar). */
 export const tourDescriptionAtom = atom<string | null>(null);

@@ -26,7 +26,7 @@ export type CircularSliderProps = {
   onSeek?: (value: number) => void;
   /** Called on first drag move after mousedown (lets parent cancel animations). */
   onDragStart?: () => void;
-  /** Number of tick marks around the ring (typically = number of tour views). */
+  /** Number of tick marks around the ring (typically = number of tour keyframes). */
   tickCount?: number;
   /** SVG diameter in px. Default 200. */
   size?: number;

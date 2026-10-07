@@ -30,7 +30,7 @@ const NUMERIC_TYPED_ARRAYS = new Set([
 /**
  * Parse an Arrow IPC buffer into per-track normalized data ready for rendering.
  *
- * Each column in the Arrow table represents a metric; rows are per-view values.
+ * Each column in the Arrow table represents a metric; rows are per-keyframe values.
  * When `configs` is provided, only the listed metrics are shown in that order.
  * When omitted, all numeric columns are shown with auto-assigned colors.
  */

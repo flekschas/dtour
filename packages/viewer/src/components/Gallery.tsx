@@ -18,10 +18,10 @@ import {
   keyframeLoadingsAtom,
   previewCentersAtom,
   resolvedPreviewCountAtom,
+  resolvedPreviewKeyframeNumbersAtom,
+  resolvedPreviewLabelContentAtom,
   resolvedPreviewScaleAtom,
   selectedKeyframeAtom,
-  showKeyframeLoadingsAtom,
-  showKeyframeNumbersAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -81,8 +81,8 @@ export const Gallery = ({
   const setPlaying = useSetAtom(tourPlayingAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
-  const showKeyframeNumbers = useAtomValue(showKeyframeNumbersAtom);
-  const showKeyframeLoadings = useAtomValue(showKeyframeLoadingsAtom);
+  const showKeyframeNumbers = useAtomValue(resolvedPreviewKeyframeNumbersAtom) === 'visible';
+  const labelContent = useAtomValue(resolvedPreviewLabelContentAtom);
   const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
   const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
@@ -90,12 +90,9 @@ export const Gallery = ({
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Whether loading pills are actually visible (data available + user toggle on)
-  const loadingsVisible =
-    showKeyframeLoadings && keyframeLoadings !== null && keyframeLoadings.length > 0;
-  const descriptionsVisible =
-    !loadingsVisible && keyframeDescriptions !== null && Array.isArray(keyframeDescriptions);
-  const showBarSpace = loadingsVisible || descriptionsVisible;
+  const loadingsVisible = labelContent === 'loadings';
+  const descriptionsVisible = labelContent === 'description';
+  const showBarSpace = labelContent !== null;
 
   // Grid area = container minus its CSS insets.
   const verticalInset = PREVIEW_SPACING + toolbarHeight / 2;

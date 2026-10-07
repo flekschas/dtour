@@ -25,6 +25,7 @@ import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
+import { createDefaultKeyframes, createPCAKeyframes, expandBases } from './keyframes.ts';
 import { MAX_PREVIEW_COUNT } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
@@ -59,8 +60,6 @@ import {
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   is3dRotatedAtom,
-  keyframeDescriptionsAtom,
-  keyframeLoadingsAtom,
   legendSelectionAtom,
   metadataAtom,
   panZoomModeAtom,
@@ -69,11 +68,11 @@ import {
   previewCentersAtom,
   previewCountAtom,
   resolvedPreviewCountAtom,
+  resolvedPreviewLabelContentAtom,
   resolvedPreviewScaleAtom,
   resolvedThemeAtom,
   resumeGuidedAtom,
   showAxesAtom,
-  showKeyframeLoadingsAtom,
   sliderVisibilityAtom,
   tourByAtom,
   tourFamilyAtom,
@@ -82,14 +81,13 @@ import {
   tourSliderSpacingAtom,
   tourTraversalAtom,
 } from './state/atoms.ts';
-import { createDefaultViews, createPCAViews, expandBases } from './views.ts';
 
 export type DtourViewerProps = {
   /** Arrow IPC or Parquet ArrayBuffer. Ownership is transferred on load. */
   data?: ArrayBuffer | undefined;
-  /** Tour keyframe views (p×2 column-major). Auto-generated if omitted. */
-  views?: Float32Array[] | undefined;
-  /** Arrow IPC ArrayBuffer with per-view quality metrics. */
+  /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
+  keyframes?: Float32Array[] | undefined;
+  /** Arrow IPC ArrayBuffer with per-keyframe quality metrics. */
   metrics?: ArrayBuffer | undefined;
   /** Track configuration for radial bar charts. */
   metricTracks?: RadialTrackConfig[] | undefined;
@@ -116,7 +114,7 @@ const SELECTOR_PADDING = 16;
 
 export const DtourViewer = ({
   data,
-  views,
+  keyframes,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -220,19 +218,12 @@ export const DtourViewer = ({
   const spacingMode = useAtomValue(tourSliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = tourTraversal === 'guided';
-  const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
-  const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
-  const showKeyframeLoadings = useAtomValue(showKeyframeLoadingsAtom);
-  const loadingsVisible =
-    showKeyframeLoadings && keyframeLoadings !== null && keyframeLoadings.length > 0;
-  const descriptionsVisible =
-    !loadingsVisible && keyframeDescriptions !== null && Array.isArray(keyframeDescriptions);
-  const showBarSpace = loadingsVisible || descriptionsVisible;
+  const showBarSpace = useAtomValue(resolvedPreviewLabelContentAtom) !== null;
 
-  // Resolve views (from props or auto-generated) and precompute arc lengths
+  // Resolve keyframes (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.
-  // Embedded tour views from Parquet metadata.
-  const embeddedViews =
+  // Embedded tour keyframes from Parquet metadata.
+  const embeddedKeyframes =
     embeddedConfig?.tour && metadata && embeddedConfig.tour.keyframes.length > 0
       ? embeddedConfig.tour.keyframes
       : null;
@@ -241,63 +232,63 @@ export const DtourViewer = ({
   // Predefined tours lock down column toggles, preview count, and the Dims/PCA selector.
   const setPredefinedTour = useSetAtom(predefinedTourAtom);
   useEffect(() => {
-    const predefinedViews = views ?? embeddedViews;
-    if (predefinedViews && predefinedViews.length > 0 && metadata) {
+    const predefinedKeyframes = keyframes ?? embeddedKeyframes;
+    if (predefinedKeyframes && predefinedKeyframes.length > 0 && metadata) {
       // Resolve dimensions: use tour.dimensions if available, fall back
       // to the first nDims column names (derived from basis matrix size).
-      const tourNDims = predefinedViews[0]!.length / 2;
+      const tourNDims = predefinedKeyframes[0]!.length / 2;
       const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-      setPredefinedTour({ dimensions: dims, keyframeCount: predefinedViews.length });
-      if (predefinedViews.length > MAX_PREVIEW_COUNT) {
+      setPredefinedTour({ dimensions: dims, keyframeCount: predefinedKeyframes.length });
+      if (predefinedKeyframes.length > MAX_PREVIEW_COUNT) {
         console.warn(
-          `[dtour] The tour has ${predefinedViews.length} keyframes but the gallery shows at most ${MAX_PREVIEW_COUNT}. Only the first ${MAX_PREVIEW_COUNT} keyframes get a preview.`,
+          `[dtour] The tour has ${predefinedKeyframes.length} keyframes but the gallery shows at most ${MAX_PREVIEW_COUNT}. Only the first ${MAX_PREVIEW_COUNT} keyframes get a preview.`,
         );
       }
     } else {
       setPredefinedTour(null);
     }
-  }, [views, embeddedViews, metadata, embeddedConfig, setPredefinedTour]);
+  }, [keyframes, embeddedKeyframes, metadata, embeddedConfig, setPredefinedTour]);
 
   const resolvedPreviewCount = useAtomValue(resolvedPreviewCountAtom);
 
-  const { resolvedViews, arcLengths } = useMemo(() => {
-    if (!metadata || metadata.dimCount < 2) return { resolvedViews: null, arcLengths: null };
-    if (activeIndices.length < 2) return { resolvedViews: null, arcLengths: null };
+  const { resolvedKeyframes, arcLengths } = useMemo(() => {
+    if (!metadata || metadata.dimCount < 2) return { resolvedKeyframes: null, arcLengths: null };
+    if (activeIndices.length < 2) return { resolvedKeyframes: null, arcLengths: null };
     const dims = metadata.dimCount;
     let rb: Float32Array[];
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
-      rb = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
-    } else if (views && views.length > 0) {
-      const tourNDims = views[0]!.length / 2;
+      rb = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
+    } else if (keyframes && keyframes.length > 0) {
+      const tourNDims = keyframes[0]!.length / 2;
       if (tourNDims === dims) {
-        rb = views.map((b) => new Float32Array(b));
+        rb = keyframes.map((b) => new Float32Array(b));
       } else if (tourNDims < dims) {
         const tourDims = metadata.columnNames.slice(0, tourNDims);
-        rb = expandBases(views, tourDims, metadata.columnNames, dims);
+        rb = expandBases(keyframes, tourDims, metadata.columnNames, dims);
       } else {
-        rb = createDefaultViews(dims, previewCount, activeIndices);
+        rb = createDefaultKeyframes(dims, previewCount, activeIndices);
       }
-    } else if (embeddedViews) {
-      const tourNDims = embeddedViews[0]!.length / 2;
+    } else if (embeddedKeyframes) {
+      const tourNDims = embeddedKeyframes[0]!.length / 2;
       if (tourNDims === dims) {
-        rb = embeddedViews.map((b) => new Float32Array(b));
+        rb = embeddedKeyframes.map((b) => new Float32Array(b));
       } else if (tourNDims < dims) {
         const tourDims =
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-        rb = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
+        rb = expandBases(embeddedKeyframes, tourDims, metadata.columnNames, dims);
       } else {
-        rb = createDefaultViews(dims, previewCount, activeIndices);
+        rb = createDefaultKeyframes(dims, previewCount, activeIndices);
       }
     } else {
-      rb = createDefaultViews(dims, previewCount, activeIndices);
+      rb = createDefaultKeyframes(dims, previewCount, activeIndices);
     }
     return {
-      resolvedViews: rb,
+      resolvedKeyframes: rb,
       arcLengths: computeArcLengths(rb, dims, tourFamily !== 'sequential'),
     };
   }, [
-    views,
-    embeddedViews,
+    keyframes,
+    embeddedKeyframes,
     embeddedConfig,
     metadata,
     previewCount,
@@ -318,8 +309,8 @@ export const DtourViewer = ({
   spacingModeRef.current = spacingMode;
   const arcLengthsRef = useRef(arcLengths);
   arcLengthsRef.current = arcLengths;
-  const resolvedViewsRef = useRef(resolvedViews);
-  resolvedViewsRef.current = resolvedViews;
+  const resolvedKeyframesRef = useRef(resolvedKeyframes);
+  resolvedKeyframesRef.current = resolvedKeyframes;
   const metadataRef = useRef(metadata);
   metadataRef.current = metadata;
   const orthonormalize = tourFamily !== 'sequential';
@@ -332,7 +323,7 @@ export const DtourViewer = ({
   // a given tour position and push directly to SVG via setBasis.
   // Called from playbackTick, slider drag, and wheel scrub.
   const updateAxesImperative = useCallback((tourPos: number) => {
-    const rv = resolvedViewsRef.current;
+    const rv = resolvedKeyframesRef.current;
     const al = arcLengthsRef.current;
     const meta = metadataRef.current;
     if (!rv || !al || !meta || !axisOverlayRef.current) return;
@@ -356,15 +347,15 @@ export const DtourViewer = ({
   useEffect(() => {
     if (tourTraversal !== 'guided') return;
     if (guidedSuspended) return;
-    if (!resolvedViews || !arcLengths || !metadata) return;
+    if (!resolvedKeyframes || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
     const out = new Float32Array(dims * 2);
-    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position, orthonormalize);
+    interpolateAtPosition(out, resolvedKeyframes, arcLengths, dims, position, orthonormalize);
     setCurrentBasis(out);
   }, [
     tourTraversal,
     guidedSuspended,
-    resolvedViews,
+    resolvedKeyframes,
     arcLengths,
     metadata,
     position,
@@ -380,16 +371,16 @@ export const DtourViewer = ({
   // The length check also re-seeds after a data reload changes the dim count.
   useEffect(() => {
     if (tourTraversal !== 'manual') return;
-    if (!resolvedViews || !arcLengths || !metadata) return;
+    if (!resolvedKeyframes || !arcLengths || !metadata) return;
     const dims = metadata.dimCount;
     const cur = store.get(currentBasisAtom);
     if (cur && cur.length === dims * 2) return;
     const out = new Float32Array(dims * 2);
-    interpolateAtPosition(out, resolvedViews, arcLengths, dims, position, orthonormalize);
+    interpolateAtPosition(out, resolvedKeyframes, arcLengths, dims, position, orthonormalize);
     setCurrentBasis(out);
   }, [
     tourTraversal,
-    resolvedViews,
+    resolvedKeyframes,
     arcLengths,
     metadata,
     position,
@@ -718,39 +709,39 @@ export const DtourViewer = ({
     scatter.computePCA();
   }, [tourBy, metadata, scatter]);
 
-  // Set views when available (from props, PCA, embedded, or auto-generated from metadata).
-  // Predefined tours (views prop, embeddedViews) are used as-is — column selection
-  // only affects auto-generated views (createDefaultViews).
+  // Set keyframes when available (from props, PCA, embedded, or auto-generated from metadata).
+  // Predefined tours (keyframes prop, embeddedKeyframes) are used as-is — column selection
+  // only affects auto-generated keyframes (createDefaultKeyframes).
   useEffect(() => {
     if (!scatter || !metadata || metadata.dimCount < 2) return;
     if (activeIndices.length < 2) return;
     const dims = metadata.dimCount;
     let bases: Float32Array[];
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
-      bases = createPCAViews(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
-    } else if (views && views.length > 0) {
-      const tourNDims = views[0]!.length / 2;
+      bases = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
+    } else if (keyframes && keyframes.length > 0) {
+      const tourNDims = keyframes[0]!.length / 2;
       if (tourNDims === dims) {
-        bases = views.map((b) => new Float32Array(b));
+        bases = keyframes.map((b) => new Float32Array(b));
       } else if (tourNDims < dims) {
         const tourDims = metadata.columnNames.slice(0, tourNDims);
-        bases = expandBases(views, tourDims, metadata.columnNames, dims);
+        bases = expandBases(keyframes, tourDims, metadata.columnNames, dims);
       } else {
-        bases = createDefaultViews(dims, previewCount, activeIndices);
+        bases = createDefaultKeyframes(dims, previewCount, activeIndices);
       }
-    } else if (embeddedViews) {
-      const tourNDims = embeddedViews[0]!.length / 2;
+    } else if (embeddedKeyframes) {
+      const tourNDims = embeddedKeyframes[0]!.length / 2;
       if (tourNDims === dims) {
-        bases = embeddedViews.map((b) => new Float32Array(b));
+        bases = embeddedKeyframes.map((b) => new Float32Array(b));
       } else if (tourNDims < dims) {
         const tourDims =
           embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-        bases = expandBases(embeddedViews, tourDims, metadata.columnNames, dims);
+        bases = expandBases(embeddedKeyframes, tourDims, metadata.columnNames, dims);
       } else {
-        bases = createDefaultViews(dims, previewCount, activeIndices);
+        bases = createDefaultKeyframes(dims, previewCount, activeIndices);
       }
     } else {
-      bases = createDefaultViews(dims, previewCount, activeIndices);
+      bases = createDefaultKeyframes(dims, previewCount, activeIndices);
     }
     scatter.setBases(bases, tourFamily);
     // setBases resets the GPU's tour position to 0 on first load; re-apply the
@@ -760,8 +751,8 @@ export const DtourViewer = ({
     scatter.render();
   }, [
     scatter,
-    views,
-    embeddedViews,
+    keyframes,
+    embeddedKeyframes,
     embeddedConfig,
     metadata,
     previewCount,
@@ -774,7 +765,7 @@ export const DtourViewer = ({
   const { animateTo, cancelAnimation } = useAnimatePosition();
   const { resumeWithTransition, cancelTransition, isTransitioning } = useGuidedResume(
     scatterRef,
-    resolvedViewsRef,
+    resolvedKeyframesRef,
     arcLengthsRef,
     metadataRef,
   );
@@ -1082,14 +1073,8 @@ export const DtourViewer = ({
     }
   }, [tourTraversal, setIs3dRotated]);
 
-  const tickCount = views?.length ?? embeddedViews?.length ?? previewCount;
+  const tickCount = keyframes?.length ?? embeddedKeyframes?.length ?? previewCount;
   const hasData = !!data && !!metadata;
-
-  if (import.meta.env.DEV && views && views.length !== previewCount) {
-    console.warn(
-      `[dtour] views.length (${views.length}) differs from previewCount (${previewCount}). Selector ticks and radial bars reflect views count; preview gallery reflects previewCount. Set previewCount to match views.length for full alignment.`,
-    );
-  }
 
   const overlayHeight = containerSize.height - overlayOffsetY;
   // Compute camera inset values for hover coordinate transform

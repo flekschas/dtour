@@ -55,7 +55,7 @@ def test_build_tour():
     result = json.loads(build_dtour_metadata(tour=tour, tour_dimensions=["a", "b", "c", "d"]))
     assert "tour" in result
     assert result["tour"]["nDims"] == 4
-    assert result["tour"]["nViews"] == tour.n_views
+    assert result["tour"]["nViews"] == tour.n_keyframes
     assert isinstance(result["tour"]["views"], str)  # base64
 
 
@@ -68,7 +68,7 @@ def test_build_snake_to_camel_all_keys():
         "tour_speed": 2.0,
         "tour_direction": "backward",
         "preview_count": 8,
-        "preview_scale": 0.75,
+        "preview_size": "medium",
         "preview_padding": 16.0,
         "point_size": 4,
         "point_opacity": 0.8,
@@ -81,8 +81,8 @@ def test_build_snake_to_camel_all_keys():
         "tour_traversal": "manual",
         "show_legend": False,
         "show_axes": True,
-        "show_keyframe_numbers": True,
-        "show_keyframe_loadings": False,
+        "preview_keyframe_numbers": "visible",
+        "preview_label_content": "description",
         "show_tour_description": True,
         "tour_slider_spacing": "equal",
         "theme_mode": "light",
@@ -92,6 +92,34 @@ def test_build_snake_to_camel_all_keys():
     for snake, camel in _SNAKE_TO_CAMEL.items():
         assert camel in result, f"Missing camelCase key {camel} for {snake}"
         assert result[camel] == kwargs[snake]
+
+
+def test_build_maps_deprecated_kwargs():
+    with pytest.warns(DeprecationWarning) as record:
+        result = json.loads(
+            build_dtour_metadata(
+                preview_scale=0.5,
+                show_keyframe_numbers=True,
+                show_keyframe_loadings=False,
+            )
+        )
+    assert len(record) == 3
+    assert result == {
+        "previewSize": "small",
+        "previewKeyframeNumbers": "visible",
+        "previewLabelContent": "description",
+    }
+
+
+def test_build_prefers_new_kwarg_over_deprecated_one():
+    with pytest.warns(DeprecationWarning):
+        result = json.loads(build_dtour_metadata(preview_size="large", preview_scale=0.5))
+    assert result == {"previewSize": "large"}
+
+
+def test_build_rejects_unknown_kwargs():
+    with pytest.raises(TypeError, match="not_a_setting"):
+        build_dtour_metadata(not_a_setting=1)
 
 
 # ── add_spec_to_parquet ─────────────────────────────────────────────────
@@ -139,6 +167,13 @@ def test_add_spec_accepts_polars():
 
 
 # ── read_spec_from_parquet ──────────────────────────────────────────────
+
+
+def test_add_spec_maps_deprecated_kwargs():
+    with pytest.warns(DeprecationWarning, match="show_keyframe_loadings"):
+        result = add_spec_to_parquet(_make_table(), show_keyframe_loadings=False)
+    meta = json.loads(result.schema.metadata_str["dtour"])
+    assert meta == {"previewLabelContent": "description"}
 
 
 def test_read_from_table():
@@ -202,12 +237,12 @@ def test_round_trip_tour():
         result = read_spec_from_parquet(path)
     assert result is not None
     assert result["tour"]["nDims"] == 4
-    assert result["tour"]["nViews"] == tour.n_views
+    assert result["tour"]["nViews"] == tour.n_keyframes
     # Verify base64 decodes back to the right number of floats
     import base64
 
     floats = np.frombuffer(base64.b64decode(result["tour"]["views"]), dtype=np.float32)
-    assert len(floats) == tour.n_views * 4 * 2
+    assert len(floats) == tour.n_keyframes * 4 * 2
 
 
 # ── Widget.save_spec_to_parquet ─────────────────────────────────────────
@@ -234,7 +269,7 @@ def test_widget_save_spec_custom_zoom():
 
 
 def test_widget_save_spec_with_tour():
-    """Tour views should be embedded when set."""
+    """Tour keyframes should be embedded when set."""
     from dtour.widget import Widget
 
     X = np.random.default_rng(42).standard_normal((50, 4)).astype(np.float32)
@@ -245,4 +280,4 @@ def test_widget_save_spec_with_tour():
     meta = json.loads(table.schema.metadata_str["dtour"])
     assert "tour" in meta
     assert meta["tour"]["nDims"] == 4
-    assert meta["tour"]["nViews"] == tour.n_views
+    assert meta["tour"]["nViews"] == tour.n_keyframes

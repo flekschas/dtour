@@ -2,6 +2,20 @@
 
 ## Next
 
+### BREAKING CHANGES
+
+Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail in the gallery.
+
+- **DtourSpec**: `previewScale: 1 | 0.75 | 0.5` → `previewSize: 'auto' | 'small' | 'medium' | 'large'`, `showKeyframeNumbers: boolean` → `previewKeyframeNumbers: 'auto' | 'visible' | 'hidden'`, `showKeyframeLoadings: boolean` → `previewLabelContent: 'auto' | 'description' | 'loadings'`
+- **Atoms**: `showKeyframeNumbersAtom` → `previewKeyframeNumbersAtom`, `showKeyframeLoadingsAtom` → `previewLabelContentAtom`; `previewSizeAtom` is now exported
+- **Component props**: `Dtour` and `DtourViewer` `views` → `keyframes`
+- **Viewer functions**: `createDefaultViews` → `createDefaultKeyframes`
+- **Python `TourResult`**: `views` → `keyframes`, `n_views` → `n_keyframes` (now a property), `views_raw` → `keyframes_raw`
+- **Python widget**: `show_keyframe_loadings` → `preview_label_content`; `preview_size` now also accepts `"auto"`, which is the new default
+- **Python `build_dtour_metadata` / `add_spec_to_parquet`**: `preview_scale` → `preview_size`, `show_keyframe_numbers` → `preview_keyframe_numbers`, `show_keyframe_loadings` → `preview_label_content`
+- **Python `compute_metrics`**: `views` → `keyframes`
+- **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`. Saved tours (`.npz` and Parquet) keep their format.
+
 ### python
 
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
@@ -13,6 +27,8 @@
 - chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
 - chore: update `uv.lock` to match `pyproject.toml`
 - fix: `set_tour()` warns when a tour has more keyframes than the viewer can preview (16)
+- feat: add `preview_keyframe_numbers` and `preview_label_content` traitlets, so every preview setting is available from Python
+- fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
 
 ### scatter
 
@@ -22,6 +38,8 @@
 
 - fix: tours with more than 16 keyframes no longer stack all previews in the top-left corner. The gallery previews the first 16 keyframes, the slider keeps a tick for every keyframe and starts at the first preview, and the console warns about the missing previews
 - fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
+- feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)
+- chore: remove the dev-only warning about `views.length` differing from `previewCount`, which predefined tours no longer need
 
 ## v0.4.4
 

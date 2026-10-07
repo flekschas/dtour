@@ -124,7 +124,7 @@ def _(cache_dir, dtour, np, tour, w, widget_df):
     else:
         metrics = dtour.compute_metrics(
             tour.embedding,
-            tour.views,
+            tour.keyframes,
             labels=widget_df["phenotypes"].to_numpy(),
             metrics=_metric_names,
             exclude_labels=["Unassigned"],
@@ -156,11 +156,11 @@ def _(cache_dir, dtour, metrics, np, tour, w, widget_df):
     _cm_cache_path = cache_dir / "confusion_matrices.npz"
     if _cm_cache_path.exists():
         _cm_data = np.load(_cm_cache_path)
-        _confusion_matrices = [_cm_data[f"cm_{i}"] for i in range(len(tour.views))]
+        _confusion_matrices = [_cm_data[f"cm_{i}"] for i in range(len(tour.keyframes))]
     else:
         _cat = pd.Categorical(_labels_clean)
         _confusion_matrices = []
-        for basis in tour.views:
+        for basis in tour.keyframes:
             proj = _X_norm @ basis
             cm_df = pd.DataFrame({"x": proj[:, 0], "y": proj[:, 1], "label": _cat})
             _confusion_matrices.append(np.asarray(cev_metrics.confusion(cm_df), dtype=np.float64))

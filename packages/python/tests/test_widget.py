@@ -24,7 +24,10 @@ def test_widget_default_traits():
     assert w.tour_speed == 1.0
     assert w.tour_direction == "forward"
     assert w.preview_count == 4
+    assert w.preview_size == "auto"
     assert w.preview_padding == 12.0
+    assert w.preview_keyframe_numbers == "auto"
+    assert w.preview_label_content == "auto"
     assert w.point_size == "auto"
     assert w.point_opacity == "auto"
     assert w.point_color == [0.25, 0.5, 0.9]
@@ -43,6 +46,18 @@ def test_widget_preview_count_validation():
 
     with pytest.raises(Exception):
         Widget(preview_count=1)
+
+
+def test_widget_show_keyframe_loadings_is_deprecated():
+    with pytest.warns(DeprecationWarning, match="preview_label_content"):
+        w = Widget(show_keyframe_loadings=False)
+    assert w.preview_label_content == "description"
+
+    with pytest.warns(DeprecationWarning):
+        w.show_keyframe_loadings = True
+    assert w.preview_label_content == "auto"
+    with pytest.warns(DeprecationWarning):
+        assert w.show_keyframe_loadings is True
 
 
 def test_widget_tour_direction_validation():
@@ -65,9 +80,11 @@ def test_widget_set_tour():
     tour = little_tour(X)
     w = Widget()
     w.set_tour(tour)
-    assert w._views_buf is not None
-    assert w._views_msg["n_dims"] == 4
-    assert len(w._views_buf) == tour.n_views * 4 * 2 * 4  # n_views * dims * 2 * sizeof(float32)
+    assert w._keyframes_buf is not None
+    assert w._keyframes_msg["n_dims"] == 4
+    assert (
+        len(w._keyframes_buf) == tour.n_keyframes * 4 * 2 * 4
+    )  # n_keyframes * dims * 2 * sizeof(float32)
 
 
 def test_widget_constructor_with_data_and_tour():
@@ -78,7 +95,7 @@ def test_widget_constructor_with_data_and_tour():
     tour = little_tour(X)
     w = Widget(data=data, tour=tour)
     assert w._data_buf is not None
-    assert w._views_buf is not None
+    assert w._keyframes_buf is not None
 
 
 def _sequential_tour():
@@ -117,23 +134,23 @@ def test_widget_set_tour_warns_when_keyframes_exceed_gallery():
     w = Widget()
     with pytest.warns(UserWarning, match="18 keyframes"):
         w.set_tour(tour)
-    assert w._views_msg is not None
+    assert w._keyframes_msg is not None
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         w.set_tour(_sequential_tour())
 
 
-def test_widget_ready_resends_full_views_message():
+def test_widget_ready_resends_full_keyframes_message():
     w = Widget(tour=_sequential_tour())
     sent = []
     w.send = lambda msg, buffers=None: sent.append(msg)
 
     w._handle_custom_msg({"type": "ready"}, [])
 
-    views = next(msg for msg in sent if msg["type"] == "views")
-    assert views["tour_description"] == "Frames"
-    assert views["keyframe_descriptions"] == ["A", "B", "C"]
+    keyframes = next(msg for msg in sent if msg["type"] == "keyframes")
+    assert keyframes["tour_description"] == "Frames"
+    assert keyframes["keyframe_descriptions"] == ["A", "B", "C"]
     # The frontend reads the family from synced state, which it has on first render
     assert w.get_state()["_tour_family"] == "sequential"
 

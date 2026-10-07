@@ -35,10 +35,10 @@ export const dtourSpecSchema = z.object({
   tourSliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   tourSliderVisibility: z.enum(['visible', 'subtle', 'hidden']).optional(),
   previewCount: previewCountSchema.optional(),
-  previewScale: z
-    .union([z.literal('auto'), z.literal(1), z.literal(0.75), z.literal(0.5)])
-    .optional(),
+  previewSize: z.enum(['auto', 'small', 'medium', 'large']).optional(),
   previewPadding: z.number().nonnegative().optional(),
+  previewKeyframeNumbers: z.enum(['auto', 'visible', 'hidden']).optional(),
+  previewLabelContent: z.enum(['auto', 'description', 'loadings']).optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
   minPointSize: z.number().min(1).max(20).optional(),
@@ -50,8 +50,6 @@ export const dtourSpecSchema = z.object({
   cameraZoom: z.number().positive().optional(),
   showLegend: z.boolean().optional(),
   showAxes: z.boolean().optional(),
-  showKeyframeNumbers: z.boolean().optional(),
-  showKeyframeLoadings: z.boolean().optional(),
   showTourDescription: z.boolean().nullable().optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
   centering: z.enum(['midrange', 'mean']).optional(),
@@ -89,6 +87,16 @@ export type EmbeddedConfig = {
 
 const SPEC_SHAPE_KEYS = Object.keys(dtourSpecSchema.shape) as (keyof DtourSpec)[];
 
+/** Renamed spec fields that saved files may still contain: old name → new name and value. */
+const LEGACY_SPEC_FIELDS: Record<string, [keyof DtourSpec, (value: unknown) => unknown]> = {
+  previewScale: [
+    'previewSize',
+    (v) => ({ auto: 'auto', 0.5: 'small', 0.75: 'medium', 1: 'large' })[String(v)],
+  ],
+  showKeyframeNumbers: ['previewKeyframeNumbers', (v) => (v ? 'visible' : 'hidden')],
+  showKeyframeLoadings: ['previewLabelContent', (v) => (v ? 'auto' : 'description')],
+};
+
 /**
  * Parse the raw JSON "dtour" value from Parquet key_value_metadata.
  * Returns null if the string is falsy or unparseable.
@@ -104,6 +112,10 @@ export function parseEmbeddedConfig(raw: string | undefined): EmbeddedConfig | n
     return null;
   }
   if (typeof obj !== 'object' || obj === null) return null;
+
+  for (const [oldKey, [newKey, toNew]] of Object.entries(LEGACY_SPEC_FIELDS)) {
+    if (oldKey in obj && !(newKey in obj)) obj[newKey] = toNew(obj[oldKey]);
+  }
 
   // Validate each spec field individually — invalid fields are dropped
   // without affecting valid ones.
@@ -234,8 +246,10 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourSpeed: 1,
   tourDirection: 'forward',
   previewCount: 4,
-  previewScale: 'auto',
+  previewSize: 'auto',
   previewPadding: 12,
+  previewKeyframeNumbers: 'auto',
+  previewLabelContent: 'auto',
   pointSize: 'auto',
   pointOpacity: 'auto',
   minPointSize: 2,
@@ -248,8 +262,6 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourTraversal: 'guided',
   showLegend: true,
   showAxes: false,
-  showKeyframeNumbers: false,
-  showKeyframeLoadings: true,
   showTourDescription: null,
   tourSliderVisibility: 'visible',
   tourSliderSpacing: 'equal',

@@ -53,10 +53,18 @@ def _check_bundle() -> None:
 _check_bundle()
 
 
+def _warn_show_keyframe_loadings() -> None:
+    warnings.warn(
+        "`show_keyframe_loadings` is deprecated; use `preview_label_content` instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 class Widget(anywidget.AnyWidget):
     """Interactive dtour scatter widget for Jupyter / Marimo.
 
-    Binary data (Arrow IPC, tour views, metrics) is sent via custom messages
+    Binary data (Arrow IPC, tour keyframes, metrics) is sent via custom messages
     so it arrives as proper ArrayBuffer/DataView on the JS side — Marimo
     serialises ``Bytes`` traitlets as plain JSON ``number[]`` arrays, making
     them unusable for large binary payloads.
@@ -94,8 +102,14 @@ class Widget(anywidget.AnyWidget):
     tour_speed = t.Float(1.0).tag(sync=True)
     tour_direction = t.Enum(["forward", "backward"], default_value="forward").tag(sync=True)
     preview_count = t.Int(4).tag(sync=True)
-    preview_size = t.Enum(["small", "medium", "large"], default_value="large").tag(sync=True)
+    preview_size = t.Enum(["auto", "small", "medium", "large"], default_value="auto").tag(sync=True)
     preview_padding = t.Float(12.0).tag(sync=True)
+    preview_keyframe_numbers = t.Enum(["auto", "visible", "hidden"], default_value="auto").tag(
+        sync=True
+    )
+    preview_label_content = t.Enum(["auto", "description", "loadings"], default_value="auto").tag(
+        sync=True
+    )
     point_size = t.Union(
         [t.Float(), t.Unicode()],
         default_value="auto",
@@ -111,7 +125,6 @@ class Widget(anywidget.AnyWidget):
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
     tour_traversal = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
-    show_keyframe_loadings = t.Bool(True).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
     theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     centering = t.Enum(["midrange", "mean"], default_value="midrange").tag(sync=True)
@@ -122,8 +135,8 @@ class Widget(anywidget.AnyWidget):
 
     # ── Projected columns ────────────────────────────────────────────────
     tour_dimensions = t.List(t.Unicode(), default_value=[]).tag(sync=True)
-    # Synced as state, not with the views message, so the frontend knows the
-    # tour family on first render, before the views arrive. Unset until
+    # Synced as state, not with the keyframes message, so the frontend knows
+    # the tour family on first render, before the keyframes arrive. Unset until
     # set_tour(), so a family embedded in the data can apply.
     _tour_family = t.Unicode(None, allow_none=True).tag(sync=True)
 
@@ -160,8 +173,10 @@ class Widget(anywidget.AnyWidget):
     @t.validate("preview_size")
     def _validate_preview_size(self, proposal: t.Bunch) -> str:
         value = proposal["value"]
-        if value not in ("small", "medium", "large"):
-            raise t.TraitError(f"preview_size must be 'small', 'medium', or 'large'; got {value!r}")
+        if value not in ("auto", "small", "medium", "large"):
+            raise t.TraitError(
+                f"preview_size must be 'auto', 'small', 'medium', or 'large'; got {value!r}"
+            )
         return value
 
     @t.validate("tour_direction")
@@ -217,10 +232,14 @@ class Widget(anywidget.AnyWidget):
 
     # ── Init ─────────────────────────────────────────────────────────────
     def __init__(self, *, data: object | None = None, tour: TourResult | None = None, **kwargs):
+        if "show_keyframe_loadings" in kwargs:
+            _warn_show_keyframe_loadings()
+            show = kwargs.pop("show_keyframe_loadings")
+            kwargs.setdefault("preview_label_content", "auto" if show else "description")
         super().__init__(**kwargs)
         self._data_buf: bytes | None = None
-        self._views_buf: bytes | None = None
-        self._views_msg: dict | None = None
+        self._keyframes_buf: bytes | None = None
+        self._keyframes_msg: dict | None = None
         self._metrics_buf: bytes | None = None
         self._tour: TourResult | None = None
         self.on_msg(self._handle_custom_msg)
@@ -238,6 +257,17 @@ class Widget(anywidget.AnyWidget):
         """
         return self._tour_family
 
+    @property
+    def show_keyframe_loadings(self) -> bool:
+        """Deprecated: use :attr:`preview_label_content`."""
+        _warn_show_keyframe_loadings()
+        return self.preview_label_content != "description"
+
+    @show_keyframe_loadings.setter
+    def show_keyframe_loadings(self, show: bool) -> None:
+        _warn_show_keyframe_loadings()
+        self.preview_label_content = "auto" if show else "description"
+
     # ── Public methods ───────────────────────────────────────────────────
     def set_data(self, data: object) -> None:
         """Load data from any Arrow-compatible source.
@@ -250,17 +280,17 @@ class Widget(anywidget.AnyWidget):
         self.send({"type": "data"}, buffers=[self._data_buf])
 
     def set_tour(self, tour: TourResult) -> None:
-        """Set tour views from a :class:`~dtour.tours.TourResult`."""
-        if tour.n_views > _MAX_PREVIEW_COUNT:
+        """Set tour keyframes from a :class:`~dtour.tours.TourResult`."""
+        if tour.n_keyframes > _MAX_PREVIEW_COUNT:
             warnings.warn(
-                f"The tour has {tour.n_views} keyframes but the gallery shows at most "
+                f"The tour has {tour.n_keyframes} keyframes but the gallery shows at most "
                 f"{_MAX_PREVIEW_COUNT}. Only the first {_MAX_PREVIEW_COUNT} keyframes "
                 "get a preview.",
                 stacklevel=2,
             )
-        self._views_buf = tour.views_raw
+        self._keyframes_buf = tour.keyframes_raw
 
-        msg: dict = {"type": "views", "n_dims": tour.n_dims}
+        msg: dict = {"type": "keyframes", "n_dims": tour.n_dims}
 
         if tour.description is not None:
             msg["tour_description"] = tour.description
@@ -272,7 +302,7 @@ class Widget(anywidget.AnyWidget):
             loadings = tour.feature_loadings
             n_eigenvectors = loadings.shape[0]
             keyframe_loadings = []
-            for i in range(tour.n_views):
+            for i in range(tour.n_keyframes):
                 ev_idx = min(i + 1, n_eigenvectors - 1)
                 row = loadings[ev_idx]
                 top_k = abs(row).argsort()[::-1][:2]
@@ -299,8 +329,8 @@ class Widget(anywidget.AnyWidget):
             elif self.tour_by == "parameter":
                 self.tour_by = "dimensions"
 
-        self._views_msg = msg
-        self.send(msg, buffers=[self._views_buf])
+        self._keyframes_msg = msg
+        self.send(msg, buffers=[self._keyframes_buf])
 
         # Auto-set tour_dimensions from the tour's feature names
         if tour.feature_names is not None:
@@ -369,9 +399,6 @@ class Widget(anywidget.AnyWidget):
 
         kwargs: dict = {}
 
-        # Map preview_size (small/medium/large) → previewScale (0.5/0.75/1)
-        _size_to_scale = {"small": 0.5, "medium": 0.75, "large": 1}
-
         # Only include non-default values
         if self.tour_by != "dimensions":
             kwargs["tour_by"] = self.tour_by
@@ -385,10 +412,14 @@ class Widget(anywidget.AnyWidget):
             kwargs["tour_direction"] = self.tour_direction
         if self.preview_count != 4:
             kwargs["preview_count"] = self.preview_count
-        if self.preview_size != "large":
-            kwargs["preview_scale"] = _size_to_scale[self.preview_size]
+        if self.preview_size != "auto":
+            kwargs["preview_size"] = self.preview_size
         if self.preview_padding != 12.0:
             kwargs["preview_padding"] = self.preview_padding
+        if self.preview_keyframe_numbers != "auto":
+            kwargs["preview_keyframe_numbers"] = self.preview_keyframe_numbers
+        if self.preview_label_content != "auto":
+            kwargs["preview_label_content"] = self.preview_label_content
         if self.point_size != "auto":
             kwargs["point_size"] = self.point_size
         if self.point_opacity != "auto":
@@ -407,8 +438,6 @@ class Widget(anywidget.AnyWidget):
             kwargs["tour_traversal"] = self.tour_traversal
         if not self.show_legend:
             kwargs["show_legend"] = self.show_legend
-        if not self.show_keyframe_loadings:
-            kwargs["show_keyframe_loadings"] = self.show_keyframe_loadings
         if self.show_tour_description:
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme != "dark":
@@ -447,7 +476,7 @@ class Widget(anywidget.AnyWidget):
         """(Re-)send all cached binary buffers to the JS frontend."""
         if self._data_buf is not None:
             self.send({"type": "data"}, buffers=[self._data_buf])
-        if self._views_buf is not None:
-            self.send(self._views_msg, buffers=[self._views_buf])
+        if self._keyframes_buf is not None:
+            self.send(self._keyframes_msg, buffers=[self._keyframes_buf])
         if self._metrics_buf is not None:
             self.send({"type": "metrics"}, buffers=[self._metrics_buf])

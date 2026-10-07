@@ -26,7 +26,10 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   tour_speed: 'tourSpeed',
   tour_direction: 'tourDirection',
   preview_count: 'previewCount',
+  preview_size: 'previewSize',
   preview_padding: 'previewPadding',
+  preview_keyframe_numbers: 'previewKeyframeNumbers',
+  preview_label_content: 'previewLabelContent',
   point_size: 'pointSize',
   point_opacity: 'pointOpacity',
   point_color: 'pointColor',
@@ -36,26 +39,12 @@ const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
   camera_zoom: 'cameraZoom',
   tour_traversal: 'tourTraversal',
   show_legend: 'showLegend',
-  show_keyframe_loadings: 'showKeyframeLoadings',
   show_tour_description: 'showTourDescription',
   theme: 'themeMode',
   centering: 'centering',
 };
 
-// preview_size uses string enum ("small"/"medium"/"large") in Python
-// but previewScale uses numeric values (0.5/0.75/1) in the spec.
-const SIZE_TO_SCALE: Record<string, 0.5 | 0.75 | 1> = {
-  small: 0.5,
-  medium: 0.75,
-  large: 1,
-};
-const SCALE_TO_SIZE: Record<number, string> = {
-  0.5: 'small',
-  0.75: 'medium',
-  1: 'large',
-};
-
-const TRAIT_NAMES = [...Object.keys(TRAIT_TO_SPEC), 'preview_size'];
+const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,16 +60,16 @@ function toArrayBuffer(buf: DataView | ArrayBuffer | Uint8Array): ArrayBuffer {
   return buf as ArrayBuffer;
 }
 
-function parseViews(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Float32Array[] {
+function parseKeyframes(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Float32Array[] {
   const buf = toArrayBuffer(raw);
   const flat = new Float32Array(buf);
   const stride = nDims * 2;
-  const nViews = Math.floor(flat.length / stride);
-  const views: Float32Array[] = [];
-  for (let i = 0; i < nViews; i++) {
-    views.push(new Float32Array(flat.buffer, i * stride * 4, stride));
+  const nKeyframes = Math.floor(flat.length / stride);
+  const keyframes: Float32Array[] = [];
+  for (let i = 0; i < nKeyframes; i++) {
+    keyframes.push(new Float32Array(flat.buffer, i * stride * 4, stride));
   }
-  return views;
+  return keyframes;
 }
 
 const arraysEqual = (a: readonly unknown[], b: readonly unknown[]): boolean =>
@@ -92,7 +81,6 @@ function readSpecFromModel(model: any): DtourSpec {
   for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
     spec[specKey] = model.get(trait);
   }
-  spec.previewScale = SIZE_TO_SCALE[model.get('preview_size') as string] ?? 1;
   return spec as DtourSpec;
 }
 
@@ -103,7 +91,7 @@ function readSpecFromModel(model: any): DtourSpec {
 function Widget() {
   const model = useModel();
   const [data, setData] = useState<ArrayBuffer | undefined>();
-  const [views, setViews] = useState<Float32Array[] | undefined>();
+  const [keyframes, setKeyframes] = useState<Float32Array[] | undefined>();
   const [metrics, setMetrics] = useState<ArrayBuffer | undefined>();
   const [tourMeta, setTourMeta] = useState<TourMeta>({});
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
@@ -152,15 +140,15 @@ function Widget() {
     }
   }, []);
 
-  // Custom messages → data / views / metrics (binary buffers from Python)
+  // Custom messages → data / keyframes / metrics (binary buffers from Python)
   useEffect(() => {
     // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
     function onMsg(msg: Record<string, any>, buffers: any[]) {
       console.log('[dtour] onMsg', msg.type, 'buffers:', buffers.length);
       if (msg.type === 'data' && buffers[0]) {
         setData(toArrayBuffer(buffers[0]));
-      } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
-        setViews(parseViews(buffers[0], msg.n_dims));
+      } else if (msg.type === 'keyframes' && buffers[0] && msg.n_dims) {
+        setKeyframes(parseKeyframes(buffers[0], msg.n_dims));
         setTourMeta({
           tourDescription: msg.tour_description ?? null,
           keyframeDescriptions: msg.keyframe_descriptions ?? null,
@@ -213,7 +201,6 @@ function Widget() {
           model.set(trait, value);
         }
       }
-      model.set('preview_size', SCALE_TO_SIZE[newSpec.previewScale] ?? 'large');
       model.save_changes();
       queueMicrotask(() => {
         suppressRef.current = false;
@@ -339,7 +326,7 @@ function Widget() {
     >
       <Dtour
         data={data}
-        views={views}
+        keyframes={keyframes}
         metrics={metrics}
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}

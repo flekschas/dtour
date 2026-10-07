@@ -43,8 +43,10 @@ dtour.Widget(
     # display
     height=720,           # canvas height in pixels
     preview_count=4,      # keyframe previews: 2–16
-    preview_size="large", # "small" | "medium" | "large"
+    preview_size="auto",  # "auto" | "small" | "medium" | "large"
     preview_padding=12.0, # gap between previews
+    preview_keyframe_numbers="auto",  # "auto" | "visible" | "hidden"
+    preview_label_content="auto",     # "auto" | "description" | "loadings"
     # point style
     point_size="auto",    # point radius or "auto"
     point_opacity="auto", # point alpha or "auto"
@@ -66,7 +68,6 @@ dtour.Widget(
     # mode & appearance
     tour_traversal="guided",   # "guided" | "manual" | "grand"
     show_legend=True,     # show/hide color legend
-    show_keyframe_loadings=True,  # show/hide feature loadings
     theme="dark",         # "light" | "dark" | "system"
 )
 ```
@@ -79,7 +80,7 @@ can be read, set, and observed live from the notebook.
 ```py
 w = dtour.Widget(data=X, tour=tour)
 w.set_data(df)                    # load new data
-w.set_tour(tour)                  # set tour views
+w.set_tour(tour)                  # set tour keyframes
 w.set_metrics(metrics)            # display radial quality charts
 w.select([0, 1, 2])              # select points by index
 w.clear_selection()               # clear selection
@@ -104,16 +105,16 @@ tour = dtour.umap_little_tour(
 )
 ```
 
-Both return a `TourResult` with `.views` (list of p×2 float32 arrays), `.n_views`, `.n_dims`, `.explained_variance_ratio`, and `.save(path)` / `TourResult.load(path)` for persistence.
+Both return a `TourResult` with `.keyframes` (list of p×2 float32 arrays), `.n_keyframes`, `.n_dims`, `.explained_variance_ratio`, and `.save(path)` / `TourResult.load(path)` for persistence.
 
 ## Quality metrics
 
-Compute per-view quality scores and display them as radial bar charts on the circular slider:
+Compute per-keyframe quality scores and display them as radial bar charts on the circular slider:
 
 ```py
 metrics = dtour.compute_metrics(
     X,                    # (n_samples, n_features) float32
-    views=tour.views,     # from TourResult
+    keyframes=tour.keyframes,  # from TourResult
     labels=None,          # cluster/class labels for supervised metrics
     metrics=None,         # list of metric names; defaults to ["silhouette", "trustworthiness"]
     k=7,                  # neighbors for neighborhood-based metrics

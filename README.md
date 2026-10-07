@@ -98,7 +98,7 @@ import "@dtour/viewer/dist/viewer.css";
 <Dtour data={arrowBuffer} />
 ```
 
-That renders the full viewer for an Arrow IPC or Parquet `ArrayBuffer`, auto-generating a tour. For something more interesting, pass precomputed views, color points by a column, and react to selections:
+That renders the full viewer for an Arrow IPC or Parquet `ArrayBuffer`, auto-generating a tour. For something more interesting, pass precomputed keyframes, color points by a column, and react to selections:
 
 ```tsx
 import { Dtour } from "@dtour/viewer";
@@ -106,7 +106,7 @@ import "@dtour/viewer/dist/viewer.css";
 
 <Dtour
   data={arrowBuffer}
-  views={views}  // Float32Array[] of p×2 column-major bases
+  keyframes={keyframes}  // Float32Array[] of p×2 column-major bases
   colorMap={{ setosa: "#0072b2", versicolor: "#009e73", virginica: "#e69f00" }}
   spec={{ pointColorBy: "species", tourPlaying: true }}
   onPointSelectionChange={(mask) => console.log(mask)}
