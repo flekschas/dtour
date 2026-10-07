@@ -20,7 +20,6 @@ def from_numpy(X: np.ndarray, column_names: list[str] | None = None) -> bytes:
         column_names: Optional list of column names. Defaults to "dim_0", "dim_1", ...
     """
     import arro3.core as ac
-    import arro3.io
 
     if X.ndim != 2:
         raise ValueError(f"X must be 2-D, got shape {X.shape}")
@@ -34,22 +33,42 @@ def from_numpy(X: np.ndarray, column_names: list[str] | None = None) -> bytes:
         name: ac.Array.from_numpy(np.ascontiguousarray(X[:, i], dtype=np.float32))
         for i, name in enumerate(names)
     }
-    table = ac.Table.from_pydict(arrays)
-
-    buf = BytesIO()
-    arro3.io.write_ipc_stream(table, buf, compression=None)
-    return buf.getvalue()
+    return _write_ipc(ac.Table.from_pydict(arrays))
 
 
 def from_pandas(df: pd.DataFrame, columns: list[str] | None = None) -> bytes:
     """Convert a pandas DataFrame to Arrow IPC bytes.
 
-    Only float-compatible columns are included. Pass ``columns`` to select a subset.
-    Converts via numpy to avoid requiring pyarrow.
+    Numeric columns (``select_dtypes(include="number")``, which includes timedeltas)
+    become float32 columns, matching the dimensions the tour functions use. All other
+    columns become string columns, which the widget treats as categories (e.g., for
+    ``point_color_by``). By default, only numeric, categorical, string, object, and
+    boolean columns are included; ``columns`` selects the columns to include instead.
+    Converts via numpy and Python lists to avoid requiring pyarrow.
     """
-    cols = columns or df.select_dtypes(include="number").columns.tolist()
-    subset = df[cols]
-    return from_numpy(subset.to_numpy(dtype=np.float32), column_names=list(cols))
+    import arro3.core as ac
+
+    numeric = set(df.select_dtypes(include="number").columns)
+    if columns is None:
+        include = ["number", "category", "object", "string", "bool"]
+        columns = df.select_dtypes(include=include).columns.tolist()
+
+    names = [str(name) for name in columns]
+    if len(set(names)) != len(names):
+        raise ValueError(f"Column names must be unique as strings; got {names}")
+
+    arrays = {}
+    for name, key in zip(columns, names):
+        col = df[name]
+        if name in numeric:
+            values = col.to_numpy(dtype=np.float32, na_value=np.nan)
+            arrays[key] = ac.Array.from_numpy(np.ascontiguousarray(values))
+        else:
+            labels = col.astype(str).tolist()
+            for i in np.flatnonzero(col.isna().to_numpy()):
+                labels[i] = None
+            arrays[key] = ac.Array(labels, type=ac.DataType.string())
+    return _write_ipc(ac.Table.from_pydict(arrays))
 
 
 def from_arrow(table: object) -> bytes:
@@ -71,7 +90,6 @@ def _to_ipc_bytes(data: object) -> bytes:
     - Anything with ``__arrow_c_stream__`` — serialized via arro3
     """
     import arro3.core as ac
-    import arro3.io
 
     if isinstance(data, bytes):
         return data
@@ -89,13 +107,18 @@ def _to_ipc_bytes(data: object) -> bytes:
         return from_pandas(data)
 
     if hasattr(data, "__arrow_c_stream__"):
-        table = ac.Table.from_arrow(data)
-        buf = BytesIO()
-        arro3.io.write_ipc_stream(table, buf, compression=None)
-        return buf.getvalue()
+        return _write_ipc(ac.Table.from_arrow(data))
 
     raise TypeError(
         f"Cannot convert {type(data).__name__} to Arrow IPC bytes. "
         "Pass bytes, a file path, a numpy ndarray, or an object with "
         "__arrow_c_stream__ (pandas DataFrame, polars DataFrame, pyarrow Table, etc.)."
     )
+
+
+def _write_ipc(table: object) -> bytes:
+    import arro3.io
+
+    buf = BytesIO()
+    arro3.io.write_ipc_stream(table, buf, compression=None)
+    return buf.getvalue()

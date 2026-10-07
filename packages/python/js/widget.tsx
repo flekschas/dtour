@@ -4,8 +4,9 @@ import { Dtour } from '@dtour/viewer';
 import viewerCss from '@dtour/viewer/dist/viewer.css?inline';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+type TourFamily = 'hyperdimensional' | 'sequential';
+
 type TourMeta = {
-  tourFamily?: 'hyperdimensional' | 'sequential';
   tourDescription?: string | null;
   keyframeDescriptions?: string | string[] | null;
   keyframeLoadings?: KeyframeLoading[] | null;
@@ -161,7 +162,6 @@ function Widget() {
       } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
         setViews(parseViews(buffers[0], msg.n_dims));
         setTourMeta({
-          tourFamily: msg.tour_family ?? 'hyperdimensional',
           tourDescription: msg.tour_description ?? null,
           keyframeDescriptions: msg.keyframe_descriptions ?? null,
           keyframeLoadings: msg.keyframe_loadings ?? null,
@@ -295,6 +295,9 @@ function Widget() {
   const [metricTracks, setMetricTracks] = useState<RadialTrackConfig[]>(
     () => model.get('metric_tracks') ?? [],
   );
+  const [tourFamily, setTourFamily] = useState<TourFamily | undefined>(
+    () => model.get('_tour_family') ?? undefined,
+  );
   const [colorMap, setColorMap] = useState<
     Record<string, string | { light: string; dark: string }> | undefined
   >(() => {
@@ -309,16 +312,21 @@ function Widget() {
     function onTracks() {
       setMetricTracks(model.get('metric_tracks') ?? []);
     }
+    function onTourFamily() {
+      setTourFamily(model.get('_tour_family') ?? undefined);
+    }
     function onColorMap() {
       const raw = model.get('color_map');
       setColorMap(raw && Object.keys(raw).length > 0 ? raw : undefined);
     }
     model.on('change:metric_bar_width', onBarWidth);
     model.on('change:metric_tracks', onTracks);
+    model.on('change:_tour_family', onTourFamily);
     model.on('change:color_map', onColorMap);
     return () => {
       model.off('change:metric_bar_width', onBarWidth);
       model.off('change:metric_tracks', onTracks);
+      model.off('change:_tour_family', onTourFamily);
       model.off('change:color_map', onColorMap);
     };
   }, [model]);
@@ -336,7 +344,7 @@ function Widget() {
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}
         colorMap={colorMap}
-        tourFamily={tourMeta.tourFamily}
+        tourFamily={tourFamily}
         tourDescription={tourMeta.tourDescription}
         keyframeDescriptions={tourMeta.keyframeDescriptions}
         keyframeLoadings={tourMeta.keyframeLoadings}

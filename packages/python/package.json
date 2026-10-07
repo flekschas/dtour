@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "@dtour/python-build",
+  "name": "@dtour/python-widget",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",

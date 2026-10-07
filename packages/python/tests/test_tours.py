@@ -259,6 +259,89 @@ def test_from_pandas():
     assert len(ipc) > 0
 
 
+def _read_ipc(ipc: bytes):
+    from io import BytesIO
+
+    import arro3.io
+
+    return arro3.io.read_ipc_stream(BytesIO(ipc)).read_all()
+
+
+def _label_frame():
+    pd = pytest.importorskip("pandas")
+
+    return pd.DataFrame(
+        {
+            "x": [0.0, 1.0, 2.0],
+            "cell_type": pd.Categorical(["b", "a", None]),
+            "y": pd.array([1, None, 3], dtype="Int64"),
+            "batch": ["s1", None, "s2"],
+            "flag": [True, False, True],
+            "time": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+        }
+    )
+
+
+def test_from_pandas_keeps_label_columns():
+    import arro3.core as ac
+
+    table = _read_ipc(from_pandas(_label_frame()))
+
+    assert table.column_names == ["x", "cell_type", "y", "batch", "flag"]
+    assert table["x"].type == table["y"].type == ac.DataType.float32()
+    assert table["y"].to_pylist()[::2] == [1.0, 3.0]
+    assert np.isnan(table["y"].to_pylist()[1])
+    assert table["cell_type"].to_pylist() == ["b", "a", None]
+    assert table["batch"].to_pylist() == ["s1", None, "s2"]
+    assert table["flag"].to_pylist() == ["True", "False", "True"]
+
+
+def test_from_pandas_explicit_columns():
+    table = _read_ipc(from_pandas(_label_frame(), columns=["cell_type", "x"]))
+
+    assert table.column_names == ["cell_type", "x"]
+
+
+def test_to_ipc_bytes_pandas_keeps_label_columns():
+    table = _read_ipc(_to_ipc_bytes(_label_frame()))
+
+    assert table.column_names == ["x", "cell_type", "y", "batch", "flag"]
+
+
+def test_from_pandas_float32_row_slices():
+    pd = pytest.importorskip("pandas")
+
+    df = pd.DataFrame({"x": np.arange(6, dtype=np.float32), "y": np.ones(6, dtype=np.float32)})
+
+    assert _read_ipc(from_pandas(df.iloc[::2]))["x"].to_pylist() == [0.0, 2.0, 4.0]
+    assert _read_ipc(from_pandas(df.iloc[::-1]))["x"].to_pylist() == [5, 4, 3, 2, 1, 0]
+
+
+def test_from_pandas_numeric_columns_match_tour_dimensions():
+    pd = pytest.importorskip("pandas")
+    import arro3.core as ac
+
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(rng.standard_normal((20, 2)), columns=["x", "y"])
+    df["duration"] = pd.to_timedelta(np.arange(20), unit="D")
+    df["label"] = "a"
+
+    table = _read_ipc(from_pandas(df))
+    numeric = [c for c in table.column_names if table[c].type == ac.DataType.float32()]
+
+    assert numeric == ["x", "y", "duration"]
+    assert little_tour(df).n_dims == len(numeric)
+
+
+def test_from_pandas_rejects_colliding_column_names():
+    pd = pytest.importorskip("pandas")
+
+    df = pd.DataFrame({1: [1.0, 2.0], "1": ["a", "b"]})
+
+    with pytest.raises(ValueError, match="unique"):
+        from_pandas(df)
+
+
 def test_to_ipc_bytes_passthrough():
     raw = b"some bytes"
     assert _to_ipc_bytes(raw) is raw

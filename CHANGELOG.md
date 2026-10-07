@@ -1,5 +1,22 @@
 # Changelog
 
+## Next
+
+### python
+
+- fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
+- fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
+- feat: add a read-only `Widget.tour_family` property
+- fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
+- chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
+- chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
+- chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
+- chore: update `uv.lock` to match `pyproject.toml`
+
+### scatter
+
+- fix: treat string columns whose first value is null as categorical
+
 ## v0.4.4
 
 ### python
