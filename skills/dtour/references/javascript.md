@@ -27,7 +27,7 @@ need it again. Parquet files with dtour metadata (written by the Python
 automatically.
 
 Numeric columns become dimensions; string columns become categories that you can color
-by. Without `views` or an embedded tour, the viewer generates a tour from the numeric
+by. Without `keyframes` or an embedded tour, the viewer generates a tour from the numeric
 columns: dimension pairs by default, or PCA with `spec.tourBy = "pca"`.
 
 ## Props
@@ -35,7 +35,7 @@ columns: dimension pairs by default, or PCA with `spec.tourBy = "pca"`.
 ```tsx
 <Dtour
   data={buffer}
-  views={views}                  // Float32Array[], one p×2 basis per keyframe (see below)
+  keyframes={keyframes}          // Float32Array[], one p×2 basis per keyframe (see below)
   tourFamily="hyperdimensional"  // or "sequential" for stacked 2D embeddings
   tourDescription={null}         // text for the description bar
   keyframeDescriptions={[...]}   // string[] or a template using {primary} {secondary} {relation}
@@ -58,12 +58,12 @@ columns: dimension pairs by default, or PCA with `spec.tourBy = "pca"`.
 />
 ```
 
-### View matrices
+### Keyframe matrices
 
-Each view is a `Float32Array` of length `2p`, laid out column-major as
-`[x_0 … x_{p-1}, y_0 … y_{p-1}]`, with orthonormal x and y columns. The views project the
+Each keyframe is a `Float32Array` of length `2p`, laid out column-major as
+`[x_0 … x_{p-1}, y_0 … y_{p-1}]`, with orthonormal x and y columns. The keyframes project the
 **first p numeric columns** of `data`, in order. For a sequential tour, pass
-`tourFamily="sequential"`, with columns `[f0_x, f0_y, f1_x, f1_y, …]` and view `k`
+`tourFamily="sequential"`, with columns `[f0_x, f0_y, f1_x, f1_y, …]` and keyframe `k`
 selecting the pair for frame `k`.
 
 ### Lasso selection mask
@@ -94,9 +94,12 @@ the Zod schema.
   tourDirection: "forward" | "backward",
   tourSliderSpacing: "equal" | "geodesic",   // geodesic: segment width encodes projection distance
   tourSliderVisibility: "visible" | "subtle" | "hidden",
-  previewCount: 2..16,           // 4
-  previewScale: 1 | 0.75 | 0.5 | "auto",
+  previewCount: 2..32,           // 4, keyframes of an auto-generated tour
+  previewSize: "auto" | "small" | "medium" | "large",
   previewPadding: number,
+  previewKeyframeNumbers: "auto" | "visible" | "hidden",     // auto: when some keyframes have no preview
+  previewLabelContent: "auto" | "description" | "loadings",  // auto: loadings when available
+  previewLabelVisibility: "auto" | "visible" | "interactive" | "hidden", // auto: visible up to 16 previews, on hover above
   pointSize: number | "auto",
   pointOpacity: number | "auto",
   minPointSize: number,          // 1–20
@@ -105,7 +108,7 @@ the Zod schema.
   pointColorMap: Record<string, string>,
   cameraPanX: number, cameraPanY: number, cameraZoom: number,
   centering: "midrange" | "mean",
-  showLegend, showAxes, showKeyframeNumbers, showKeyframeLoadings: boolean,
+  showLegend, showAxes: boolean,
   showTourDescription: boolean | null,
   themeMode: "light" | "dark" | "system",
 }

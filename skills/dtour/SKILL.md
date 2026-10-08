@@ -54,6 +54,10 @@ or PCA with `tour_by="pca"` / `tourBy: "pca"`. Start there for a quick first loo
 | How do models, methods, or hyperparameters differ? | `sequential_tour([X1, X2, ...])` | Each keyframe is its own embedding (UMAP, t-SNE, PyMDE, or precomputed layouts), aligned to the previous one. Keyframes stay faithful, so differences show up |
 | How does a gradual series evolve (e.g. time points)? | `aligned_umap_tour([X1, X2, ...])` | UMAP only. Optimizes all frames jointly and penalizes moving points, giving smoother motion. Strong alignment can hide real change |
 
+Tours can have any number of keyframes. The gallery previews up to 32 of them, evenly
+spaced along the tour (fewer when space is short), and the slider keeps a tick for every
+keyframe.
+
 The first four are **hyperdimensional** tours: every frame, including the in-between
 ones, is a real projection of one high-dimensional space. The last three are
 **sequential** tours: only the keyframes are real embeddings, and the in-between frames
@@ -113,8 +117,9 @@ dtour.Widget(data=emb.with_columns(df["sex"]), tour=tour, point_color_by="sex")
 
 ## Viewer settings
 
-The same settings exist on every surface: Python widget traitlets (snake_case), the
-React `spec` prop and Parquet metadata (camelCase). The most useful ones:
+The same settings exist on every surface: Python widget traitlets and Parquet export
+arguments (snake_case), and the React `spec` prop and Parquet metadata (camelCase). Every
+setting has a traitlet. The most useful ones:
 
 | Python | React / Parquet | Values |
 |---|---|---|
@@ -122,9 +127,13 @@ React `spec` prop and Parquet metadata (camelCase). The most useful ones:
 | `tour_position`, `tour_playing`, `tour_speed` | `tourPosition`, `tourPlaying`, `tourSpeed` | 0–1, bool, 0.1–5 |
 | `point_color_by`, `color_map` | `pointColorBy`, `pointColorMap` | column name, label → color |
 | `point_size`, `point_opacity` | `pointSize`, `pointOpacity` | number or `"auto"` |
-| `preview_count`, `preview_size` | `previewCount`, `previewScale` | 2–16; small/medium/large ↔ 0.5/0.75/1 |
+| `preview_count` | `previewCount` | 2–32, keyframes of an auto-generated tour |
+| `preview_size` | `previewSize` | `"auto"` \| `"small"` \| `"medium"` \| `"large"` |
+| `preview_label_content` | `previewLabelContent` | `"auto"` \| `"description"` \| `"loadings"` |
+| `preview_label_visibility` | `previewLabelVisibility` | `"auto"` \| `"visible"` \| `"interactive"` (on hover) \| `"hidden"` |
+| `show_axes` | `showAxes` | axis biplot in guided mode |
 | `camera_zoom`, `camera_pan_x/y` | `cameraZoom`, `cameraPanX/Y` | numbers |
-| `theme` | `themeMode` | `"light"` \| `"dark"` \| `"system"` |
+| `theme_mode` | `themeMode` | `"light"` \| `"dark"` \| `"system"` |
 
 dtour.dev has no way to set these through the link yet. To share a configured view,
 embed the settings in the file (see Sharing a result).
@@ -161,7 +170,7 @@ Load these only when needed:
   signatures, coloring, quality metrics, linking widgets (with a jupyter-scatter
   example), Parquet export
 - [references/javascript.md](references/javascript.md): the `<Dtour>` React component,
-  `DtourSpec`, the imperative handle, view matrix layout
+  `DtourSpec`, the imperative handle, keyframe matrix layout
 - [references/paper.md](references/paper.md): the dtour paper. Covers the background
   (tour theory, the design of the steerability spectrum, interpolation math, the tour
   strategies) and the usage scenarios on Fashion-MNIST, single-cell, and arXiv data.

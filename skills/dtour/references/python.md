@@ -28,11 +28,15 @@ w = dtour.Widget(
                               # Arrow IPC bytes, or a path to an Arrow/Parquet file
     tour=...,                 # TourResult; omit for an auto-generated tour
     height=720,
-    preview_count=4,          # 2–16 keyframe previews (predefined tours use their own count)
-    preview_size="large",     # "small" | "medium" | "large"
+    preview_count=4,          # 2–32, keyframes of an auto-generated tour
+    preview_size="auto",      # "auto" | "small" | "medium" | "large"
     preview_padding=12.0,
+    preview_label_content="auto",     # "auto" | "description" | "loadings"
+    preview_label_visibility="auto",  # "auto" | "visible" | "interactive" (on hover) | "hidden"
+    preview_keyframe_numbers="auto",  # "auto" | "visible" | "hidden"
     point_size="auto",        # float or "auto"
     point_opacity="auto",     # 0–1 or "auto"
+    min_point_size=2.0,       # 1–20
     point_color=[0.25, 0.5, 0.9],
     point_color_by=None,      # column name: string → categorical, numeric → continuous
     color_map={},             # label → color, see build_color_map()
@@ -42,18 +46,20 @@ w = dtour.Widget(
     tour_playing=False,
     tour_speed=1.0,
     tour_direction="forward",
+    tour_slider_spacing="equal",       # "equal" | "geodesic" (segment width encodes projection distance)
+    tour_slider_visibility="visible",  # "visible" | "subtle" | "hidden"
     camera_pan_x=0.0, camera_pan_y=0.0, camera_zoom=1/1.5,
     centering="midrange",     # "midrange" | "mean"
     show_legend=True,
-    show_keyframe_loadings=True,
+    show_axes=False,          # axis biplot in guided mode
     show_tour_description=False,
-    theme="dark",             # "light" | "dark" | "system"
+    theme_mode="dark",        # "light" | "dark" | "system"
     metric_tracks=[],         # radial metric chart config, see Quality metrics
     metric_bar_width="full",  # "full" or int
 )
 ```
 
-Every setting is a synced [traitlet](https://traitlets.readthedocs.io/en/stable/): read
+Every viewer setting is a synced [traitlet](https://traitlets.readthedocs.io/en/stable/): read
 it, set it (`w.tour_playing = True`), or `observe` it from the notebook. Changes made in
 the UI reach Python debounced (~250 ms).
 
@@ -86,6 +92,9 @@ Selection state is synced in both directions: `w.selected_indices` and
 - With a tour of `p = tour.n_dims` dimensions, the widget projects the **first p numeric
   columns, in order**. Put the tour columns first. Extra numeric columns after them
   (e.g. raw marker values) are allowed.
+- A tour can have any number of keyframes. The gallery previews up to 32 of them, evenly
+  spaced along the tour, and fewer when space is short. `preview_count` only applies
+  to auto-generated tours.
 - `tour_by="pca"` overrides a passed tour. Leave `tour_by` alone when passing one. For
   sequential tours, `set_tour` switches it to `"parameter"` automatically.
 
@@ -95,15 +104,16 @@ Every tour function returns a `TourResult`:
 
 | Field | Meaning |
 |---|---|
-| `views` | list of `(p, 2)` float32 orthonormal bases, one per keyframe |
-| `n_views`, `n_dims` | number of keyframes, p |
+| `keyframes` | list of `(p, 2)` float32 orthonormal bases, one per keyframe |
+| `n_keyframes`, `n_dims` | number of keyframes, p |
 | `embedding` | `(n, p)` matrix the bases project, or `None` when they project the input columns (`little_tour`) |
 | `feature_names`, `feature_loadings`, `feature_r2` | correlations between tour dims and original features (`le_tour`). Drive the loading labels under the previews |
 | `explained_variance_ratio` | PCA tours |
 | `tour_family` | `"hyperdimensional"` or `"sequential"` |
 | `description`, `keyframe_descriptions` | text shown in the description bar and per keyframe |
 
-Persist with `tour.save("t.npz")` / `dtour.TourResult.load("t.npz")`, or read a tour
+Build one from your own bases with `dtour.TourResult(keyframes, n_dims=p)` (the other
+fields are keyword-only). Persist with `tour.save("t.npz")` / `dtour.TourResult.load("t.npz")`, or read a tour
 embedded in Parquet with `dtour.TourResult.from_parquet(path_or_table)`.
 
 All tour functions accept numpy arrays, pandas/polars DataFrames, or pyarrow Tables
@@ -207,8 +217,8 @@ w = dtour.Widget(data=emb.with_columns(df["cell_type"]), tour=tour, point_color_
 
 ```py
 m = dtour.compute_metrics(
-    X,                 # the matrix the views project: tour.embedding, or the input columns for little_tour
-    tour.views,
+    X,                 # the matrix the keyframes project: tour.embedding, or the input columns for little_tour
+    tour.keyframes,
     labels=None,       # needed for silhouette, calinski_harabasz, neighborhood_hit, confusion
     metrics=None,      # default ["silhouette", "trustworthiness"]
     k=7, subsample=None, exclude_labels=None,
@@ -286,7 +296,7 @@ cmap = dtour.build_color_map(sorted(df["cell_type"].unique()), theme="dark")
 tour = dtour.little_tour(df[pc_cols])
 w = dtour.Widget(
     data=df[pc_cols + ["cell_type"]], tour=tour,
-    point_color_by="cell_type", color_map=cmap, preview_count=8, preview_size="small",
+    point_color_by="cell_type", color_map=cmap,
 )
 
 umap_df = pd.DataFrame({"x": umap_2d[:, 0], "y": umap_2d[:, 1], "cell_type": df["cell_type"]})
@@ -366,5 +376,4 @@ Run one with `uvx marimo edit --sandbox <file>.py`.
   `TourResult.from_parquet(table)` plus `Widget(data=table, tour=tour)`.
 
 Patterns the notebooks share: standardize the features, cache tours with
-`save`/`load`, use `preview_size="small"` with `preview_count=8` for longer tours, and
-use `point_opacity=0.5` for dense data.
+`save`/`load`, and use `point_opacity=0.5` for dense data.

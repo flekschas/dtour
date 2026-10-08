@@ -14,6 +14,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - **Python widget**: `show_keyframe_loadings` → `preview_label_content`, `theme` → `theme_mode` (matching the spec's `themeMode`); `preview_size` now also accepts `"auto"`, which is the new default
 - **Python `build_dtour_metadata` / `add_spec_to_parquet`**: `preview_scale` → `preview_size`, `show_keyframe_numbers` → `preview_keyframe_numbers`, `show_keyframe_loadings` → `preview_label_content`
 - **Python `compute_metrics`**: `views` → `keyframes`
+- **Python `build_dtour_metadata`**: tours with an `embedding` (all but `little_tour`) need `tour_dimensions`, the names of the embedding columns. It used to record the input features instead
 - **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`, except in the `TourResult` constructor. Saved tours (`.npz` and Parquet) keep their format.
 
 ### python
@@ -26,12 +27,12 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
 - fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
+- fix: Parquet exports of embedding tours (`le_tour`, `umap_little_tour`, sequential tours) record the embedding columns as the tour dimensions instead of the input features, which broke files with extra numeric columns. `add_spec_to_parquet()` and `Widget.save_spec_to_parquet()` infer them from the table; `build_dtour_metadata()` requires `tour_dimensions` for these tours
+- docs: document all tour generators in the README
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
 - chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
 - chore: update `uv.lock` to match `pyproject.toml`
-- fix: Parquet exports of embedding tours (`le_tour`, `umap_little_tour`, sequential tours) record the embedding columns as the tour dimensions instead of the input features, which broke files with extra numeric columns. `add_spec_to_parquet()` and `Widget.save_spec_to_parquet()` infer them from the table; `build_dtour_metadata()` requires `tour_dimensions` for these tours
-- docs: document all tour generators in the README
 
 ### scatter
 
