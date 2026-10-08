@@ -14,15 +14,16 @@ import {
   arcLengthsAtom,
   currentKeyframeAtom,
   hoveredKeyframeAtom,
+  keyframeCountAtom,
   keyframeDescriptionsAtom,
   keyframeLoadingsAtom,
   previewCentersAtom,
+  previewKeyframesAtom,
   resolvedPreviewCountAtom,
   resolvedPreviewKeyframeNumbersAtom,
   resolvedPreviewLabelContentAtom,
   resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
-  selectedKeyframeAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -76,12 +77,13 @@ export const Gallery = ({
   onResumeGuided,
 }: GalleryProps) => {
   const previewCount = useAtomValue(resolvedPreviewCountAtom);
+  const previewKeyframes = useAtomValue(previewKeyframesAtom);
+  const keyframeCount = useAtomValue(keyframeCountAtom);
   const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
-  const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
-  const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
+  const [hoveredKeyframe, setHoveredKeyframe] = useAtom(hoveredKeyframeAtom);
   const showKeyframeNumbers = useAtomValue(resolvedPreviewKeyframeNumbersAtom) === 'visible';
   const labelContent = useAtomValue(resolvedPreviewLabelContentAtom);
   const labelVisibility = useAtomValue(resolvedPreviewLabelVisibilityAtom);
@@ -127,55 +129,58 @@ export const Gallery = ({
     const galleryRect = galleryEl.getBoundingClientRect();
     const centers: { x: number; y: number; size: number }[] = [];
     for (let i = 0; i < previewCount; i++) {
+      const keyframe = previewKeyframes[i]!;
       const wrapper = wrapperRefs.current[i];
       if (!wrapper) {
-        centers.push({ x: 0, y: 0, size: sizes[i] ?? 0 });
+        centers[keyframe] = { x: 0, y: 0, size: sizes[i] ?? 0 };
         continue;
       }
       const r = wrapper.getBoundingClientRect();
       const cx = r.left - galleryRect.left + r.width / 2;
       const cy = r.top - galleryRect.top + r.height / 2;
-      centers.push({
+      centers[keyframe] = {
         x: cx + 16 - containerWidth / 2,
         y: cy + verticalInset - containerHeight / 2,
         size: sizes[i] ?? r.width,
-      });
+      };
     }
     setPreviewCenters(centers);
   }, [
     containerWidth,
     containerHeight,
     previewCount,
+    previewKeyframes,
     canvasCount,
     sizes,
     verticalInset,
     setPreviewCenters,
   ]);
 
-  const getBorderColor = (i: number): string | undefined => {
-    const isActive = i === selectedKeyframe || i === currentKeyframe;
-    if (isActive || i === hoveredIndex) return 'var(--color-dtour-highlight)';
+  const getBorderColor = (keyframe: number): string | undefined => {
+    if (keyframe === currentKeyframe || keyframe === hoveredKeyframe) {
+      return 'var(--color-dtour-highlight)';
+    }
     return undefined;
   };
 
-  const getBoxShadow = (i: number): string => {
-    if (i === selectedKeyframe)
+  const getBoxShadow = (keyframe: number): string => {
+    if (keyframe === currentKeyframe)
       return '0 0 8px color-mix(in srgb, var(--color-dtour-highlight) 30%, transparent)';
-    if (i === currentKeyframe)
-      return '0 0 8px color-mix(in srgb, var(--color-dtour-highlight) 30%, transparent)';
-    if (i === hoveredIndex) return '0 0 6px rgba(255, 255, 255, 0.15)';
+    if (keyframe === hoveredKeyframe) return '0 0 6px rgba(255, 255, 255, 0.15)';
     return 'none';
   };
 
   const handleClick = useCallback(
-    (i: number) => {
+    (keyframe: number) => {
       onResumeGuided(300);
-      setSelectedKeyframe(i);
       setPlaying(false);
-      const target = arcLengths && i < arcLengths.length ? arcLengths[i]! : i / previewCount;
+      const target =
+        arcLengths && keyframe < arcLengths.length
+          ? arcLengths[keyframe]!
+          : keyframe / keyframeCount;
       animateTo(target);
     },
-    [previewCount, arcLengths, setSelectedKeyframe, setPlaying, onResumeGuided, animateTo],
+    [keyframeCount, arcLengths, setPlaying, onResumeGuided, animateTo],
   );
 
   const layout = useMemo(() => computeLayout(previewCount), [previewCount]);
@@ -188,6 +193,7 @@ export const Gallery = ({
     >
       {previewCanvases.map((_, i) => {
         const visible = i < previewCount;
+        const keyframe = previewKeyframes[i] ?? i;
 
         const pos = layout.positions[i];
         const col = pos?.col ?? 0;
@@ -200,14 +206,14 @@ export const Gallery = ({
 
         // For bottom-edge previews, put the label above (flex-col-reverse)
         const isBottomEdge = row === layout.rows - 1;
-        const isHighlighted = i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex;
+        const isHighlighted = keyframe === currentKeyframe || keyframe === hoveredKeyframe;
         const loading: KeyframeLoading | null =
-          loadingsVisible && keyframeLoadings && i < keyframeLoadings.length
-            ? keyframeLoadings[i]!
+          loadingsVisible && keyframeLoadings && keyframe < keyframeLoadings.length
+            ? keyframeLoadings[keyframe]!
             : null;
         const keyframeDescription =
           !loading && descriptionsVisible && Array.isArray(keyframeDescriptions)
-            ? (keyframeDescriptions[i] ?? null)
+            ? (keyframeDescriptions[keyframe] ?? null)
             : null;
         const hasLabelBelow = !labelsInside && (loading !== null || keyframeDescription !== null);
 
@@ -226,7 +232,7 @@ export const Gallery = ({
         const labelStyle = {
           width: labelsInside ? undefined : sizes[i],
           height: LOADING_BAR_HEIGHT,
-          borderColor: labelsInside ? undefined : getBorderColor(i),
+          borderColor: labelsInside ? undefined : getBorderColor(keyframe),
           backgroundColor: isHighlighted
             ? 'var(--color-dtour-highlight)'
             : 'var(--color-dtour-border)',
@@ -239,7 +245,7 @@ export const Gallery = ({
           const n0 = loading.primary[0];
           const n1 = loading.secondary[0];
           const same = sameSign(loading);
-          const tooltipText = resolveDescription(keyframeDescriptions, loading, i);
+          const tooltipText = resolveDescription(keyframeDescriptions, loading, keyframe);
           label = (
             <TooltipProvider>
               <Tooltip>
@@ -325,14 +331,14 @@ export const Gallery = ({
                 isBottomEdge ? 'flex-col-reverse' : 'flex-col',
                 visible ? '' : 'hidden',
               )}
-              onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
-              onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
+              onMouseEnter={visible ? () => setHoveredKeyframe(keyframe) : undefined}
+              onMouseLeave={visible ? () => setHoveredKeyframe(null) : undefined}
             >
               <div
                 ref={(el) => {
                   wrapperRefs.current[i] = el;
                 }}
-                onClick={visible ? () => handleClick(i) : undefined}
+                onClick={visible ? () => handleClick(keyframe) : undefined}
                 onKeyDown={undefined}
                 className={cn(
                   'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
@@ -342,8 +348,8 @@ export const Gallery = ({
                 style={{
                   width: visible ? sizes[i] : 0,
                   height: visible ? sizes[i] : 0,
-                  borderColor: getBorderColor(i),
-                  boxShadow: getBoxShadow(i),
+                  borderColor: getBorderColor(keyframe),
+                  boxShadow: getBoxShadow(keyframe),
                 }}
               >
                 {visible && showKeyframeNumbers && (
@@ -360,12 +366,12 @@ export const Gallery = ({
                         : col === layout.cols - 1
                           ? 'right-1'
                           : 'left-1/2 -translate-x-1/2',
-                      i === selectedKeyframe || i === currentKeyframe
+                      keyframe === currentKeyframe
                         ? 'opacity-100'
                         : 'opacity-40 group-hover:opacity-100',
                     )}
                   >
-                    {i + 1}
+                    {keyframe + 1}
                   </span>
                 )}
                 {labelsInside && label}

@@ -1,5 +1,6 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
+import { selectAtom } from 'jotai/utils';
 import {
   MAX_PREVIEW_COUNT,
   PREVIEW_SIZE_SCALE,
@@ -7,6 +8,7 @@ import {
   type PreviewSizeSetting,
   resolvePreviewSize,
 } from '../layout/gallery-positions.ts';
+import { selectPreviewKeyframes } from '../layout/preview-keyframes.ts';
 import type { EmbeddedConfig, KeyframeLoading } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
@@ -49,12 +51,14 @@ export const resolvedPreviewSizeAtom = atom<PreviewSize>((get) => {
 export const resolvedPreviewScaleAtom = atom(
   (get) => PREVIEW_SIZE_SCALE[get(resolvedPreviewSizeAtom)],
 );
-export const selectedKeyframeAtom = atom<number | null>(null);
 
-/** Which gallery preview is currently hovered (index), or null. */
+/** Keyframe whose preview is hovered, or null. */
 export const hoveredKeyframeAtom = atom<number | null>(null);
 
-/** Preview center positions relative to the container center, plus preview size. */
+/**
+ * Preview center positions relative to the container center, plus preview
+ * size. Indexed by keyframe; keyframes without a preview have no entry.
+ */
 export const previewCentersAtom = atom<{ x: number; y: number; size: number }[]>([]);
 
 /** Derived: nearest keyframe to the current tour position. */
@@ -247,7 +251,7 @@ export const previewLabelContentAtom = atom<'auto' | 'description' | 'loadings'>
 
 /**
  * When preview labels show. 'interactive' shows them over the preview on hover
- * and for the current or selected keyframe. 'auto' is 'visible' up to
+ * and for the current keyframe. 'auto' is 'visible' up to
  * {@link MAX_PREVIEWS_WITH_VISIBLE_LABELS} previews and 'interactive' above.
  */
 export const previewLabelVisibilityAtom = atom<'auto' | 'visible' | 'interactive' | 'hidden'>(
@@ -282,19 +286,39 @@ export const predefinedTourAtom = atom<{
   keyframeCount: number;
 } | null>(null);
 
-/** Number of previews shown: one per keyframe of a predefined tour, otherwise
- *  {@link previewCountAtom}. Tours with more keyframes only preview their
- *  first {@link MAX_PREVIEW_COUNT} keyframes. */
+/** Number of tour keyframes: from the predefined tour, otherwise {@link previewCountAtom}. */
+export const keyframeCountAtom = atom(
+  (get) => get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom),
+);
+
+/** Number of previews shown: one per keyframe, up to {@link MAX_PREVIEW_COUNT}. */
 export const resolvedPreviewCountAtom = atom((get) =>
-  Math.min(get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom), MAX_PREVIEW_COUNT),
+  Math.min(get(keyframeCountAtom), MAX_PREVIEW_COUNT),
+);
+
+/**
+ * Keyframe shown by each preview. Tours with more keyframes than previews show
+ * the subset that is most evenly spaced along the tour, always including the
+ * first and last keyframe. Keeps its identity while the selection is unchanged,
+ * so preview canvases are only rebuilt when they show different keyframes.
+ */
+export const previewKeyframesAtom = selectAtom(
+  atom((get) =>
+    selectPreviewKeyframes(
+      get(keyframeCountAtom),
+      get(resolvedPreviewCountAtom),
+      get(arcLengthsAtom),
+    ),
+  ),
+  (keyframes) => keyframes,
+  (a, b) => a.length === b.length && a.every((keyframe, i) => keyframe === b[i]),
 );
 
 /** Whether previews show keyframe numbers, with 'auto' resolved. */
 export const resolvedPreviewKeyframeNumbersAtom = atom((get) => {
   const setting = get(previewKeyframeNumbersAtom);
   if (setting !== 'auto') return setting;
-  const keyframeCount = get(predefinedTourAtom)?.keyframeCount ?? 0;
-  return keyframeCount > get(resolvedPreviewCountAtom) ? 'visible' : 'hidden';
+  return get(keyframeCountAtom) > get(resolvedPreviewCountAtom) ? 'visible' : 'hidden';
 });
 
 /** Per-keyframe descriptions: string[] of literals, or a template string with

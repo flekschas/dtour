@@ -26,7 +26,6 @@ import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
 import { createDefaultKeyframes, createPCAKeyframes, expandBases } from './keyframes.ts';
-import { MAX_PREVIEW_COUNT } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
   arcballQuat,
@@ -67,6 +66,7 @@ import {
   predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
+  previewKeyframesAtom,
   resolvedPreviewCountAtom,
   resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
@@ -239,17 +239,13 @@ export const DtourViewer = ({
       const tourNDims = predefinedKeyframes[0]!.length / 2;
       const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
       setPredefinedTour({ dimensions: dims, keyframeCount: predefinedKeyframes.length });
-      if (predefinedKeyframes.length > MAX_PREVIEW_COUNT) {
-        console.warn(
-          `[dtour] The tour has ${predefinedKeyframes.length} keyframes but the gallery shows at most ${MAX_PREVIEW_COUNT}. Only the first ${MAX_PREVIEW_COUNT} keyframes get a preview.`,
-        );
-      }
     } else {
       setPredefinedTour(null);
     }
   }, [keyframes, embeddedKeyframes, metadata, embeddedConfig, setPredefinedTour]);
 
   const resolvedPreviewCount = useAtomValue(resolvedPreviewCountAtom);
+  const previewKeyframes = useAtomValue(previewKeyframesAtom);
 
   const { resolvedKeyframes, arcLengths } = useMemo(() => {
     if (!metadata || metadata.dimCount < 2) return { resolvedKeyframes: null, arcLengths: null };
@@ -632,11 +628,13 @@ export const DtourViewer = ({
   }, [resolvedBackend]);
 
   // Effect B — Preview canvas lifecycle: add/remove preview canvases dynamically.
+  // Each canvas is registered under the keyframe it shows, which is the basis
+  // the renderer draws into it.
   useEffect(() => {
     if (!scatter) return;
 
     const previews: HTMLCanvasElement[] = [];
-    for (let i = 0; i < resolvedPreviewCount; i++) {
+    for (const keyframe of previewKeyframes) {
       const c = document.createElement('canvas');
       c.width = PREVIEW_INITIAL_SIZE;
       c.height = PREVIEW_INITIAL_SIZE;
@@ -645,7 +643,7 @@ export const DtourViewer = ({
       c.style.display = 'block';
       c.style.borderRadius = '2px';
       previews.push(c);
-      scatter.addPreviewCanvas(i, c);
+      scatter.addPreviewCanvas(keyframe, c);
     }
     setPreviewCanvases(previews);
 
@@ -661,7 +659,7 @@ export const DtourViewer = ({
         const pw = Math.round(width * curDpr);
         const ph = Math.round(height * curDpr);
         if (pw < 1 || ph < 1) continue;
-        scatter.resizePreview(idx, pw, ph);
+        scatter.resizePreview(previewKeyframes[idx]!, pw, ph);
       }
     });
     for (const c of previews) ro.observe(c);
@@ -671,12 +669,12 @@ export const DtourViewer = ({
     return () => {
       ro.disconnect();
       for (let i = 0; i < previews.length; i++) {
-        scatter.removePreviewCanvas(i);
+        scatter.removePreviewCanvas(previewKeyframes[i]!);
         previews[i]!.remove();
       }
       setPreviewCanvases([]);
     };
-  }, [scatter, resolvedPreviewCount]);
+  }, [scatter, previewKeyframes]);
 
   // Reset active columns and PCA results when a new dataset loads (different dim count)
   useEffect(() => {

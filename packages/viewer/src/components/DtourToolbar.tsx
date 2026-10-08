@@ -52,7 +52,6 @@ import {
   resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewSizeAtom,
   resumeGuidedAtom,
-  selectedKeyframeAtom,
   showAxesAtom,
   showLegendAtom,
   showTourDescriptionAtom,
@@ -106,7 +105,6 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const resumeGuided = useAtomValue(resumeGuidedAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
-  const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
   const [pointColorBy, setPointColorBy] = useAtom(pointColorByAtom);
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
@@ -168,9 +166,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const handlePlayPause = useCallback(() => {
     cancelAnimation();
     resumeGuided?.fn(300);
-    if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [playing, setPlaying, resumeGuided, setSelectedKeyframe, cancelAnimation]);
+  }, [setPlaying, resumeGuided, cancelAnimation]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

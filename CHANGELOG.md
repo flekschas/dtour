@@ -7,7 +7,7 @@
 Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail in the gallery.
 
 - **DtourSpec**: `previewScale: 1 | 0.75 | 0.5` → `previewSize: 'auto' | 'small' | 'medium' | 'large'`, `showKeyframeNumbers: boolean` → `previewKeyframeNumbers: 'auto' | 'visible' | 'hidden'`, `showKeyframeLoadings: boolean` → `previewLabelContent: 'auto' | 'description' | 'loadings'`
-- **Atoms**: `showKeyframeNumbersAtom` → `previewKeyframeNumbersAtom`, `showKeyframeLoadingsAtom` → `previewLabelContentAtom`; `previewSizeAtom` is now exported
+- **Atoms**: `showKeyframeNumbersAtom` → `previewKeyframeNumbersAtom`, `showKeyframeLoadingsAtom` → `previewLabelContentAtom`; `previewSizeAtom` is now exported; `selectedKeyframeAtom` is removed because the active preview now always follows the slider (`currentKeyframeAtom`)
 - **Component props**: `Dtour` and `DtourViewer` `views` → `keyframes`
 - **Viewer functions**: `createDefaultViews` → `createDefaultKeyframes`
 - **Python `TourResult`**: `views` → `keyframes`, `n_views` → `n_keyframes` (now a property), `views_raw` → `keyframes_raw`
@@ -25,7 +25,6 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
-- fix: `set_tour()` warns when a tour has more keyframes than the viewer can preview (32)
 - fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
@@ -40,9 +39,10 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 - feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)
 - feat: show up to 32 previews. Layouts for up to 16 previews are unchanged; larger counts use a wide perimeter grid with 4–6 rows
-- feat: add `previewLabelVisibility: 'auto' | 'visible' | 'interactive' | 'hidden'` and a matching "Labels" toolbar control. `'interactive'` shows the label inside the preview on hover and for the current or selected keyframe, so labels no longer take space from the previews. `'auto'` uses `'visible'` up to 16 previews and `'interactive'` above
-- fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the first 32 keyframes, the slider keeps a tick for every keyframe and starts at the first preview, and the console warns about the missing previews
+- feat: add `previewLabelVisibility: 'auto' | 'visible' | 'interactive' | 'hidden'` and a matching "Labels" toolbar control. `'interactive'` shows the label inside the preview on hover and for the current keyframe, so labels no longer take space from the previews. `'auto'` uses `'visible'` up to 16 previews and `'interactive'` above
+- fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the 32 keyframes most evenly spaced along the tour (by normalized geodesic distance), always including the first and last, and the slider keeps a tick for every keyframe
 - fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
+- fix: the active preview always follows the slider. Clicking a preview moves the slider to it but no longer keeps it highlighted after scrubbing elsewhere
 - chore: remove the dev-only warning about `views.length` differing from `previewCount`, which predefined tours no longer need
 
 ## v0.4.4

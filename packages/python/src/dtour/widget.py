@@ -317,13 +317,6 @@ class Widget(anywidget.AnyWidget):
 
     def set_tour(self, tour: TourResult) -> None:
         """Set tour keyframes from a :class:`~dtour.tours.TourResult`."""
-        if tour.n_keyframes > _MAX_PREVIEW_COUNT:
-            warnings.warn(
-                f"The tour has {tour.n_keyframes} keyframes but the gallery shows at most "
-                f"{_MAX_PREVIEW_COUNT}. Only the first {_MAX_PREVIEW_COUNT} keyframes "
-                "get a preview.",
-                stacklevel=2,
-            )
         self._keyframes_buf = tour.keyframes_raw
 
         msg: dict = {"type": "keyframes", "n_dims": tour.n_dims}

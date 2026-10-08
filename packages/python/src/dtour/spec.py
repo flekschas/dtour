@@ -172,7 +172,7 @@ def build_dtour_metadata(
     preview_label_visibility : str, optional
         When preview labels show: ``"auto"`` (``"visible"`` up to 16 previews,
         ``"interactive"`` above), ``"visible"``, ``"interactive"`` (on hover
-        and for the current or selected keyframe), or ``"hidden"``.
+        and for the current keyframe), or ``"hidden"``.
     point_size : float or str, optional
         Point size in pixels, or ``"auto"`` for density-adaptive.
     point_opacity : float or str, optional

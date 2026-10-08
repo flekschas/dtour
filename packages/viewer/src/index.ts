@@ -51,7 +51,6 @@ export {
   previewPaddingAtom,
   previewSizeAtom,
   resolvedThemeAtom,
-  selectedKeyframeAtom,
   // Axes
   showAxesAtom,
   // Legend
