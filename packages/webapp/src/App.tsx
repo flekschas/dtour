@@ -301,8 +301,10 @@ const App = () => {
   const plyrRef = useRef<InstanceType<typeof import('plyr').default> | null>(null);
 
   const prefersReducedMotion = useReducedMotion();
+  // Deep links skip the intro: the logo only leaves 'drawing' once data has
+  // rendered, but auto-loading waits for the logo to leave 'drawing'.
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(
-    prefersReducedMotion || benchmarkMode ? 'done' : 'drawing',
+    prefersReducedMotion || benchmarkMode || urlParam || datasetSlug ? 'done' : 'drawing',
   );
   const drawCompleteRef = useRef(false);
   const gpuReadyRef = useRef(false);
