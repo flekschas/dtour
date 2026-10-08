@@ -23,6 +23,8 @@ def test_widget_default_traits():
     assert w.tour_playing is False
     assert w.tour_speed == 1.0
     assert w.tour_direction == "forward"
+    assert w.tour_slider_spacing == "equal"
+    assert w.tour_slider_visibility == "visible"
     assert w.preview_count == 4
     assert w.preview_size == "auto"
     assert w.preview_padding == 12.0
@@ -31,12 +33,14 @@ def test_widget_default_traits():
     assert w.preview_label_visibility == "auto"
     assert w.point_size == "auto"
     assert w.point_opacity == "auto"
+    assert w.min_point_size == 2.0
     assert w.point_color == [0.25, 0.5, 0.9]
     assert w.camera_pan_x == 0.0
     assert w.camera_pan_y == 0.0
     assert w.camera_zoom == pytest.approx(1 / 1.5)
     assert w.tour_traversal == "guided"
     assert w.show_legend is True
+    assert w.show_axes is False
     assert w.theme_mode == "dark"
     assert w.height == 720
 
@@ -76,6 +80,13 @@ def test_widget_theme_is_deprecated():
     assert record[0].filename == __file__
     with pytest.warns(DeprecationWarning):
         assert w.theme == "system"
+
+
+def test_widget_min_point_size_validation():
+    assert Widget(min_point_size=20).min_point_size == 20
+
+    with pytest.raises(Exception):
+        Widget(min_point_size=0.5)
 
 
 def test_widget_tour_direction_validation():

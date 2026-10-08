@@ -124,6 +124,7 @@ def build_dtour_metadata(
     preview_label_visibility: str | None = None,
     point_size: float | str | None = None,
     point_opacity: float | str | None = None,
+    min_point_size: float | None = None,
     point_color: list[float] | None = None,
     point_color_by: str | None = None,
     camera_pan_x: float | None = None,
@@ -134,6 +135,7 @@ def build_dtour_metadata(
     show_axes: bool | None = None,
     show_tour_description: bool | None = None,
     tour_slider_spacing: str | None = None,
+    tour_slider_visibility: str | None = None,
     theme_mode: str | None = None,
     centering: str | None = None,
     point_color_map: dict[str, str] | None = None,
@@ -175,6 +177,8 @@ def build_dtour_metadata(
         Point size in pixels, or ``"auto"`` for density-adaptive.
     point_opacity : float or str, optional
         Point opacity 0-1, or ``"auto"``.
+    min_point_size : float, optional
+        Smallest point size in pixels (1-20) when ``point_size`` is ``"auto"``.
     point_color : list[float], optional
         Uniform point color as ``[r, g, b]`` tuple (0-1).
     point_color_by : str, optional
@@ -195,6 +199,8 @@ def build_dtour_metadata(
         Whether the tour description sub-bar is visible.
     tour_slider_spacing : str, optional
         ``"equal"`` or ``"geodesic"``.
+    tour_slider_visibility : str, optional
+        ``"visible"``, ``"subtle"``, or ``"hidden"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
     centering : str, optional
@@ -233,6 +239,7 @@ def build_dtour_metadata(
         "preview_label_visibility": preview_label_visibility,
         "point_size": point_size,
         "point_opacity": point_opacity,
+        "min_point_size": min_point_size,
         "point_color": point_color,
         "point_color_by": point_color_by,
         "point_color_map": point_color_map,
@@ -244,6 +251,7 @@ def build_dtour_metadata(
         "show_axes": show_axes,
         "show_tour_description": show_tour_description,
         "tour_slider_spacing": tour_slider_spacing,
+        "tour_slider_visibility": tour_slider_visibility,
         "theme_mode": theme_mode,
         "centering": centering,
     }

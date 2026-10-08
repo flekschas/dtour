@@ -21,6 +21,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add a read-only `Widget.tour_family` property
 - feat: add `preview_keyframe_numbers` and `preview_label_content` traitlets, so every preview setting is available from Python
 - feat: add a `preview_label_visibility` traitlet and raise the preview limit (`preview_count` and `set_tour()`) from 16 to 32
+- feat: add `tour_slider_spacing`, `tour_slider_visibility`, `min_point_size`, and `show_axes` traitlets, and the matching `build_dtour_metadata` arguments where missing
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour

@@ -51,6 +51,7 @@ dtour.Widget(
     # point style
     point_size="auto",    # point radius or "auto"
     point_opacity="auto", # point alpha or "auto"
+    min_point_size=2.0,   # smallest automatic point size in px: 1–20
     point_color=[0.25, 0.5, 0.9],  # default RGB color
     point_color_by=None,  # column name for categorical coloring
     color_map={},         # label → color mapping (see build_color_map())
@@ -60,6 +61,8 @@ dtour.Widget(
     tour_playing=False,   # auto-play on load
     tour_speed=1.0,       # playback speed multiplier
     tour_direction="forward",  # "forward" | "backward"
+    tour_slider_spacing="equal",     # "equal" | "geodesic"
+    tour_slider_visibility="visible", # "visible" | "subtle" | "hidden"
     tour_dimensions=[],   # explicit column names for the tour
     # camera
     camera_pan_x=0.0,
@@ -69,6 +72,7 @@ dtour.Widget(
     # mode & appearance
     tour_traversal="guided",   # "guided" | "manual" | "grand"
     show_legend=True,     # show/hide color legend
+    show_axes=False,      # show/hide the axis biplot in guided mode
     theme_mode="dark",    # "light" | "dark" | "system"
 )
 ```

@@ -129,6 +129,10 @@ class Widget(anywidget.AnyWidget):
     tour_playing = t.Bool(False).tag(sync=True)
     tour_speed = t.Float(1.0).tag(sync=True)
     tour_direction = t.Enum(["forward", "backward"], default_value="forward").tag(sync=True)
+    tour_slider_spacing = t.Enum(["equal", "geodesic"], default_value="equal").tag(sync=True)
+    tour_slider_visibility = t.Enum(["visible", "subtle", "hidden"], default_value="visible").tag(
+        sync=True
+    )
     preview_count = t.Int(4).tag(sync=True)
     preview_size = t.Enum(["auto", "small", "medium", "large"], default_value="auto").tag(sync=True)
     preview_padding = t.Float(12.0).tag(sync=True)
@@ -149,6 +153,7 @@ class Widget(anywidget.AnyWidget):
         [t.Float(), t.Unicode()],
         default_value="auto",
     ).tag(sync=True)
+    min_point_size = t.Float(2.0).tag(sync=True)
     point_color = t.List(t.Float(), default_value=[0.25, 0.5, 0.9]).tag(sync=True)
     point_color_by = t.Unicode(allow_none=True, default_value=None).tag(sync=True)
     camera_pan_x = t.Float(0.0).tag(sync=True)
@@ -156,6 +161,7 @@ class Widget(anywidget.AnyWidget):
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
     tour_traversal = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
+    show_axes = t.Bool(False).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
     theme_mode = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     centering = t.Enum(["midrange", "mean"], default_value="midrange").tag(sync=True)
@@ -191,6 +197,13 @@ class Widget(anywidget.AnyWidget):
         if value is None:
             return 0.0
         return float(value)
+
+    @t.validate("min_point_size")
+    def _validate_min_point_size(self, proposal: t.Bunch) -> float:
+        value = proposal["value"]
+        if not (1 <= value <= 20):
+            raise t.TraitError(f"min_point_size must be between 1 and 20; got {value}")
+        return value
 
     @t.validate("preview_count")
     def _validate_preview_count(self, proposal: t.Bunch) -> int:
@@ -433,6 +446,10 @@ class Widget(anywidget.AnyWidget):
             kwargs["tour_speed"] = self.tour_speed
         if self.tour_direction != "forward":
             kwargs["tour_direction"] = self.tour_direction
+        if self.tour_slider_spacing != "equal":
+            kwargs["tour_slider_spacing"] = self.tour_slider_spacing
+        if self.tour_slider_visibility != "visible":
+            kwargs["tour_slider_visibility"] = self.tour_slider_visibility
         if self.preview_count != 4:
             kwargs["preview_count"] = self.preview_count
         if self.preview_size != "auto":
@@ -449,6 +466,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["point_size"] = self.point_size
         if self.point_opacity != "auto":
             kwargs["point_opacity"] = self.point_opacity
+        if self.min_point_size != 2.0:
+            kwargs["min_point_size"] = self.min_point_size
         if self.point_color != [0.25, 0.5, 0.9]:
             kwargs["point_color"] = self.point_color
         if self.point_color_by:
@@ -463,6 +482,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["tour_traversal"] = self.tour_traversal
         if not self.show_legend:
             kwargs["show_legend"] = self.show_legend
+        if self.show_axes:
+            kwargs["show_axes"] = self.show_axes
         if self.show_tour_description:
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme_mode != "dark":

@@ -71,6 +71,7 @@ def test_build_snake_to_camel_all_keys():
         "preview_padding": 16.0,
         "point_size": 4,
         "point_opacity": 0.8,
+        "min_point_size": 3.0,
         "point_color": "col",
         "point_color_by": "label",
         "point_color_map": {"A": "#ff0000"},
@@ -85,6 +86,7 @@ def test_build_snake_to_camel_all_keys():
         "preview_label_visibility": "interactive",
         "show_tour_description": True,
         "tour_slider_spacing": "equal",
+        "tour_slider_visibility": "subtle",
         "theme_mode": "light",
         "centering": "mean",
     }
@@ -100,6 +102,7 @@ def test_build_snake_to_camel_all_keys():
         "previewPadding": 16.0,
         "pointSize": 4,
         "pointOpacity": 0.8,
+        "minPointSize": 3.0,
         "pointColor": "col",
         "pointColorBy": "label",
         "pointColorMap": {"A": "#ff0000"},
@@ -114,6 +117,7 @@ def test_build_snake_to_camel_all_keys():
         "previewLabelVisibility": "interactive",
         "showTourDescription": True,
         "tourSliderSpacing": "equal",
+        "tourSliderVisibility": "subtle",
         "themeMode": "light",
         "centering": "mean",
     }
