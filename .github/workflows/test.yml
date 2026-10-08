@@ -27,6 +27,9 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Check preview fit
+        run: pnpm --filter @dtour/viewer check:preview-fit
+
       - name: Lint
         run: pnpm run lint
 

@@ -17,7 +17,8 @@
   },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
-    "dev": "vite build --watch"
+    "dev": "vite build --watch",
+    "check:preview-fit": "node scripts/check-preview-fit.ts"
   },
   "dependencies": {
     "@dtour/scatter": "workspace:*",
