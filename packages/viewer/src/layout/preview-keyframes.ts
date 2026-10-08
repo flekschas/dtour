@@ -12,6 +12,7 @@ export function selectPreviewKeyframes(
   previewCount: number,
   arcLengths?: ArrayLike<number> | null,
 ): number[] {
+  if (previewCount <= 0) return [];
   if (keyframeCount <= previewCount) return Array.from({ length: keyframeCount }, (_, i) => i);
 
   const k = keyframeCount;

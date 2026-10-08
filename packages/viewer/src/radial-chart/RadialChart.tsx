@@ -6,6 +6,8 @@ import type { ParsedTrack } from './types.ts';
 export type RadialChartProps = {
   tracks: ParsedTrack[];
   keyframeCount: number;
+  /** Angle of the first keyframe in SVG degrees. Defaults to the gallery layout for `keyframeCount` previews. */
+  startAngle?: number;
   /** SVG viewport size (same as selectorSize). */
   size: number;
   /** Inner radius = selector ring radius (selectorSize * 0.4). */
@@ -25,6 +27,7 @@ type HoverInfo = { label: string; value: number; x: number; y: number };
 export const RadialChart = ({
   tracks,
   keyframeCount,
+  startAngle,
   size,
   innerRadius,
   arcLengths,
@@ -56,7 +59,10 @@ export const RadialChart = ({
   }, [tracks, innerRadius, stacked]);
 
   // Must match the CircularSlider so bars line up with its keyframe ticks.
-  const startDeg = useMemo(() => computeStartAngle(keyframeCount), [keyframeCount]);
+  const startDeg = useMemo(
+    () => startAngle ?? computeStartAngle(keyframeCount),
+    [startAngle, keyframeCount],
+  );
 
   // Compute angle for keyframe index, respecting spacing mode.
   // In geodesic mode, bars sit at arc-length positions; in equal mode, uniform.

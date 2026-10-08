@@ -29,7 +29,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 
 export type GalleryProps = {
-  /** Fixed pool of preview canvas elements (created at scatter init). */
+  /** Preview canvases in preview-slot order. Each one shows the keyframe at the same slot. */
   previewCanvases: HTMLCanvasElement[];
   /** Container width (px). */
   containerWidth: number;
@@ -120,6 +120,9 @@ export const Gallery = ({
       }
     }
   }, [previewCanvases]);
+
+  // Without a gallery there are no previews for the slider to point at
+  useEffect(() => () => setPreviewCenters([]), [setPreviewCenters]);
 
   // Measure preview center positions relative to the container center.
   const canvasCount = previewCanvases.length;

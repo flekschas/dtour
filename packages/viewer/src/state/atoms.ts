@@ -2,8 +2,10 @@ import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
 import { selectAtom } from 'jotai/utils';
 import {
+  fitPreviewCount,
   MAX_PREVIEW_COUNT,
   PREVIEW_SIZE_SCALE,
+  PREVIEW_SPACING,
   type PreviewSize,
   type PreviewSizeSetting,
   resolvePreviewSize,
@@ -201,6 +203,12 @@ export const animationGenAtom = atom(0);
 
 export const canvasSizeAtom = atom({ width: 0, height: 0 });
 
+/**
+ * Space for the preview gallery: the canvas below the toolbar, before the
+ * gallery's insets. null until the canvas has been measured.
+ */
+export const galleryAreaAtom = atom<{ width: number; height: number } | null>(null);
+
 // ---------------------------------------------------------------------------
 // Read-only / derived — not exposed to AI setters
 // ---------------------------------------------------------------------------
@@ -261,6 +269,15 @@ export const previewLabelVisibilityAtom = atom<'auto' | 'visible' | 'interactive
 /** Up to this many previews, 'auto' labels stay visible below each preview. */
 const MAX_PREVIEWS_WITH_VISIBLE_LABELS = 16;
 
+/** Label visibility for a preview count, with 'auto' resolved. */
+const labelVisibilityFor = (
+  setting: 'auto' | 'visible' | 'interactive' | 'hidden',
+  previewCount: number,
+) => {
+  if (setting !== 'auto') return setting;
+  return previewCount > MAX_PREVIEWS_WITH_VISIBLE_LABELS ? 'interactive' : 'visible';
+};
+
 /** User preference for showing the tour description sub-bar. null = derive from tourDescription. */
 export const showTourDescriptionAtom = atom<boolean | null>(null);
 
@@ -291,10 +308,25 @@ export const keyframeCountAtom = atom(
   (get) => get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom),
 );
 
-/** Number of previews shown: one per keyframe, up to {@link MAX_PREVIEW_COUNT}. */
-export const resolvedPreviewCountAtom = atom((get) =>
-  Math.min(get(keyframeCountAtom), MAX_PREVIEW_COUNT),
-);
+/**
+ * Number of previews shown: one per keyframe, up to {@link MAX_PREVIEW_COUNT}
+ * and as many as fit the gallery at a readable size. 0 when not even two fit.
+ */
+export const resolvedPreviewCountAtom = atom((get) => {
+  const maxCount = Math.min(get(keyframeCountAtom), MAX_PREVIEW_COUNT);
+  const area = get(galleryAreaAtom);
+  // Before measuring, assume everything fits so canvases are not rebuilt on startup
+  if (!area) return maxCount;
+  const hasLabels = get(resolvedPreviewLabelContentAtom) !== null;
+  const labelSetting = get(previewLabelVisibilityAtom);
+  return fitPreviewCount(
+    area.width - 2 * PREVIEW_SPACING,
+    area.height - 2 * PREVIEW_SPACING,
+    maxCount,
+    get(resolvedPreviewScaleAtom),
+    (previewCount) => hasLabels && labelVisibilityFor(labelSetting, previewCount) === 'visible',
+  );
+});
 
 /**
  * Keyframe shown by each preview. Tours with more keyframes than previews show
@@ -337,11 +369,7 @@ export const resolvedPreviewLabelContentAtom = atom((get) => {
 /** When preview labels show, with 'auto' resolved. 'hidden' when there is nothing to show. */
 export const resolvedPreviewLabelVisibilityAtom = atom((get) => {
   if (get(resolvedPreviewLabelContentAtom) === null) return 'hidden';
-  const setting = get(previewLabelVisibilityAtom);
-  if (setting !== 'auto') return setting;
-  return get(resolvedPreviewCountAtom) > MAX_PREVIEWS_WITH_VISIBLE_LABELS
-    ? 'interactive'
-    : 'visible';
+  return labelVisibilityFor(get(previewLabelVisibilityAtom), get(resolvedPreviewCountAtom));
 });
 
 /** Tour description string from embedded config (shown in description sub-bar). */

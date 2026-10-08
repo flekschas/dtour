@@ -36,6 +36,8 @@ export const LOADING_BAR_HEIGHT = 18;
 export const PREVIEW_SPACING = 8;
 /** Most previews the gallery shows. */
 export const MAX_PREVIEW_COUNT = 32;
+/** Smallest preview (CSS px) worth showing. Smaller galleries show fewer previews instead. */
+export const MIN_PREVIEW_SIZE = 24;
 /**
  * Per-edge-count ratio arrays.
  *   k=1 (4 previews)  → [1]             all same
@@ -187,11 +189,10 @@ export function computeLayout(n: number): LayoutInfo {
  *
  * The right-center item is anchored at SVG 0° (3 o'clock) and items are
  * evenly spaced at 360/n degrees.  For n=4,8,12,16 this returns −135°.
- * Counts above {@link MAX_PREVIEW_COUNT} use the largest layout, so the first
- * keyframe still points at the first preview.
+ * Counts above {@link MAX_PREVIEW_COUNT} use the largest layout.
  */
-export function computeStartAngle(keyframeCount: number): number {
-  const n = Math.min(keyframeCount, MAX_PREVIEW_COUNT);
+export function computeStartAngle(previewCount: number): number {
+  const n = Math.min(previewCount, MAX_PREVIEW_COUNT);
   if (n <= 1) return -135;
   const { rows, positions } = computeLayout(n);
   const topCount = positions.filter((p) => p.row === 0).length;
@@ -227,10 +228,7 @@ export type GallerySizes = {
  * edges to centre.  Row ratios follow the same pattern with `rows-1`.
  * Each preview is sized as `min(colRatio, rowRatio) × baseSize` so it
  * stays square and fits its cell.
- *
- * For n=4,8,12,16 (square grids) this produces results identical to the
- * previous k-based computation.
- */
+ * */
 export function computeGallerySizes(
   containerWidth: number,
   containerHeight: number,
@@ -299,4 +297,25 @@ export function computeGallerySizes(
     padX,
     padY,
   };
+}
+
+/**
+ * Largest preview count up to `maxCount` whose smallest preview is at least
+ * {@link MIN_PREVIEW_SIZE} in a `width`×`height` gallery, or 0 when not even
+ * two previews fit. `labelsTakeSpace` tells whether labels sit below the
+ * previews for a given count.
+ */
+export function fitPreviewCount(
+  width: number,
+  height: number,
+  maxCount: number,
+  scale: number,
+  labelsTakeSpace: (previewCount: number) => boolean,
+): number {
+  if (width <= 0 || height <= 0) return 0;
+  for (let n = maxCount; n >= Math.min(maxCount, 2); n--) {
+    const { sizes } = computeGallerySizes(width, height, n, scale, labelsTakeSpace(n));
+    if (Math.min(...sizes) >= MIN_PREVIEW_SIZE) return n;
+  }
+  return 0;
 }

@@ -28,6 +28,8 @@ export type CircularSliderProps = {
   onDragStart?: () => void;
   /** Number of tick marks around the ring (typically = number of tour keyframes). */
   tickCount?: number;
+  /** Angle of the first tick in SVG degrees. Defaults to the gallery layout for `tickCount` previews. */
+  startAngle?: number;
   /** SVG diameter in px. Default 200. */
   size?: number;
   /** Cumulative arc-lengths for variable-width ring and geodesic tick positions. */
@@ -64,6 +66,7 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
       onSeek,
       onDragStart,
       tickCount = 8,
+      startAngle,
       size = 200,
       arcLengths,
       spacingMode = 'equal',
@@ -86,7 +89,10 @@ export const CircularSlider = forwardRef<CircularSliderHandle, CircularSliderPro
 
     const center = size / 2;
     const radius = size * 0.4;
-    const startDeg = useMemo(() => computeStartAngle(tickCount), [tickCount]);
+    const startDeg = useMemo(
+      () => startAngle ?? computeStartAngle(tickCount),
+      [startAngle, tickCount],
+    );
     const startRad = (startDeg * Math.PI) / 180;
     const startX = center + radius * Math.cos(startRad);
     const startY = center + radius * Math.sin(startRad);

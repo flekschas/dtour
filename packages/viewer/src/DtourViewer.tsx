@@ -26,6 +26,7 @@ import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
 import { createDefaultKeyframes, createPCAKeyframes, expandBases } from './keyframes.ts';
+import { computeStartAngle } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
   arcballQuat,
@@ -56,6 +57,7 @@ import {
   currentBasisAtom,
   currentKeyframeAtom,
   embeddedConfigAtom,
+  galleryAreaAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   is3dRotatedAtom,
@@ -444,6 +446,19 @@ export const DtourViewer = ({
 
   const isToolbarVisible = toolbarHeight > 0 && tourTraversal !== 'grand';
   const effectiveToolbarHeight = isToolbarVisible ? toolbarHeight : 0;
+
+  // The gallery sits below the toolbar. Uses the settled toolbar height so the
+  // preview count does not change while the toolbar animates in or out. A 0×0
+  // container has not been measured yet.
+  const setGalleryArea = useSetAtom(galleryAreaAtom);
+  useEffect(() => {
+    const { width, height } = containerSize;
+    setGalleryArea(
+      width > 0 || height > 0
+        ? { width, height: Math.max(0, height - effectiveToolbarHeight) }
+        : null,
+    );
+  }, [containerSize, effectiveToolbarHeight, setGalleryArea]);
 
   // Animate camera inset when the toolbar appears/disappears (grand toggle).
   // The shader shifts + scales content to center it below the toolbar.
@@ -1072,6 +1087,8 @@ export const DtourViewer = ({
   }, [tourTraversal, setIs3dRotated]);
 
   const tickCount = keyframes?.length ?? embeddedKeyframes?.length ?? previewCount;
+  // Keyframe 0 points at the first preview of the gallery layout actually shown
+  const startAngle = computeStartAngle(resolvedPreviewCount);
   const hasData = !!data && !!metadata;
 
   const overlayHeight = containerSize.height - overlayOffsetY;
@@ -1152,6 +1169,7 @@ export const DtourViewer = ({
                 <RadialChart
                   tracks={coloredTracks}
                   keyframeCount={tickCount}
+                  startAngle={startAngle}
                   size={selectorSize}
                   innerRadius={selectorSize * 0.4}
                   arcLengths={arcLengths}
@@ -1172,6 +1190,7 @@ export const DtourViewer = ({
                 onSeek={handlePositionSeek}
                 onDragStart={handleDragStart}
                 tickCount={tickCount}
+                startAngle={startAngle}
                 size={selectorSize}
                 arcLengths={arcLengths}
                 spacingMode={spacingMode}
