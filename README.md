@@ -115,6 +115,14 @@ import "@dtour/viewer/dist/viewer.css";
 
 Need just the renderer without React? Use [`@dtour/scatter`](packages/scatter) directly. See each package's README for the full API: [`@dtour/scatter`](packages/scatter), [`@dtour/viewer`](packages/viewer), and [`webapp`](packages/webapp).
 
+## AI Agents
+
+Teach your coding agent (Claude Code, Codex, Cursor, …) how to pick a tour and use dtour with the [dtour skill](skills/dtour):
+
+```sh
+npx skills add flekschas/dtour
+```
+
 ## Why Take a _Tour de Vis_ Through High-Dimensional Data?
 
 Making sense of high-dimensional data is hard. Non-linear embedding tools like
