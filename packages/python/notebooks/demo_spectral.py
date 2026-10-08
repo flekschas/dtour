@@ -234,6 +234,7 @@ def _(cache_dir, dtour, le_df, le_tour, phenotype_colors):
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=le_tour,
+        tour_dimensions=le_df.columns[: le_tour.n_dims],
     )
     out_path = cache_dir / "mair-2022-tumor-le-8d.pq"
     le_df.write_parquet(
@@ -275,6 +276,7 @@ def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=signed_tour,
+        tour_dimensions=signed_df.columns[: signed_tour.n_dims],
     )
     signed_out_path = cache_dir / "mair-2022-tumor-le-signed.pq"
     signed_df.write_parquet(
@@ -361,6 +363,7 @@ def _(
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=fisher_tour,
+        tour_dimensions=fisher_df.columns[: fisher_tour.n_dims],
     )
     fisher_out_path = cache_dir / "mair-2022-tumor-le-fisher.pq"
     fisher_df.write_parquet(

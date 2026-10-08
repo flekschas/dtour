@@ -361,8 +361,9 @@ class Widget(anywidget.AnyWidget):
         self._keyframes_msg = msg
         self.send(msg, buffers=[self._keyframes_buf])
 
-        # Auto-set tour_dimensions from the tour's feature names
-        if tour.feature_names is not None:
+        # Feature names only name the projected columns when the keyframes
+        # project the input features. Embedding tours project tour.embedding instead.
+        if tour.embedding is None and tour.feature_names is not None:
             self.tour_dimensions = tour.feature_names
 
     def set_metrics(self, metric_result: MetricResult) -> None:

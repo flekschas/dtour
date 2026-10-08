@@ -1290,8 +1290,14 @@ def test_from_parquet_roundtrip(tmp_path):
         feature_names=["a", "b", "c", "d", "e"],
     )
 
-    # Create a dummy table, embed the tour, and write to parquet
-    table = ac.Table.from_pydict({"x": ac.Array.from_numpy(np.zeros(200, dtype=np.float32))})
+    # A table holding the embedding the tour projects
+    emb_cols = [f"le_{i}" for i in range(original.n_dims)]
+    table = ac.Table.from_pydict(
+        {
+            c: ac.Array.from_numpy(np.ascontiguousarray(original.embedding[:, i]))
+            for i, c in enumerate(emb_cols)
+        }
+    )
     annotated = add_spec_to_parquet(table, tour=original)
 
     path = tmp_path / "tour.pq"
@@ -1302,7 +1308,7 @@ def test_from_parquet_roundtrip(tmp_path):
 
     assert restored.n_keyframes == original.n_keyframes
     assert restored.n_dims == original.n_dims
-    assert restored.feature_names == original.feature_names
+    assert restored.feature_names == emb_cols
     assert restored.tour_family == original.tour_family
     assert restored.keyframe_descriptions == original.keyframe_descriptions
     for orig_v, rest_v in zip(original.keyframes, restored.keyframes):

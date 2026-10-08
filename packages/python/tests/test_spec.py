@@ -7,6 +7,7 @@ from pathlib import Path
 import arro3.core as ac
 import arro3.io
 import numpy as np
+import polars as pl
 import pytest
 from dtour.spec import (
     add_spec_to_parquet,
@@ -310,3 +311,43 @@ def test_widget_save_spec_with_tour():
     assert "tour" in meta
     assert meta["tour"]["nDims"] == 4
     assert meta["tour"]["nViews"] == tour.n_keyframes
+
+
+def _embedding_tour():
+    from dtour.tours import TourResult
+
+    rng = np.random.default_rng(42)
+    emb = rng.standard_normal((50, 3)).astype(np.float32)
+    keyframes = [np.eye(3, 2, k, dtype=np.float32) for k in (0, -1)]
+    # Feature names describe the input data, not the embedding columns
+    return TourResult(
+        keyframes,
+        n_dims=3,
+        embedding=emb,
+        feature_names=["in_a", "in_b", "in_c", "in_d"],
+    )
+
+
+def test_embedding_tour_requires_dimensions():
+    with pytest.raises(ValueError, match="tour_dimensions"):
+        build_dtour_metadata(tour=_embedding_tour())
+
+
+def test_widget_save_spec_embedding_tour_dimensions():
+    """Embedding tours record the projected columns, not the input features."""
+    from dtour.widget import Widget
+
+    tour = _embedding_tour()
+    table = pl.DataFrame(
+        {
+            "e0": tour.embedding[:, 0],
+            "e1": tour.embedding[:, 1],
+            "e2": tour.embedding[:, 2],
+            "extra": np.arange(50, dtype=np.float32),
+            "label": ["x"] * 50,
+        }
+    )
+    w = Widget(tour=tour)
+    assert w.tour_dimensions == []
+    meta = json.loads(w.save_spec_to_parquet(table).schema.metadata_str["dtour"])
+    assert meta["tour"]["dimensions"] == ["e0", "e1", "e2"]

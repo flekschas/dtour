@@ -63,7 +63,7 @@ dtour.Widget(
     tour_direction="forward",  # "forward" | "backward"
     tour_slider_spacing="equal",  # "equal" | "geodesic"
     tour_slider_visibility="visible",  # "visible" | "subtle" | "hidden"
-    tour_dimensions=[],  # explicit column names for the tour
+    tour_dimensions=[],  # column names the tour projects (recorded in Parquet exports)
     # camera
     camera_pan_x=0.0,
     camera_pan_y=0.0,
@@ -93,24 +93,49 @@ w.clear_selection()  # clear selection
 
 ## Tour computation
 
-dtour ships with two tour generators:
+dtour ships with two families of tour generators. **Hyperdimensional** tours show one high-dimensional space from different angles:
 
 ```py
-# PCA-based: cycles through consecutive pairs of principal components
+# PCA: cycles through consecutive pairs of principal components
 tour = dtour.little_tour(
     X,  # (n_samples, n_features) array or DataFrame
     n_components=None,  # defaults to min(n_features, 10)
 )
 
-# UMAP + PCA: reduce to n_components with UMAP first (pip install dtour[umap])
-tour = dtour.umap_little_tour(
+# UMAP to n_components, then a little tour over the embedding (pip install dtour[umap])
+tour = dtour.umap_little_tour(X, n_components=10, umap_kwargs=None)
+
+# Laplacian Eigenmaps: each keyframe adds one more eigenvector (global → local)
+tour = dtour.le_tour(
     X,
-    n_components=10,
-    umap_kwargs=None,  # extra kwargs passed to umap.UMAP
+    n_frames=8,  # computes n_frames + 1 eigenvectors
+    n_neighbors=15,
+    labels=None,  # class labels: same-label edges attract, cross-label edges repel
+    discriminative=False,  # with labels: order eigenvectors by class separation (spectral Fisher)
+    subsample=None,  # fit on a subsample and extend to the rest (large data)
 )
 ```
 
-Both return a `TourResult` with `.keyframes` (list of p×2 float32 arrays), `.n_keyframes`, `.n_dims`, `.explained_variance_ratio`, and `.save(path)` / `TourResult.load(path)` for persistence.
+**Sequential** tours morph between aligned 2D embeddings of the same points, e.g. across time points, hyperparameters, or models:
+
+```py
+# One embedding per dataset, each warm-started from the previous one
+tour = dtour.sequential_tour([X_1, X_2, X_3], method="umap")  # "umap" | "tsne" | "pymde" | callable
+
+# Sweep from attraction (LE-like) to repulsion (t-SNE) (pip install dtour[tsne])
+tour = dtour.attraction_repulsion_tour(X, n_frames=4)
+
+# Optimize all embeddings jointly with UMAP's AlignedUMAP (pip install dtour[umap])
+tour = dtour.aligned_umap_tour([X_1, X_2, X_3])
+```
+
+All generators return a `TourResult` with `.keyframes` (list of p×2 float32 arrays), `.n_keyframes`, `.n_dims`, `.tour_family`, and `.save(path)` / `TourResult.load(path)` for persistence. `little_tour` projects the input columns directly. All other tours project their own `.embedding`, so pass that to the widget, with the embedding columns first:
+
+```py
+tour = dtour.le_tour(X, n_frames=8)
+emb = pl.DataFrame({f"le_{i}": tour.embedding[:, i] for i in range(tour.n_dims)})
+dtour.Widget(data=emb.with_columns(df["cell_type"]), tour=tour, point_color_by="cell_type")
+```
 
 ## Quality metrics
 
