@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@import "@dtour/viewer/dist/viewer.css";
+/* A lower layer than `utilities`, so the webapp's variants (e.g., `sm:` or
+   `hover:`) override the viewer's base classes of the same name */
+@import "@dtour/viewer/dist/viewer.css" layer(components);
 
 @font-face {
   font-family: "Manrope";

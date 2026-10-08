@@ -38,42 +38,42 @@ dtour.Widget(data=df)
 
 ```py
 dtour.Widget(
-    data=...,             # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
-    tour=...,             # TourResult from little_tour() / umap_little_tour()
+    data=...,  # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
+    tour=...,  # TourResult from little_tour() / umap_little_tour()
     # display
-    height=720,           # canvas height in pixels
-    preview_count=4,      # keyframe previews: 2–32
+    height=720,  # canvas height in pixels
+    preview_count=4,  # keyframe previews: 2–32
     preview_size="auto",  # "auto" | "small" | "medium" | "large"
-    preview_padding=12.0, # gap between previews
+    preview_padding=12.0,  # gap between previews
     preview_keyframe_numbers="auto",  # "auto" | "visible" | "hidden"
-    preview_label_content="auto",     # "auto" | "description" | "loadings"
+    preview_label_content="auto",  # "auto" | "description" | "loadings"
     preview_label_visibility="auto",  # "auto" | "visible" | "interactive" | "hidden"
     # point style
-    point_size="auto",    # point radius or "auto"
-    point_opacity="auto", # point alpha or "auto"
-    min_point_size=2.0,   # smallest automatic point size in px: 1–20
+    point_size="auto",  # point radius or "auto"
+    point_opacity="auto",  # point alpha or "auto"
+    min_point_size=2.0,  # smallest automatic point size in px: 1–20
     point_color=[0.25, 0.5, 0.9],  # default RGB color
     point_color_by=None,  # column name for categorical coloring
-    color_map={},         # label → color mapping (see build_color_map())
+    color_map={},  # label → color mapping (see build_color_map())
     # tour playback
-    tour_by="dimensions", # "dimensions" | "pca" | "parameter"
-    tour_position=0.0,    # 0–1 position along the tour
-    tour_playing=False,   # auto-play on load
-    tour_speed=1.0,       # playback speed multiplier
+    tour_by="dimensions",  # "dimensions" | "pca" | "parameter"
+    tour_position=0.0,  # 0–1 position along the tour
+    tour_playing=False,  # auto-play on load
+    tour_speed=1.0,  # playback speed multiplier
     tour_direction="forward",  # "forward" | "backward"
-    tour_slider_spacing="equal",     # "equal" | "geodesic"
-    tour_slider_visibility="visible", # "visible" | "subtle" | "hidden"
-    tour_dimensions=[],   # explicit column names for the tour
+    tour_slider_spacing="equal",  # "equal" | "geodesic"
+    tour_slider_visibility="visible",  # "visible" | "subtle" | "hidden"
+    tour_dimensions=[],  # explicit column names for the tour
     # camera
     camera_pan_x=0.0,
     camera_pan_y=0.0,
-    camera_zoom=1/1.5,
-    centering="midrange", # "midrange" | "mean"
+    camera_zoom=1 / 1.5,
+    centering="midrange",  # "midrange" | "mean"
     # mode & appearance
-    tour_traversal="guided",   # "guided" | "manual" | "grand"
-    show_legend=True,     # show/hide color legend
-    show_axes=False,      # show/hide the axis biplot in guided mode
-    theme_mode="dark",    # "light" | "dark" | "system"
+    tour_traversal="guided",  # "guided" | "manual" | "grand"
+    show_legend=True,  # show/hide color legend
+    show_axes=False,  # show/hide the axis biplot in guided mode
+    theme_mode="dark",  # "light" | "dark" | "system"
 )
 ```
 
@@ -84,11 +84,11 @@ can be read, set, and observed live from the notebook.
 
 ```py
 w = dtour.Widget(data=X, tour=tour)
-w.set_data(df)                    # load new data
-w.set_tour(tour)                  # set tour keyframes
-w.set_metrics(metrics)            # display radial quality charts
-w.select([0, 1, 2])              # select points by index
-w.clear_selection()               # clear selection
+w.set_data(df)  # load new data
+w.set_tour(tour)  # set tour keyframes
+w.set_metrics(metrics)  # display radial quality charts
+w.select([0, 1, 2])  # select points by index
+w.clear_selection()  # clear selection
 ```
 
 ## Tour computation
@@ -98,15 +98,15 @@ dtour ships with two tour generators:
 ```py
 # PCA-based: cycles through consecutive pairs of principal components
 tour = dtour.little_tour(
-    X,                    # (n_samples, n_features) array or DataFrame
-    n_components=None,    # defaults to min(n_features, 10)
+    X,  # (n_samples, n_features) array or DataFrame
+    n_components=None,  # defaults to min(n_features, 10)
 )
 
 # UMAP + PCA: reduce to n_components with UMAP first (pip install dtour[umap])
 tour = dtour.umap_little_tour(
     X,
     n_components=10,
-    umap_kwargs=None,     # extra kwargs passed to umap.UMAP
+    umap_kwargs=None,  # extra kwargs passed to umap.UMAP
 )
 ```
 
@@ -118,12 +118,12 @@ Compute per-keyframe quality scores and display them as radial bar charts on the
 
 ```py
 metrics = dtour.compute_metrics(
-    X,                    # (n_samples, n_features) float32
+    X,  # (n_samples, n_features) float32
     keyframes=tour.keyframes,  # from TourResult
-    labels=None,          # cluster/class labels for supervised metrics
-    metrics=None,         # list of metric names; defaults to ["silhouette", "trustworthiness"]
-    k=7,                  # neighbors for neighborhood-based metrics
-    subsample=None,       # int, per-metric dict, or None for built-in defaults
+    labels=None,  # cluster/class labels for supervised metrics
+    metrics=None,  # list of metric names; defaults to ["silhouette", "trustworthiness"]
+    k=7,  # neighbors for neighborhood-based metrics
+    subsample=None,  # int, per-metric dict, or None for built-in defaults
     exclude_labels=None,  # label values to exclude from label-based metrics
 )
 
@@ -140,8 +140,8 @@ Build a label → color mapping that matches the engine's auto-assignment:
 ```py
 cmap = dtour.build_color_map(
     labels=sorted_unique_labels,  # same order the engine sees
-    theme=None,                   # "light" | "dark" | None (theme-aware dicts)
-    overrides=None,               # per-label color overrides
+    theme=None,  # "light" | "dark" | None (theme-aware dicts)
+    overrides=None,  # per-label color overrides
 )
 dtour.Widget(data=df, point_color_by="cluster", color_map=cmap)
 ```

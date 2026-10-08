@@ -48,6 +48,12 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - chore: remove the dev-only warning about `views.length` differing from `previewCount`, which predefined tours no longer need
 - chore: add a preview-fit regression check (`pnpm --filter @dtour/viewer check:preview-fit`) and run it in CI
 
+### webapp
+
+- feat: example buttons show a preview video of their dataset that loops while the button is hovered or focused. In light mode the video is inverted with its hues kept
+- feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
+- fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
+
 ## v0.4.4
 
 ### python

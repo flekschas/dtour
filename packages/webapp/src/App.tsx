@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import 'plyr-react/plyr.css';
+import type { SyntheticEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
@@ -29,6 +30,9 @@ type ExampleDataset = {
   numPoints: string;
   numDims: string;
   size?: string;
+  // File name (without extension) of the looping preview video under
+  // `example-previews/`, shown behind the example button.
+  preview: string;
   tourDescription?: string;
   // Default color encoding for examples whose data can't embed a dtour spec
   // (e.g. generated Arrow tables). Applied on first load; overridden by any
@@ -44,6 +48,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'generate',
     worker: 'gaussian-blobs',
     label: 'Gaussian Blobs',
+    preview: 'gaussian-blobs',
     fileName: 'gaussian-blobs-5d.arrow',
     numPoints: '500K',
     numDims: '5',
@@ -55,6 +60,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'generate',
     worker: 'linked-rings',
     label: 'Linked Rings',
+    preview: 'linked-rings',
     fileName: 'linked-rings-4d.arrow',
     numPoints: '500K',
     numDims: '4',
@@ -66,6 +72,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'generate',
     worker: 'lorenz',
     label: 'Lorenz Attractor',
+    preview: 'lorenz-attractor',
     fileName: 'lorenz-stenflo-1m.arrow',
     numPoints: '1M',
     numDims: '4',
@@ -75,6 +82,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Fashion MNIST',
+    preview: 'fashion-mnist',
     fileName: 'fashion-mnist-attraction-repulsion-tour.pq',
     url: `${REMOTE}/fashion-mnist-attraction-repulsion-tour.pq`,
     numPoints: '70K',
@@ -86,6 +94,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'News Headlines',
+    preview: 'news-headlines',
     fileName: 'huffpost-news-embeddings-umap-dense-supervised-4d.pq',
     url: `${REMOTE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
     numPoints: '204K',
@@ -97,6 +106,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Single Cell Proteomics',
+    preview: 'single-cell-proteomics',
     fileName: 'mair-2022-tumor-le-fisher-tour-markers.pq',
     url: `${REMOTE}/mair-2022-tumor-le-fisher-tour-markers.pq`,
     numPoints: '345K',
@@ -108,6 +118,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Single Cell RNA-seq',
+    preview: 'single-cell-rna-seq',
     fileName: 'lamanno2021-pca-tour.pq',
     url: `${REMOTE}/lamanno2021-pca-tour.pq`,
     numPoints: '276K',
@@ -119,6 +130,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Image Caption CLIP',
+    preview: 'image-caption-clip',
     fileName: 'sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq',
     url: `${REMOTE}/sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq`,
     numPoints: '49K',
@@ -130,6 +142,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'arXiv papers',
+    preview: 'arxiv-papers',
     fileName: 'arxiv-sequential-embedding-model-tour.pq',
     url: `${REMOTE}/arxiv-sequential-embedding-model-tour.pq`,
     numPoints: '3M',
@@ -148,6 +161,52 @@ const DATASET_SLUGS: Record<string, number> = {
   'gaussian-blobs': 4,
   'linked-rings': 5,
 };
+
+// Example buttons play their preview video while hovered or focused
+function playPreview(event: SyntheticEvent<HTMLElement>) {
+  // play() rejects when a pause() interrupts it, which is expected here
+  event.currentTarget
+    .querySelector('video')
+    ?.play()
+    .catch(() => {});
+}
+
+function pausePreview(event: SyntheticEvent<HTMLElement>) {
+  event.currentTarget.querySelector('video')?.pause();
+}
+
+const ExampleButtonContent = ({
+  example,
+  showPreview,
+}: {
+  example: ExampleDataset;
+  showPreview: boolean;
+}) => (
+  <>
+    {showPreview && (
+      // The videos have a black background, so the light theme inverts their
+      // lightness and rotates the hues back
+      <video
+        className="absolute inset-0 size-full object-cover opacity-30 transition-opacity group-hover:opacity-80 group-focus-visible:opacity-80 pointer-events-none in-[.dtour-light]:invert in-[.dtour-light]:hue-rotate-180"
+        src={`${REMOTE}/example-previews/${example.preview}.webm`}
+        preload="metadata"
+        muted
+        loop
+        playsInline
+        aria-hidden
+      />
+    )}
+    <span className="relative block text-xs min-[120rem]:text-sm text-dtour-text/70 truncate">
+      {example.label}
+    </span>
+    <span className="relative flex justify-between text-[10px] text-dtour-text-muted/50 mt-1 min-[90rem]:mt-2 min-[100rem]:mt-3 min-[120rem]:mt-6">
+      <span>
+        {example.numPoints} &times; {example.numDims}D
+      </span>
+      {example.size && <span>{example.size}</span>}
+    </span>
+  </>
+);
 
 const THEME_STORAGE_KEY = 'dtour-theme-mode';
 const SPEC_STORAGE_PREFIX = 'dtour-spec:';
@@ -273,6 +332,7 @@ const App = () => {
   }, []);
 
   const resolvedTheme = themeMode === 'system' ? systemTheme : themeMode;
+  const showPreviews = !prefersReducedMotion;
 
   // Close home/video modal on Escape
   useEffect(() => {
@@ -615,12 +675,12 @@ const App = () => {
                 or try
               </motion.span>
               {/* 4. Example grid */}
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mt-3 w-full max-w-lg pointer-events-auto">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
                 {EXAMPLES.map((example, i) => (
                   <motion.button
                     key={example.fileName}
                     type="button"
-                    className="w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                    className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{
@@ -629,16 +689,12 @@ const App = () => {
                       ease: 'easeOut',
                     }}
                     onClick={() => loadExample(example)}
+                    onPointerEnter={playPreview}
+                    onPointerLeave={pausePreview}
+                    onFocus={playPreview}
+                    onBlur={pausePreview}
                   >
-                    <span className="block text-xs text-dtour-text/70 truncate">
-                      {example.label}
-                    </span>
-                    <span className="flex justify-between text-[10px] text-dtour-text-muted/50 mt-1">
-                      <span>
-                        {example.numPoints} &times; {example.numDims}D
-                      </span>
-                      {example.size && <span>{example.size}</span>}
-                    </span>
+                    <ExampleButtonContent example={example} showPreview={showPreviews} />
                   </motion.button>
                 ))}
               </div>
@@ -752,7 +808,7 @@ const App = () => {
                 <>
                   <Button
                     variant="ghost"
-                    className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                    className="w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
                     onClick={() => inputRef.current?.click()}
                   >
                     <UploadSimpleIcon size={36} />
@@ -761,26 +817,22 @@ const App = () => {
                     </span>
                   </Button>
                   <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-4 mt-3 w-full max-w-lg pointer-events-auto">
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
                     {EXAMPLES.map((example) => (
                       <button
                         key={example.fileName}
                         type="button"
-                        className="w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                        className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
                         onClick={() => {
                           setHomeOpen(false);
                           loadExample(example);
                         }}
+                        onPointerEnter={playPreview}
+                        onPointerLeave={pausePreview}
+                        onFocus={playPreview}
+                        onBlur={pausePreview}
                       >
-                        <span className="block text-xs text-dtour-text/70 truncate">
-                          {example.label}
-                        </span>
-                        <span className="flex justify-between text-[10px] text-dtour-text-muted/50 mt-1">
-                          <span>
-                            {example.numPoints} &times; {example.numDims}D
-                          </span>
-                          {example.size && <span>{example.size}</span>}
-                        </span>
+                        <ExampleButtonContent example={example} showPreview={showPreviews} />
                       </button>
                     ))}
                   </div>
