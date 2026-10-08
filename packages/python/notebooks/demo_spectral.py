@@ -45,7 +45,7 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     w
     return (le_df,)
@@ -74,13 +74,13 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
     signed_w = dtour.Widget(
         data=signed_df,
         tour=signed_tour,
-        preview_count=min(8, signed_tour.n_views),
+        preview_count=min(8, signed_tour.n_keyframes),
         preview_size="small",
         point_color_by="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     signed_w
     return (signed_df,)
@@ -271,7 +271,7 @@ def _(cache_dir, dtour, phenotype_colors, signed_df, signed_tour):
     signed_json = dtour.build_dtour_metadata(
         point_color_by="phenotypes",
         tour_by="dimensions",
-        preview_count=min(8, signed_tour.n_views),
+        preview_count=min(8, signed_tour.n_keyframes),
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=signed_tour,
@@ -330,13 +330,13 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
     fisher_w = dtour.Widget(
         data=fisher_df,
         tour=fisher_tour,
-        preview_count=min(8, fisher_tour.n_views),
+        preview_count=min(8, fisher_tour.n_keyframes),
         preview_size="small",
         point_color_by="phenotypes",
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     fisher_w
     return (fisher_df,)
@@ -356,8 +356,8 @@ def _(
     fisher_json = dtour.build_dtour_metadata(
         point_color_by="phenotypes",
         tour_by="dimensions",
-        preview_count=min(8, fisher_tour.n_views),
-        preview_scale=0.5,
+        preview_count=min(8, fisher_tour.n_keyframes),
+        preview_size="small",
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=fisher_tour,
@@ -379,8 +379,8 @@ def _(
     fisher_markers_json = dtour.build_dtour_metadata(
         point_color_by="phenotypes",
         tour_by="dimensions",
-        preview_count=min(8, fisher_tour.n_views),
-        preview_scale=0.5,
+        preview_count=min(8, fisher_tour.n_keyframes),
+        preview_size="small",
         camera_zoom=0.5,
         point_color_map=phenotype_colors,
         tour=fisher_tour,

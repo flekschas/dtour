@@ -9,8 +9,9 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import KW_ONLY, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -23,13 +24,16 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
 
+def _warn_renamed(old: str, new: str) -> None:
+    warnings.warn(f"{old} is deprecated; use {new} instead.", DeprecationWarning, stacklevel=3)
+
+
 @dataclass
 class TourResult:
     """Output of a tour computation.
 
     Attributes:
-        views: List of projection (basis) matrices, each shape ``(p, 2)`` float32.
-        n_views: Number of keyframes.
+        keyframes: List of projection (basis) matrices, each shape ``(p, 2)`` float32.
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
@@ -46,8 +50,9 @@ class TourResult:
             ``{secondary}``, and ``{relation}`` placeholders.
     """
 
-    views: list[np.ndarray]
-    n_views: int
+    keyframes: list[np.ndarray]
+    # Keyword-only, so positional arguments cannot bind to the wrong fields
+    _: KW_ONLY
     n_dims: int
     explained_variance_ratio: list[float] = field(default_factory=list)
     embedding: np.ndarray | None = None
@@ -59,13 +64,41 @@ class TourResult:
     keyframe_descriptions: list[str] | str | None = None
 
     @property
-    def views_raw(self) -> bytes:
-        """Raw float32 bytes of all view matrices (for widget transfer).
+    def n_keyframes(self) -> int:
+        """Number of keyframes."""
+        return len(self.keyframes)
 
-        Layout: ``n_views`` contiguous blocks of ``p * 2`` float32 values,
+    @property
+    def keyframes_raw(self) -> bytes:
+        """Raw float32 bytes of all keyframe bases (for widget transfer).
+
+        Layout: ``n_keyframes`` contiguous blocks of ``p * 2`` float32 values,
         each in column-major order ``[x0 .. xp-1, y0 .. yp-1]``.
         """
-        return np.stack([b.flatten("F") for b in self.views]).astype(np.float32).tobytes()
+        return np.stack([b.flatten("F") for b in self.keyframes]).astype(np.float32).tobytes()
+
+    @property
+    def views(self) -> list[np.ndarray]:
+        """Deprecated alias of :attr:`keyframes`."""
+        _warn_renamed("TourResult.views", "TourResult.keyframes")
+        return self.keyframes
+
+    @views.setter
+    def views(self, keyframes: list[np.ndarray]) -> None:
+        _warn_renamed("TourResult.views", "TourResult.keyframes")
+        self.keyframes = keyframes
+
+    @property
+    def n_views(self) -> int:
+        """Deprecated alias of :attr:`n_keyframes`."""
+        _warn_renamed("TourResult.n_views", "TourResult.n_keyframes")
+        return self.n_keyframes
+
+    @property
+    def views_raw(self) -> bytes:
+        """Deprecated alias of :attr:`keyframes_raw`."""
+        _warn_renamed("TourResult.views_raw", "TourResult.keyframes_raw")
+        return self.keyframes_raw
 
     def save(self, path: str | Path) -> None:
         """Save the tour to a ``.npz`` file for later reuse.
@@ -74,13 +107,14 @@ class TourResult:
         the tour can be restored without recomputation.
         """
         path = Path(path)
+        # The keyframes are stored as `n_views` and `view_<index>`.
         arrays: dict[str, np.ndarray] = {
-            "n_views": np.array([self.n_views]),
+            "n_views": np.array([self.n_keyframes]),
             "n_dims": np.array([self.n_dims]),
             "explained_variance_ratio": np.asarray(self.explained_variance_ratio, dtype=np.float64),
         }
-        for i, v in enumerate(self.views):
-            arrays[f"view_{i}"] = v
+        for i, keyframe in enumerate(self.keyframes):
+            arrays[f"view_{i}"] = keyframe
         if self.embedding is not None:
             arrays["embedding"] = self.embedding
         if self.feature_loadings is not None:
@@ -125,20 +159,20 @@ class TourResult:
             raise ValueError("No embedded tour found in Parquet metadata")
 
         t = config["tour"]
-        n_views = t["nViews"]
+        n_keyframes = t["nViews"]
         dimensions: list[str] | None = t.get("dimensions")
 
         raw = base64.b64decode(t["views"])
         floats = np.frombuffer(raw, dtype=np.float32)
 
-        # Derive n_dims from the actual binary data (each view is n_dims x 2
+        # Derive n_dims from the actual binary data (each keyframe is n_dims x 2
         # column-major floats). The metadata "nDims" field can be unreliable
         # when feature_names differs from the tour dimensionality.
-        n_dims = len(floats) // (n_views * 2)
+        n_dims = len(floats) // (n_keyframes * 2)
         stride = n_dims * 2
-        views = [
+        keyframes = [
             floats[i * stride : (i + 1) * stride].reshape(n_dims, 2, order="F")
-            for i in range(n_views)
+            for i in range(n_keyframes)
         ]
 
         family = t.get("family")
@@ -146,8 +180,7 @@ class TourResult:
         keyframe_descriptions = t.get("keyframeDescriptions")
 
         return cls(
-            views=views,
-            n_views=n_views,
+            keyframes=keyframes,
             n_dims=n_dims,
             feature_names=dimensions,
             tour_family=family,
@@ -159,9 +192,9 @@ class TourResult:
     def load(cls, path: str | Path) -> TourResult:
         """Load a tour previously saved with :meth:`save`."""
         data = np.load(path)
-        n_views = int(data["n_views"][0])
+        n_keyframes = int(data["n_views"][0])
         n_dims = int(data["n_dims"][0])
-        views = [data[f"view_{i}"].astype(np.float32) for i in range(n_views)]
+        keyframes = [data[f"view_{i}"].astype(np.float32) for i in range(n_keyframes)]
         evr_key = "explained_variance_ratio"
         evr = data[evr_key].tolist() if evr_key in data else []
         embedding = data["embedding"] if "embedding" in data else None
@@ -181,8 +214,7 @@ class TourResult:
         )
 
         return cls(
-            views=views,
-            n_views=n_views,
+            keyframes=keyframes,
             n_dims=n_dims,
             explained_variance_ratio=evr,
             embedding=embedding,
@@ -375,17 +407,16 @@ def little_tour(
     components = pca.components_  # (k, p)
 
     # Build cyclic pairs: (0,1), (1,2), ..., (k-2, k-1), (k-1, 0)
-    views: list[np.ndarray] = []
+    keyframes: list[np.ndarray] = []
     for i in range(k):
         a = components[i]  # (p,)
         b = components[(i + 1) % k]  # (p,)
         # Column-major px2: [a0, a1, ..., ap-1, b0, b1, ..., bp-1]
         basis = np.stack([a, b], axis=1).astype(np.float32)  # (p, 2)
-        views.append(basis)
+        keyframes.append(basis)
 
     return TourResult(
-        views=views,
-        n_views=k,
+        keyframes=keyframes,
         n_dims=n_features,
         explained_variance_ratio=pca.explained_variance_ratio_.tolist(),
     )
@@ -854,29 +885,29 @@ def _circular_basis(
     return basis.astype(np.float32)
 
 
-def _cumulative_views(
+def _cumulative_keyframes(
     n_dims: int,
     embedding: np.ndarray,
     n_remove: int = 0,
 ) -> tuple[list[np.ndarray], np.ndarray]:
-    """Build cumulative views via uniform circular projection.
+    """Build cumulative keyframes via uniform circular projection.
 
-    **Build-up phase** (n_dims - 1 views): start with the identity pair
+    **Build-up phase** (n_dims - 1 keyframes): start with the identity pair
     (LE0 vs LE1), then add one eigenvector at a time using full-circle
     ``2π·i/k`` angles until all *n_dims* are active.
 
-    **Removal phase** (n_remove views, optional): progressively zero out
+    **Removal phase** (n_remove keyframes, optional): progressively zero out
     the lowest-frequency eigenvectors, isolating high-frequency local
     structure — a spectral high-pass filter.
 
-    Returns ``(views, normalized_embedding)``.
+    Returns ``(keyframes, normalized_embedding)``.
     """
     # Normalize to unit variance so all eigenvectors contribute equally
     stds = embedding.std(axis=0)
     stds[stds == 0] = 1
     emb_norm = (embedding / stds).astype(np.float32)
 
-    views: list[np.ndarray] = []
+    keyframes: list[np.ndarray] = []
 
     # Build-up phase: k=2 (identity pair), k=3..n_dims (circular)
     for k in range(2, n_dims + 1):
@@ -884,22 +915,22 @@ def _cumulative_views(
             basis = np.zeros((n_dims, 2), dtype=np.float32)
             basis[0, 0] = 1.0
             basis[1, 1] = 1.0
-            views.append(basis)
+            keyframes.append(basis)
         else:
-            views.append(_circular_basis(n_dims, active=range(k)))
+            keyframes.append(_circular_basis(n_dims, active=range(k)))
 
     # Removal phase: strip low-frequency eigenvectors one at a time
     for j in range(1, n_remove + 1):
         remaining = range(j, n_dims)
         if len(remaining) < 2:
             break
-        views.append(_circular_basis(n_dims, active=remaining))
+        keyframes.append(_circular_basis(n_dims, active=remaining))
 
-    return views, emb_norm
+    return keyframes, emb_norm
 
 
 def _compute_frame_summaries(
-    views: list[np.ndarray],
+    keyframes: list[np.ndarray],
     loadings: np.ndarray,
     feature_names: list[str],
     tour_mode: str | None = None,
@@ -919,7 +950,7 @@ def _compute_frame_summaries(
 
     summaries: list[str] = []
     n_eigenvectors = loadings.shape[0]
-    for i, _basis in enumerate(views):
+    for i, _basis in enumerate(keyframes):
         # In the build-up phase (frames 0..n_eigenvectors-2), each frame
         # adds eigenvector i+1.  Frame 0 is the identity pair (ev0, ev1),
         # so we report eigenvector 1 for it.  Clamp to valid range.
@@ -988,7 +1019,7 @@ def le_tour(
     smallest non-trivial eigenvectors (spectral embedding / Laplacian
     eigenmaps), then builds a cumulative tour through the eigenvector space.
 
-    Each view progressively incorporates one more eigenvector through a
+    Each keyframe progressively incorporates one more eigenvector through a
     fixed circular projection (global -> local accumulation).  Eigenvectors
     are variance-normalised so each contributes equally.
 
@@ -1167,21 +1198,20 @@ def le_tour(
                     normalize_alpha=normalize_alpha,
                 )
 
-        views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
+        keyframes, emb_for_tour = _cumulative_keyframes(n_components, embedding, n_remove)
         loadings, r2 = _compute_feature_loadings(arr, embedding)
 
         frame_summaries = None
         if feature_names is not None:
             frame_summaries = _compute_frame_summaries(
-                views,
+                keyframes,
                 loadings,
                 feature_names,
                 tour_mode=tour_mode,
             )
 
         result = TourResult(
-            views=views,
-            n_views=len(views),
+            keyframes=keyframes,
             n_dims=n_components,
         )
         result.embedding = emb_for_tour
@@ -1255,21 +1285,20 @@ def le_tour(
     else:
         embedding = _vanilla_embed(arr)
 
-    views, emb_for_tour = _cumulative_views(n_components, embedding, n_remove)
+    keyframes, emb_for_tour = _cumulative_keyframes(n_components, embedding, n_remove)
     loadings, r2 = _compute_feature_loadings(arr, embedding)
 
     frame_summaries = None
     if feature_names is not None:
         frame_summaries = _compute_frame_summaries(
-            views,
+            keyframes,
             loadings,
             feature_names,
             tour_mode=tour_mode,
         )
 
     result = TourResult(
-        views=views,
-        n_views=len(views),
+        keyframes=keyframes,
         n_dims=n_components,
     )
     result.embedding = emb_for_tour
@@ -1432,16 +1461,15 @@ def _pack_embedding_frames(
     stacked = np.hstack(aligned)  # (n, 2K)
     n_dims = 2 * n_frames
 
-    views: list[np.ndarray] = []
+    keyframes: list[np.ndarray] = []
     for i in range(n_frames):
         basis = np.zeros((n_dims, 2), dtype=np.float32)
         basis[2 * i, 0] = 1.0
         basis[2 * i + 1, 1] = 1.0
-        views.append(basis)
+        keyframes.append(basis)
 
     result = TourResult(
-        views=views,
-        n_views=n_frames,
+        keyframes=keyframes,
         n_dims=n_dims,
     )
     result.embedding = stacked

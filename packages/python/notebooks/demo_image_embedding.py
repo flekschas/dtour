@@ -219,7 +219,7 @@ def _(ImagesWidget, color_map, dtour, le_fisher_table):
         color_map=color_map,
         point_opacity=0.5,
         preview_size="small",
-        theme="light",
+        theme_mode="light",
         height=720,
     )
 
@@ -248,7 +248,7 @@ def _(color_map, df_4d, df_labels, dtour, pa, pd):
         point_opacity=0.5,
         tour_by="dimensions",
         preview_size="small",
-        theme="light",
+        theme_mode="light",
         height=720,
     )
     return (umap_widget,)

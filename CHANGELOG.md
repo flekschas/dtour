@@ -2,12 +2,30 @@
 
 ## Next
 
+### BREAKING CHANGES
+
+Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail in the gallery.
+
+- **DtourSpec**: `previewScale: 1 | 0.75 | 0.5` → `previewSize: 'auto' | 'small' | 'medium' | 'large'`, `showKeyframeNumbers: boolean` → `previewKeyframeNumbers: 'auto' | 'visible' | 'hidden'`, `showKeyframeLoadings: boolean` → `previewLabelContent: 'auto' | 'description' | 'loadings'`
+- **Atoms**: `showKeyframeNumbersAtom` → `previewKeyframeNumbersAtom`, `showKeyframeLoadingsAtom` → `previewLabelContentAtom`; `previewSizeAtom` is now exported; `selectedKeyframeAtom` is removed because the active preview now always follows the slider (`currentKeyframeAtom`)
+- **Component props**: `Dtour` and `DtourViewer` `views` → `keyframes`
+- **Viewer functions**: `createDefaultViews` → `createDefaultKeyframes`
+- **Python `TourResult`**: `views` → `keyframes`, `n_views` → `n_keyframes` (now a property), `views_raw` → `keyframes_raw`. The constructor takes `keyframes` as its only positional argument and no longer accepts `views` or `n_views`, e.g. `TourResult(keyframes, n_dims=5)`
+- **Python widget**: `show_keyframe_loadings` → `preview_label_content`, `theme` → `theme_mode` (matching the spec's `themeMode`); `preview_size` now also accepts `"auto"`, which is the new default
+- **Python `build_dtour_metadata` / `add_spec_to_parquet`**: `preview_scale` → `preview_size`, `show_keyframe_numbers` → `preview_keyframe_numbers`, `show_keyframe_loadings` → `preview_label_content`
+- **Python `compute_metrics`**: `views` → `keyframes`
+- **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`, except in the `TourResult` constructor. Saved tours (`.npz` and Parquet) keep their format.
+
 ### python
 
+- feat: add a read-only `Widget.tour_family` property
+- feat: add `preview_keyframe_numbers` and `preview_label_content` traitlets, so every preview setting is available from Python
+- feat: add a `preview_label_visibility` traitlet and raise the `preview_count` limit from 16 to 32. `set_tour()` accepts tours of any length; longer tours preview a sample of their keyframes
+- feat: add `tour_slider_spacing`, `tour_slider_visibility`, `min_point_size`, and `show_axes` traitlets, and the matching `build_dtour_metadata` arguments where missing
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
-- feat: add a read-only `Widget.tour_family` property
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
+- fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
 - chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
@@ -16,6 +34,19 @@
 ### scatter
 
 - fix: treat string columns whose first value is null as categorical
+
+### viewer
+
+- feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)
+- feat: show up to 32 previews. Layouts for up to 16 previews are unchanged; larger counts use a wide perimeter grid with 4–6 rows
+- feat: `CircularSlider` and `RadialChart` accept a `startAngle`, so both line up with the gallery that is actually shown
+- feat: add `previewLabelVisibility: 'auto' | 'visible' | 'interactive' | 'hidden'` and a matching "Labels" toolbar control. `'interactive'` shows the label inside the preview on hover and for the current keyframe, so labels no longer take space from the previews. `'auto'` uses `'visible'` up to 16 previews and `'interactive'` above
+- fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the 32 keyframes most evenly spaced along the tour (by normalized geodesic distance), always including the first and last, and the slider keeps a tick for every keyframe
+- fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
+- fix: show fewer previews instead of unusably small ones in narrow or short containers, such as phones. Each preview stays at least 24px, the shown keyframes are sampled like for long tours, and the gallery hides when not even two previews fit
+- fix: the active preview always follows the slider. Clicking a preview moves the slider to it but no longer keeps it highlighted after scrubbing elsewhere
+- chore: remove the dev-only warning about `views.length` differing from `previewCount`, which predefined tours no longer need
+- chore: add a preview-fit regression check (`pnpm --filter @dtour/viewer check:preview-fit`) and run it in CI
 
 ## v0.4.4
 

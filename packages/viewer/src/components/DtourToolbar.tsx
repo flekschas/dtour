@@ -21,9 +21,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
-import type { PreviewScaleSetting } from '../layout/gallery-positions.ts';
+import { MAX_PREVIEW_COUNT, type PreviewSizeSetting } from '../layout/gallery-positions.ts';
 import { usePortalContainer } from '../portal-container.tsx';
-import type { PreviewCount } from '../spec.ts';
 import { DTOUR_DEFAULTS } from '../spec.ts';
 import {
   activeColumnsAtom,
@@ -44,13 +43,16 @@ import {
   pointOpacityAtom,
   predefinedTourAtom,
   previewCountAtom,
-  previewScaleAtom,
-  resolvedPreviewScaleAtom,
+  previewKeyframeNumbersAtom,
+  previewLabelContentAtom,
+  previewLabelVisibilityAtom,
+  previewSizeAtom,
+  resolvedPreviewKeyframeNumbersAtom,
+  resolvedPreviewLabelContentAtom,
+  resolvedPreviewLabelVisibilityAtom,
+  resolvedPreviewSizeAtom,
   resumeGuidedAtom,
-  selectedKeyframeAtom,
   showAxesAtom,
-  showKeyframeLoadingsAtom,
-  showKeyframeNumbersAtom,
   showLegendAtom,
   showTourDescriptionAtom,
   sliderVisibilityAtom,
@@ -103,24 +105,32 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const resumeGuided = useAtomValue(resumeGuidedAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
-  const setSelectedKeyframe = useSetAtom(selectedKeyframeAtom);
   const [pointColorBy, setPointColorBy] = useAtom(pointColorByAtom);
   const [activeColumns, setActiveColumns] = useAtom(activeColumnsAtom);
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
-  const [previewScale, setPreviewScale] = useAtom(previewScaleAtom);
-  const resolvedPreviewScale = useAtomValue(resolvedPreviewScaleAtom);
+  const [previewSize, setPreviewSize] = useAtom(previewSizeAtom);
+  const resolvedPreviewSize = useAtomValue(resolvedPreviewSizeAtom);
+  const [previewLabelVisibility, setPreviewLabelVisibility] = useAtom(previewLabelVisibilityAtom);
+  const resolvedPreviewLabelVisibility = useAtomValue(resolvedPreviewLabelVisibilityAtom);
+  const hasPreviewLabels = useAtomValue(resolvedPreviewLabelContentAtom) !== null;
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
   const [showAxes, setShowAxes] = useAtom(showAxesAtom);
-  const [showKeyframeNumbers, setShowKeyframeNumbers] = useAtom(showKeyframeNumbersAtom);
-  const [showKeyframeLoadings, setShowKeyframeLoadings] = useAtom(showKeyframeLoadingsAtom);
+  const setPreviewKeyframeNumbers = useSetAtom(previewKeyframeNumbersAtom);
+  const showKeyframeNumbers = useAtomValue(resolvedPreviewKeyframeNumbersAtom) === 'visible';
+  const toggleKeyframeNumbers = () =>
+    setPreviewKeyframeNumbers(showKeyframeNumbers ? 'hidden' : 'visible');
+  const [previewLabelContent, setPreviewLabelContent] = useAtom(previewLabelContentAtom);
+  const showKeyframeLoadings = previewLabelContent !== 'description';
+  const toggleKeyframeLoadings = () =>
+    setPreviewLabelContent(showKeyframeLoadings ? 'description' : 'auto');
   const hasKeyframeLoadings = useAtomValue(keyframeLoadingsAtom) !== null;
   const hasTourDescription = useAtomValue(tourDescriptionAtom) !== null;
   const [tourBy, setTourBy] = useAtom(tourByAtom);
   const predefinedTour = useAtomValue(predefinedTourAtom);
   const isPredefinedTour = predefinedTour !== null;
-  const predefinedViewCount = predefinedTour?.keyframeCount ?? null;
+  const predefinedKeyframeCount = predefinedTour?.keyframeCount ?? null;
   const [tourSliderSpacing, setTourSliderSpacing] = useAtom(tourSliderSpacingAtom);
   const [showTourDescription, setShowTourDescription] = useAtom(showTourDescriptionAtom);
   const [sliderVisibility, setSliderVisibility] = useAtom(sliderVisibilityAtom);
@@ -156,9 +166,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const handlePlayPause = useCallback(() => {
     cancelAnimation();
     resumeGuided?.fn(300);
-    if (!playing) setSelectedKeyframe(null);
     setPlaying((p) => !p);
-  }, [playing, setPlaying, resumeGuided, setSelectedKeyframe, cancelAnimation]);
+  }, [setPlaying, resumeGuided, cancelAnimation]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -710,13 +719,13 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     className="gap-4"
                     onSelect={(e) => {
                       e.preventDefault();
-                      setShowKeyframeLoadings((v) => !v);
+                      toggleKeyframeLoadings();
                     }}
                   >
                     <span className="flex-1 text-xs">Feature correlations</span>
                     <Checkbox
                       checked={showKeyframeLoadings}
-                      onCheckedChange={() => setShowKeyframeLoadings((v) => !v)}
+                      onCheckedChange={toggleKeyframeLoadings}
                     />
                   </DropdownMenuItem>
                 )}
@@ -751,7 +760,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <div className="flex w-full items-center justify-between">
                     <span className="text-xs">Count</span>
                     <span className="text-xs font-medium text-dtour-highlight">
-                      {isPredefinedTour ? predefinedViewCount : previewCount}
+                      {isPredefinedTour ? predefinedKeyframeCount : previewCount}
                     </span>
                   </div>
                   {!isPredefinedTour && (
@@ -775,35 +784,60 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                   <div className="flex w-full items-center justify-between">
                     <span className="text-xs">Size</span>
                     <span className="text-xs font-medium text-dtour-highlight">
-                      {previewScale === 'auto'
-                        ? `Auto · ${SCALE_LABELS[String(resolvedPreviewScale)]}`
-                        : (SCALE_LABELS[String(previewScale)] ?? previewScale)}
+                      {previewSize === 'auto'
+                        ? `Auto · ${SIZE_LABELS[resolvedPreviewSize]}`
+                        : SIZE_LABELS[previewSize]}
                     </span>
                   </div>
                   <Slider
                     min={0}
-                    max={PREVIEW_SCALE_STEPS.length - 1}
+                    max={PREVIEW_SIZE_STEPS.length - 1}
                     step={1}
-                    ticks={PREVIEW_SCALE_STEPS.length}
-                    value={[PREVIEW_SCALE_STEPS.indexOf(previewScale)]}
+                    ticks={PREVIEW_SIZE_STEPS.length}
+                    value={[PREVIEW_SIZE_STEPS.indexOf(previewSize)]}
                     onValueChange={([step]: number[]) => {
-                      if (step !== undefined) setPreviewScale(PREVIEW_SCALE_STEPS[step]!);
+                      if (step !== undefined) setPreviewSize(PREVIEW_SIZE_STEPS[step]!);
                     }}
                     className="w-full"
                   />
                 </DropdownMenuItem>
+                {hasPreviewLabels && (
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-1"
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <span className="text-xs">Labels</span>
+                      <span className="text-xs font-medium text-dtour-highlight">
+                        {previewLabelVisibility === 'auto'
+                          ? `Auto · ${LABEL_VISIBILITY_LABELS[resolvedPreviewLabelVisibility]}`
+                          : LABEL_VISIBILITY_LABELS[previewLabelVisibility]}
+                      </span>
+                    </div>
+                    <Slider
+                      min={0}
+                      max={LABEL_VISIBILITY_STEPS.length - 1}
+                      step={1}
+                      ticks={LABEL_VISIBILITY_STEPS.length}
+                      value={[LABEL_VISIBILITY_STEPS.indexOf(previewLabelVisibility)]}
+                      onValueChange={([step]: number[]) => {
+                        if (step !== undefined) {
+                          setPreviewLabelVisibility(LABEL_VISIBILITY_STEPS[step]!);
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   className="gap-4"
                   onSelect={(e) => {
                     e.preventDefault();
-                    setShowKeyframeNumbers((v) => !v);
+                    toggleKeyframeNumbers();
                   }}
                 >
                   <span className="flex-1 text-xs">Show Numbers</span>
-                  <Checkbox
-                    checked={showKeyframeNumbers}
-                    onCheckedChange={() => setShowKeyframeNumbers((v) => !v)}
-                  />
+                  <Checkbox checked={showKeyframeNumbers} onCheckedChange={toggleKeyframeNumbers} />
                 </DropdownMenuItem>
               </>
             )}
@@ -1159,9 +1193,21 @@ const SLIDER_VIS_LABELS: Record<string, string> = {
   hidden: 'Hidden',
 };
 
-const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const PREVIEW_SCALE_STEPS: PreviewScaleSetting[] = ['auto', 0.5, 0.75, 1];
-const SCALE_LABELS: Record<string, string> = { auto: 'Auto', 1: 'L', 0.75: 'M', 0.5: 'S' };
+const PREVIEW_COUNT_STEPS = Array.from({ length: MAX_PREVIEW_COUNT - 1 }, (_, i) => i + 2);
+const LABEL_VISIBILITY_STEPS = ['auto', 'hidden', 'interactive', 'visible'] as const;
+const LABEL_VISIBILITY_LABELS: Record<(typeof LABEL_VISIBILITY_STEPS)[number], string> = {
+  auto: 'Auto',
+  hidden: 'Hidden',
+  interactive: 'Hover',
+  visible: 'Visible',
+};
+const PREVIEW_SIZE_STEPS: PreviewSizeSetting[] = ['auto', 'small', 'medium', 'large'];
+const SIZE_LABELS: Record<PreviewSizeSetting, string> = {
+  auto: 'Auto',
+  small: 'S',
+  medium: 'M',
+  large: 'L',
+};
 
 // ---------------------------------------------------------------------------
 // Speed / distance step helpers

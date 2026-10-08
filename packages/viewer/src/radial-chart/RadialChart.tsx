@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { arcPath, keyframeAngle, rectBarPath } from './arc-path.ts';
+import { computeStartAngle } from '../layout/gallery-positions.ts';
+import { arcPath, rectBarPath } from './arc-path.ts';
 import type { ParsedTrack } from './types.ts';
-
-const START_DEG = -135;
 
 export type RadialChartProps = {
   tracks: ParsedTrack[];
   keyframeCount: number;
+  /** Angle of the first keyframe in SVG degrees. Defaults to the gallery layout for `keyframeCount` previews. */
+  startAngle?: number;
   /** SVG viewport size (same as selectorSize). */
   size: number;
   /** Inner radius = selector ring radius (selectorSize * 0.4). */
@@ -26,6 +27,7 @@ type HoverInfo = { label: string; value: number; x: number; y: number };
 export const RadialChart = ({
   tracks,
   keyframeCount,
+  startAngle,
   size,
   innerRadius,
   arcLengths,
@@ -56,16 +58,23 @@ export const RadialChart = ({
     });
   }, [tracks, innerRadius, stacked]);
 
+  // Must match the CircularSlider so bars line up with its keyframe ticks.
+  const startDeg = useMemo(
+    () => startAngle ?? computeStartAngle(keyframeCount),
+    [startAngle, keyframeCount],
+  );
+
   // Compute angle for keyframe index, respecting spacing mode.
   // In geodesic mode, bars sit at arc-length positions; in equal mode, uniform.
   const getAngle = useCallback(
     (index: number): number => {
-      if (spacingMode === 'geodesic' && arcLengths && index < arcLengths.length) {
-        return ((arcLengths[index]! * 360 + START_DEG) * Math.PI) / 180;
-      }
-      return keyframeAngle(index, keyframeCount);
+      const fraction =
+        spacingMode === 'geodesic' && arcLengths && index < arcLengths.length
+          ? arcLengths[index]!
+          : index / keyframeCount;
+      return ((fraction * 360 + startDeg) * Math.PI) / 180;
     },
-    [spacingMode, arcLengths, keyframeCount],
+    [spacingMode, arcLengths, keyframeCount, startDeg],
   );
 
   // Angular span for a segment from keyframe i to i+1

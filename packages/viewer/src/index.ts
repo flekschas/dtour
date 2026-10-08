@@ -10,6 +10,7 @@ export { Dtour } from './Dtour.tsx';
 export type { DtourViewerProps } from './DtourViewer.tsx';
 // Advanced composable API — for users who need granular control with their own Provider
 export { DtourViewer } from './DtourViewer.tsx';
+export { createDefaultKeyframes } from './keyframes.ts';
 // Portal container — for Shadow DOM isolation (e.g. anywidget/Marimo)
 export { PortalContainerContext } from './portal-container.tsx';
 export type { ParsedTrack, RadialChartProps, RadialTrackConfig } from './radial-chart/index.ts';
@@ -44,15 +45,14 @@ export {
   predefinedTourAtom,
   // Preview
   previewCountAtom,
+  previewKeyframeNumbersAtom,
+  previewLabelContentAtom,
+  previewLabelVisibilityAtom,
   previewPaddingAtom,
+  previewSizeAtom,
   resolvedThemeAtom,
-  selectedKeyframeAtom,
   // Axes
   showAxesAtom,
-  // Keyframe loadings & descriptions
-  showKeyframeLoadingsAtom,
-  // Keyframe numbers
-  showKeyframeNumbersAtom,
   // Legend
   showLegendAtom,
   // Slider visibility
@@ -69,4 +69,3 @@ export {
   // Tour traversal
   tourTraversalAtom,
 } from './state/atoms.ts';
-export { createDefaultViews } from './views.ts';

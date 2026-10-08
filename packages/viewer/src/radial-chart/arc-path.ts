@@ -1,13 +1,3 @@
-/** Angular start offset: 10:30 o'clock position (-135 degrees from +x axis). */
-const START_DEG = -135;
-
-/**
- * Center angle in radians for keyframe `index` out of `count` total keyframes.
- * Uses the same angular convention as CircularSlider (10:30 start, clockwise).
- */
-export const keyframeAngle = (index: number, count: number): number =>
-  (((index / count) * 360 + START_DEG) * Math.PI) / 180;
-
 /**
  * SVG `d` attribute for an annular sector (arc segment between two radii).
  *

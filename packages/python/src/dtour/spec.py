@@ -2,59 +2,62 @@
 
 The ``dtour`` key in Parquet key_value_metadata stores a JSON object with
 DtourSpec fields (camelCase), an optional ``pointColorMap``, and an optional
-``tour`` with base64-encoded Float32 view matrices.
+``tour`` with base64-encoded Float32 keyframe bases.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import warnings
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .tours import TourResult
 
-# ── Snake → Camel conversion ────────────────────────────────────────────
 
-_SNAKE_TO_CAMEL: dict[str, str] = {
-    "tour_by": "tourBy",
-    "tour_position": "tourPosition",
-    "tour_playing": "tourPlaying",
-    "tour_speed": "tourSpeed",
-    "tour_direction": "tourDirection",
-    "preview_count": "previewCount",
-    "preview_scale": "previewScale",
-    "preview_padding": "previewPadding",
-    "point_size": "pointSize",
-    "point_opacity": "pointOpacity",
-    "point_color": "pointColor",
-    "point_color_by": "pointColorBy",
-    "point_color_map": "pointColorMap",
-    "camera_pan_x": "cameraPanX",
-    "camera_pan_y": "cameraPanY",
-    "camera_zoom": "cameraZoom",
-    "tour_traversal": "tourTraversal",
-    "show_legend": "showLegend",
-    "show_axes": "showAxes",
-    "show_keyframe_numbers": "showKeyframeNumbers",
-    "show_keyframe_loadings": "showKeyframeLoadings",
-    "show_tour_description": "showTourDescription",
-    "tour_slider_spacing": "tourSliderSpacing",
-    "theme_mode": "themeMode",
-    "centering": "centering",
+def _to_camel(snake: str) -> str:
+    """camelCase form of a snake_case name, e.g. ``camera_pan_x`` → ``cameraPanX``."""
+    head, *rest = snake.split("_")
+    return head + "".join(part.capitalize() for part in rest)
+
+
+# Renamed keyword arguments: old name → new name and value.
+_LEGACY_SPEC_KWARGS: dict[str, tuple[str, Any]] = {
+    "preview_scale": (
+        "preview_size",
+        lambda v: {1: "large", 0.75: "medium", 0.5: "small"}.get(v, v),
+    ),
+    "show_keyframe_numbers": ("preview_keyframe_numbers", lambda v: "visible" if v else "hidden"),
+    "show_keyframe_loadings": ("preview_label_content", lambda v: "auto" if v else "description"),
 }
 
-_CAMEL_TO_SNAKE: dict[str, str] = {v: k for k, v in _SNAKE_TO_CAMEL.items()}
 
-_SPEC_KEYS = set(_SNAKE_TO_CAMEL.values())
+def _rename_legacy_kwargs(kwargs: dict[str, Any], stacklevel: int) -> dict[str, Any]:
+    """Map renamed keyword arguments to their new names, with a deprecation warning.
+
+    New names win over old ones. Unknown names pass through unchanged.
+    """
+    renamed = {k: v for k, v in kwargs.items() if k not in _LEGACY_SPEC_KWARGS}
+    for old, (new, to_new) in _LEGACY_SPEC_KWARGS.items():
+        if old not in kwargs:
+            continue
+        warnings.warn(
+            f"`{old}` is deprecated; use `{new}` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel + 1,
+        )
+        if renamed.get(new) is None:
+            renamed[new] = to_new(kwargs[old])
+    return renamed
 
 
 def _encode_tour(
     tour: TourResult,
     tour_dimensions: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Encode a TourResult as a JSON-serializable dict with base64 views."""
-    raw_bytes = tour.views_raw
+    """Encode a TourResult as a JSON-serializable dict with base64 keyframes."""
+    raw_bytes = tour.keyframes_raw
     b64 = base64.b64encode(raw_bytes).decode("ascii")
 
     dims = tour_dimensions or tour.feature_names
@@ -69,8 +72,9 @@ def _encode_tour(
     # nViews/nDims are only needed by the parser to decode the base64 blob.
     # nDims must match the basis matrix row count (tour.n_dims), NOT len(dims).
     # For sequential tours, n_dims = 2 * n_frames while dims lists the original features.
+    # The basis payload is stored as `nViews`, `nDims`, and `views`.
     result: dict[str, Any] = {
-        "nViews": tour.n_views,
+        "nViews": tour.n_keyframes,
         "nDims": tour.n_dims,
         "views": b64,
         "family": family,
@@ -87,7 +91,7 @@ def _encode_tour(
         loadings = tour.feature_loadings  # (n_components, n_features)
         n_eigenvectors = loadings.shape[0]
         keyframe_loadings: list[dict[str, list[Any]]] = []
-        for i in range(tour.n_views):
+        for i in range(tour.n_keyframes):
             ev_idx = min(i + 1, n_eigenvectors - 1)
             row = loadings[ev_idx]
             top_k = abs(row).argsort()[::-1][:2]
@@ -112,10 +116,14 @@ def build_dtour_metadata(
     tour_speed: float | None = None,
     tour_direction: str | None = None,
     preview_count: int | None = None,
-    preview_scale: float | None = None,
+    preview_size: str | None = None,
     preview_padding: float | None = None,
+    preview_keyframe_numbers: str | None = None,
+    preview_label_content: str | None = None,
+    preview_label_visibility: str | None = None,
     point_size: float | str | None = None,
     point_opacity: float | str | None = None,
+    min_point_size: float | None = None,
     point_color: list[float] | None = None,
     point_color_by: str | None = None,
     camera_pan_x: float | None = None,
@@ -124,15 +132,15 @@ def build_dtour_metadata(
     tour_traversal: str | None = None,
     show_legend: bool | None = None,
     show_axes: bool | None = None,
-    show_keyframe_numbers: bool | None = None,
-    show_keyframe_loadings: bool | None = None,
     show_tour_description: bool | None = None,
     tour_slider_spacing: str | None = None,
+    tour_slider_visibility: str | None = None,
     theme_mode: str | None = None,
     centering: str | None = None,
     point_color_map: dict[str, str] | None = None,
     tour_dimensions: list[str] | None = None,
     tour: TourResult | None = None,
+    **legacy_kwargs: Any,
 ) -> str:
     """Build a JSON string for the Parquet ``dtour`` key_value_metadata.
 
@@ -149,15 +157,27 @@ def build_dtour_metadata(
     tour_direction : str, optional
         ``"forward"`` or ``"backward"``.
     preview_count : int, optional
-        Number of gallery previews (2-16).
-    preview_scale : float, optional
-        Preview size (1, 0.75, or 0.5).
+        Number of gallery previews (2-32).
+    preview_size : str, optional
+        ``"auto"``, ``"small"``, ``"medium"``, or ``"large"``.
     preview_padding : float, optional
         Padding between previews in px.
+    preview_keyframe_numbers : str, optional
+        Keyframe numbers on previews: ``"auto"`` (only when some keyframes
+        have no preview), ``"visible"``, or ``"hidden"``.
+    preview_label_content : str, optional
+        Preview label content: ``"auto"`` (feature loadings when available,
+        else the keyframe description), ``"description"``, or ``"loadings"``.
+    preview_label_visibility : str, optional
+        When preview labels show: ``"auto"`` (``"visible"`` up to 16 previews,
+        ``"interactive"`` above), ``"visible"``, ``"interactive"`` (on hover
+        and for the current keyframe), or ``"hidden"``.
     point_size : float or str, optional
         Point size in pixels, or ``"auto"`` for density-adaptive.
     point_opacity : float or str, optional
         Point opacity 0-1, or ``"auto"``.
+    min_point_size : float, optional
+        Smallest point size in pixels (1-20) when ``point_size`` is ``"auto"``.
     point_color : list[float], optional
         Uniform point color as ``[r, g, b]`` tuple (0-1).
     point_color_by : str, optional
@@ -174,14 +194,12 @@ def build_dtour_metadata(
         Whether the legend panel is visible.
     show_axes : bool, optional
         Whether the axis biplot is visible in guided mode.
-    show_keyframe_numbers : bool, optional
-        Whether keyframe numbers are shown on preview thumbnails.
-    show_keyframe_loadings : bool, optional
-        Whether feature loading pills are shown on preview thumbnails.
     show_tour_description : bool, optional
         Whether the tour description sub-bar is visible.
     tour_slider_spacing : str, optional
         ``"equal"`` or ``"geodesic"``.
+    tour_slider_visibility : str, optional
+        ``"visible"``, ``"subtle"``, or ``"hidden"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
     centering : str, optional
@@ -194,7 +212,10 @@ def build_dtour_metadata(
         *tour* with ``feature_names`` is provided, those names are used
         automatically.
     tour : TourResult, optional
-        Tour result to embed (views are base64-encoded).
+        Tour result to embed (keyframes are base64-encoded).
+    **legacy_kwargs
+        Deprecated names: ``preview_scale``, ``show_keyframe_numbers``, and
+        ``show_keyframe_loadings``.
 
     Returns
     -------
@@ -210,10 +231,14 @@ def build_dtour_metadata(
         "tour_speed": tour_speed,
         "tour_direction": tour_direction,
         "preview_count": preview_count,
-        "preview_scale": preview_scale,
+        "preview_size": preview_size,
         "preview_padding": preview_padding,
+        "preview_keyframe_numbers": preview_keyframe_numbers,
+        "preview_label_content": preview_label_content,
+        "preview_label_visibility": preview_label_visibility,
         "point_size": point_size,
         "point_opacity": point_opacity,
+        "min_point_size": min_point_size,
         "point_color": point_color,
         "point_color_by": point_color_by,
         "point_color_map": point_color_map,
@@ -223,18 +248,22 @@ def build_dtour_metadata(
         "tour_traversal": tour_traversal,
         "show_legend": show_legend,
         "show_axes": show_axes,
-        "show_keyframe_numbers": show_keyframe_numbers,
-        "show_keyframe_loadings": show_keyframe_loadings,
         "show_tour_description": show_tour_description,
         "tour_slider_spacing": tour_slider_spacing,
+        "tour_slider_visibility": tour_slider_visibility,
         "theme_mode": theme_mode,
         "centering": centering,
     }
 
+    for key, value in _rename_legacy_kwargs(legacy_kwargs, stacklevel=2).items():
+        if key not in spec_kwargs:
+            raise TypeError(f"build_dtour_metadata() got an unexpected keyword argument {key!r}")
+        if spec_kwargs[key] is None:
+            spec_kwargs[key] = value
+
     for snake_key, value in spec_kwargs.items():
         if value is not None:
-            camel_key = _SNAKE_TO_CAMEL[snake_key]
-            config[camel_key] = value
+            config[_to_camel(snake_key)] = value
 
     if tour is not None:
         config["tour"] = _encode_tour(tour, tour_dimensions)
@@ -279,7 +308,7 @@ def add_spec_to_parquet(
         )
 
     tbl = ac.Table.from_arrow(table)
-    dtour_json = build_dtour_metadata(**kwargs)
+    dtour_json = build_dtour_metadata(**_rename_legacy_kwargs(kwargs, stacklevel=2))
 
     # Merge with existing metadata (preserving other keys like pandas schema)
     existing = dict(tbl.schema.metadata_str) if tbl.schema.metadata else {}

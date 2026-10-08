@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import TYPE_CHECKING
@@ -14,10 +15,10 @@ if TYPE_CHECKING:
 
 @dataclass
 class MetricResult:
-    """Per-view quality metric values.
+    """Per-keyframe quality metric values.
 
     Attributes:
-        values: Mapping from metric name to a list of per-view scores.
+        values: Mapping from metric name to a list of per-keyframe scores.
         metric_names: Ordered list of metric names computed.
     """
 
@@ -27,7 +28,7 @@ class MetricResult:
     def to_arrow_ipc(self) -> bytes:
         """Serialize metric values as Arrow IPC stream.
 
-        Each column is a metric, rows are per-view values.
+        Each column is a metric, rows are per-keyframe values.
         """
         import arro3.core as ac
         import arro3.io
@@ -62,18 +63,20 @@ _SUBSAMPLE_DEFAULTS: dict[str, int | None] = {
 
 def compute_metrics(
     X: np.ndarray,
-    views: list[np.ndarray],
+    keyframes: list[np.ndarray] | None = None,
     labels: np.ndarray | None = None,
     metrics: list[str] | None = None,
     k: int = 7,
     subsample: int | dict[str, int | None] | None = None,
     exclude_labels: list[str] | None = None,
+    *,
+    views: list[np.ndarray] | None = None,
 ) -> MetricResult:
     """Project data through each basis and compute quality metrics.
 
     Args:
         X: Data matrix, shape ``(n_samples, n_features)``, float32.
-        views: List of projection (basis) matrices, each shape ``(p, 2)``
+        keyframes: List of projection (basis) matrices, each shape ``(p, 2)``
             where ``p = n_features``.
         labels: Cluster / class labels for supervised metrics (silhouette,
             calinski_harabasz, neighborhood_hit, confusion).
@@ -93,13 +96,24 @@ def compute_metrics(
         exclude_labels: Label values to exclude from all label-based metrics.
             Points with these labels are removed before computing any metric
             that uses labels. Unsupervised metrics are unaffected.
+        views: Deprecated alias of *keyframes*.
 
     Returns:
-        A :class:`MetricResult` with per-view scores for each metric.
+        A :class:`MetricResult` with per-keyframe scores for each metric.
 
     Raises:
         ValueError: If a requested metric requires labels but none are given.
     """
+    if views is not None:
+        warnings.warn(
+            "compute_metrics(views=...) is deprecated; use keyframes=... instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        keyframes = views
+    if keyframes is None:
+        raise TypeError("compute_metrics() missing required argument: 'keyframes'")
+
     X = np.asarray(X, dtype=np.float32)
 
     # Filter out excluded labels (affects both X and labels)
@@ -149,7 +163,7 @@ def compute_metrics(
     result_values: dict[str, list[float]] = {m: [] for m in requested}
     rng = np.random.default_rng(seed=0)
 
-    for basis in views:
+    for basis in keyframes:
         # Project normalized data: (n, p) @ (p, 2) → (n, 2)
         proj = X_norm @ basis
 

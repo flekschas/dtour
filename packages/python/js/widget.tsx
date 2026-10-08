@@ -16,46 +16,47 @@ type TourMeta = {
 import preflightCss from './preflight.css?inline';
 
 // ---------------------------------------------------------------------------
-// Traitlet (snake_case) ↔ DtourSpec (camelCase) mapping
+// Traitlets (snake_case) ↔ DtourSpec (camelCase)
 // ---------------------------------------------------------------------------
 
-const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
-  tour_by: 'tourBy',
-  tour_position: 'tourPosition',
-  tour_playing: 'tourPlaying',
-  tour_speed: 'tourSpeed',
-  tour_direction: 'tourDirection',
-  preview_count: 'previewCount',
-  preview_padding: 'previewPadding',
-  point_size: 'pointSize',
-  point_opacity: 'pointOpacity',
-  point_color: 'pointColor',
-  point_color_by: 'pointColorBy',
-  camera_pan_x: 'cameraPanX',
-  camera_pan_y: 'cameraPanY',
-  camera_zoom: 'cameraZoom',
-  tour_traversal: 'tourTraversal',
-  show_legend: 'showLegend',
-  show_keyframe_loadings: 'showKeyframeLoadings',
-  show_tour_description: 'showTourDescription',
-  theme: 'themeMode',
-  centering: 'centering',
-};
+/** snake_case form of a camelCase string type, e.g. 'cameraPanX' → 'camera_pan_x'. */
+type SnakeCase<S extends string> = S extends `${infer Head}${infer Tail}`
+  ? `${Head extends Lowercase<Head> ? Head : `_${Lowercase<Head>}`}${SnakeCase<Tail>}`
+  : S;
 
-// preview_size uses string enum ("small"/"medium"/"large") in Python
-// but previewScale uses numeric values (0.5/0.75/1) in the spec.
-const SIZE_TO_SCALE: Record<string, 0.5 | 0.75 | 1> = {
-  small: 0.5,
-  medium: 0.75,
-  large: 1,
-};
-const SCALE_TO_SIZE: Record<number, string> = {
-  0.5: 'small',
-  0.75: 'medium',
-  1: 'large',
-};
+/** Traitlets that mirror DtourSpec fields. Each trait name is its spec key in snake_case. */
+const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
+  'tour_by',
+  'tour_position',
+  'tour_playing',
+  'tour_speed',
+  'tour_direction',
+  'tour_slider_spacing',
+  'tour_slider_visibility',
+  'preview_count',
+  'preview_size',
+  'preview_padding',
+  'preview_keyframe_numbers',
+  'preview_label_content',
+  'preview_label_visibility',
+  'point_size',
+  'point_opacity',
+  'min_point_size',
+  'point_color',
+  'point_color_by',
+  'camera_pan_x',
+  'camera_pan_y',
+  'camera_zoom',
+  'tour_traversal',
+  'show_legend',
+  'show_axes',
+  'show_tour_description',
+  'theme_mode',
+  'centering',
+];
 
-const TRAIT_NAMES = [...Object.keys(TRAIT_TO_SPEC), 'preview_size'];
+const toSpecKey = (trait: string) =>
+  trait.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()) as keyof DtourSpec;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,16 +72,16 @@ function toArrayBuffer(buf: DataView | ArrayBuffer | Uint8Array): ArrayBuffer {
   return buf as ArrayBuffer;
 }
 
-function parseViews(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Float32Array[] {
+function parseKeyframes(raw: DataView | ArrayBuffer | Uint8Array, nDims: number): Float32Array[] {
   const buf = toArrayBuffer(raw);
   const flat = new Float32Array(buf);
   const stride = nDims * 2;
-  const nViews = Math.floor(flat.length / stride);
-  const views: Float32Array[] = [];
-  for (let i = 0; i < nViews; i++) {
-    views.push(new Float32Array(flat.buffer, i * stride * 4, stride));
+  const nKeyframes = Math.floor(flat.length / stride);
+  const keyframes: Float32Array[] = [];
+  for (let i = 0; i < nKeyframes; i++) {
+    keyframes.push(new Float32Array(flat.buffer, i * stride * 4, stride));
   }
-  return views;
+  return keyframes;
 }
 
 const arraysEqual = (a: readonly unknown[], b: readonly unknown[]): boolean =>
@@ -89,10 +90,9 @@ const arraysEqual = (a: readonly unknown[], b: readonly unknown[]): boolean =>
 // biome-ignore lint/suspicious/noExplicitAny: anywidget model is untyped
 function readSpecFromModel(model: any): DtourSpec {
   const spec: Record<string, unknown> = {};
-  for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
-    spec[specKey] = model.get(trait);
+  for (const trait of SPEC_TRAITS) {
+    spec[toSpecKey(trait)] = model.get(trait);
   }
-  spec.previewScale = SIZE_TO_SCALE[model.get('preview_size') as string] ?? 1;
   return spec as DtourSpec;
 }
 
@@ -103,7 +103,7 @@ function readSpecFromModel(model: any): DtourSpec {
 function Widget() {
   const model = useModel();
   const [data, setData] = useState<ArrayBuffer | undefined>();
-  const [views, setViews] = useState<Float32Array[] | undefined>();
+  const [keyframes, setKeyframes] = useState<Float32Array[] | undefined>();
   const [metrics, setMetrics] = useState<ArrayBuffer | undefined>();
   const [tourMeta, setTourMeta] = useState<TourMeta>({});
   const [spec, setSpec] = useState<DtourSpec>(() => readSpecFromModel(model));
@@ -152,15 +152,15 @@ function Widget() {
     }
   }, []);
 
-  // Custom messages → data / views / metrics (binary buffers from Python)
+  // Custom messages → data / keyframes / metrics (binary buffers from Python)
   useEffect(() => {
     // biome-ignore lint/suspicious/noExplicitAny: anywidget buffer type varies by host
     function onMsg(msg: Record<string, any>, buffers: any[]) {
       console.log('[dtour] onMsg', msg.type, 'buffers:', buffers.length);
       if (msg.type === 'data' && buffers[0]) {
         setData(toArrayBuffer(buffers[0]));
-      } else if (msg.type === 'views' && buffers[0] && msg.n_dims) {
-        setViews(parseViews(buffers[0], msg.n_dims));
+      } else if (msg.type === 'keyframes' && buffers[0] && msg.n_dims) {
+        setKeyframes(parseKeyframes(buffers[0], msg.n_dims));
         setTourMeta({
           tourDescription: msg.tour_description ?? null,
           keyframeDescriptions: msg.keyframe_descriptions ?? null,
@@ -193,11 +193,11 @@ function Widget() {
         setSpec(readSpecFromModel(model));
       }
     }
-    for (const trait of TRAIT_NAMES) {
+    for (const trait of SPEC_TRAITS) {
       model.on(`change:${trait}`, onChange);
     }
     return () => {
-      for (const trait of TRAIT_NAMES) {
+      for (const trait of SPEC_TRAITS) {
         model.off(`change:${trait}`, onChange);
       }
     };
@@ -207,13 +207,12 @@ function Widget() {
   const handleSpecChange = useCallback(
     (newSpec: Required<DtourSpec>) => {
       suppressRef.current = true;
-      for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
-        const value = newSpec[specKey];
+      for (const trait of SPEC_TRAITS) {
+        const value = newSpec[toSpecKey(trait)];
         if (value !== undefined) {
           model.set(trait, value);
         }
       }
-      model.set('preview_size', SCALE_TO_SIZE[newSpec.previewScale] ?? 'large');
       model.save_changes();
       queueMicrotask(() => {
         suppressRef.current = false;
@@ -339,7 +338,7 @@ function Widget() {
     >
       <Dtour
         data={data}
-        views={views}
+        keyframes={keyframes}
         metrics={metrics}
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}

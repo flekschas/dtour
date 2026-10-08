@@ -1,22 +1,29 @@
-/** Concrete preview size factor: L (1), M (0.75), or S (0.5). */
-export type PreviewScale = 1 | 0.75 | 0.5;
-/** User-facing preview size setting: a concrete factor or viewport-derived 'auto'. */
-export type PreviewScaleSetting = PreviewScale | 'auto';
+/** Concrete preview size. */
+export type PreviewSize = 'small' | 'medium' | 'large';
+/** User-facing preview size setting: a concrete size or viewport-derived 'auto'. */
+export type PreviewSizeSetting = PreviewSize | 'auto';
+
+/** Factor applied to the largest preview ({@link MAX_SIZE}) for each size. */
+export const PREVIEW_SIZE_SCALE: Record<PreviewSize, number> = {
+  small: 0.5,
+  medium: 0.75,
+  large: 1,
+};
 
 /**
- * Resolve a preview-size setting to a concrete S/M/L factor. For 'auto', the
- * factor is derived from the gallery's smaller dimension (the axis that
- * actually constrains preview size): phones get S, tablets M, desktops L.
+ * Resolve a preview-size setting to a concrete size. For 'auto', the size is
+ * derived from the gallery's smaller dimension (the axis that actually
+ * constrains preview size): phones get small, tablets medium, desktops large.
  * Concrete settings pass through unchanged.
  */
-export function resolvePreviewScale(scale: PreviewScaleSetting, minorDim: number): PreviewScale {
-  if (scale !== 'auto') return scale;
-  // Unmeasured container (0×0 before first layout) — assume L to avoid a
+export function resolvePreviewSize(size: PreviewSizeSetting, minorDim: number): PreviewSize {
+  if (size !== 'auto') return size;
+  // Unmeasured container (0×0 before first layout) — assume large to avoid a
   // large→small flash on the common desktop case before the size is known.
-  if (minorDim <= 0) return 1;
-  if (minorDim < 520) return 0.5;
-  if (minorDim < 900) return 0.75;
-  return 1;
+  if (minorDim <= 0) return 'large';
+  if (minorDim < 520) return 'small';
+  if (minorDim < 900) return 'medium';
+  return 'large';
 }
 
 /** Gap between adjacent previews (CSS px). */
@@ -27,6 +34,10 @@ export const MAX_SIZE = 320;
 export const LOADING_BAR_HEIGHT = 18;
 /** Space between previews and the container edges. */
 export const PREVIEW_SPACING = 8;
+/** Most previews the gallery shows. */
+export const MAX_PREVIEW_COUNT = 32;
+/** Smallest preview (CSS px) worth showing. Smaller galleries show fewer previews instead. */
+export const MIN_PREVIEW_SIZE = 24;
 /**
  * Per-edge-count ratio arrays.
  *   k=1 (4 previews)  → [1]             all same
@@ -56,7 +67,7 @@ export function sizeRatio(j: number, k: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Layout: grid dimensions + per-item positions for any previewCount 2–16
+// Layout: grid dimensions + per-item positions for any preview count
 // ---------------------------------------------------------------------------
 
 export type LayoutPosition = { col: number; row: number };
@@ -68,12 +79,16 @@ export type LayoutInfo = {
 };
 
 /**
- * Grid spec lookup: [cols, rows, hasLeft, topCount?].
+ * Grid spec: [cols, rows, hasLeft, topCount?, bottomCount?].
  * `hasLeft` indicates items on the left edge (full perimeter vs U-shape).
- * `topCount` defaults to `cols`; when smaller, items are spread across the
- * row with evenly-spaced column indices (used by n=14 to skip the center).
+ * `topCount` and `bottomCount` default to `cols`; when smaller, items are
+ * spread across the row with evenly-spaced column indices (used by n=14 to
+ * skip the center).
  */
-const GRID_SPEC: Record<number, readonly [number, number, boolean, number?]> = {
+type GridSpec = readonly [number, number, boolean, number?, number?];
+
+/** Hand-tuned grids for up to 16 previews. */
+const GRID_SPEC: Record<number, GridSpec> = {
   // n=2 and n=3 are special-cased in computeLayout
   4: [2, 2, false],
   5: [2, 3, false],
@@ -91,6 +106,18 @@ const GRID_SPEC: Record<number, readonly [number, number, boolean, number?]> = {
 };
 
 /**
+ * Grid for more than 16 previews: a full perimeter whose row count keeps the
+ * smallest preview largest on common landscape screens. Odd counts leave one
+ * gap in the bottom row.
+ */
+function perimeterSpec(n: number): GridSpec {
+  const rows = n <= 24 ? 4 : n <= 28 ? 5 : 6;
+  const rowItems = n - 2 * (rows - 2);
+  const topCount = Math.ceil(rowItems / 2);
+  return [topCount, rows, true, topCount, rowItems - topCount];
+}
+
+/**
  * Spread `count` items evenly across `total` positions (0-indexed),
  * always including position 0 and position `total - 1`.
  */
@@ -106,8 +133,8 @@ function spreadIndices(count: number, total: number): number[] {
 }
 
 /**
- * Compute grid dimensions and per-item (col, row) positions for any
- * preview count 2–16.  Items walk clockwise: top → right → bottom → left.
+ * Compute grid dimensions and per-item (col, row) positions for a preview
+ * count.  Items walk clockwise: top → right → bottom → left.
  */
 export function computeLayout(n: number): LayoutInfo {
   // Special cases
@@ -134,23 +161,20 @@ export function computeLayout(n: number): LayoutInfo {
     };
   }
 
-  const spec = GRID_SPEC[n];
-  if (!spec) return { cols: 1, rows: 1, positions: [{ col: 0, row: 0 }] };
-
-  const [cols, rows, hasLeft, topCountOverride] = spec;
-  const topCount = topCountOverride ?? cols;
+  const [cols, rows, hasLeft, topCount = cols, bottomCount = topCount] =
+    GRID_SPEC[n] ?? perimeterSpec(n);
   const positions: LayoutPosition[] = [];
 
   // Top row: spread topCount items across cols columns (left to right)
-  const topCols = spreadIndices(topCount, cols);
-  for (const c of topCols) positions.push({ col: c, row: 0 });
+  for (const c of spreadIndices(topCount, cols)) positions.push({ col: c, row: 0 });
 
   // Right column: interior rows top to bottom
   for (let r = 1; r < rows - 1; r++) positions.push({ col: cols - 1, row: r });
 
-  // Bottom row: spread items across cols columns (right to left)
-  const bottomCols = [...topCols].reverse();
-  for (const c of bottomCols) positions.push({ col: c, row: rows - 1 });
+  // Bottom row: spread bottomCount items across cols columns (right to left)
+  for (const c of spreadIndices(bottomCount, cols).reverse()) {
+    positions.push({ col: c, row: rows - 1 });
+  }
 
   // Left column: interior rows bottom to top (perimeter only)
   if (hasLeft) {
@@ -164,10 +188,11 @@ export function computeLayout(n: number): LayoutInfo {
  * Compute the circular slider start angle (SVG degrees) for n previews.
  *
  * The right-center item is anchored at SVG 0° (3 o'clock) and items are
- * evenly spaced at 360/n degrees.  For n=4,8,12,16 this returns −135°,
- * matching the previous hard-coded constant.
+ * evenly spaced at 360/n degrees.  For n=4,8,12,16 this returns −135°.
+ * Counts above {@link MAX_PREVIEW_COUNT} use the largest layout.
  */
-export function computeStartAngle(n: number): number {
+export function computeStartAngle(previewCount: number): number {
+  const n = Math.min(previewCount, MAX_PREVIEW_COUNT);
   if (n <= 1) return -135;
   const { rows, positions } = computeLayout(n);
   const topCount = positions.filter((p) => p.row === 0).length;
@@ -203,10 +228,7 @@ export type GallerySizes = {
  * edges to centre.  Row ratios follow the same pattern with `rows-1`.
  * Each preview is sized as `min(colRatio, rowRatio) × baseSize` so it
  * stays square and fits its cell.
- *
- * For n=4,8,12,16 (square grids) this produces results identical to the
- * previous k-based computation.
- */
+ * */
 export function computeGallerySizes(
   containerWidth: number,
   containerHeight: number,
@@ -275,4 +297,25 @@ export function computeGallerySizes(
     padX,
     padY,
   };
+}
+
+/**
+ * Largest preview count up to `maxCount` whose smallest preview is at least
+ * {@link MIN_PREVIEW_SIZE} in a `width`×`height` gallery, or 0 when not even
+ * two previews fit. `labelsTakeSpace` tells whether labels sit below the
+ * previews for a given count.
+ */
+export function fitPreviewCount(
+  width: number,
+  height: number,
+  maxCount: number,
+  scale: number,
+  labelsTakeSpace: (previewCount: number) => boolean,
+): number {
+  if (width <= 0 || height <= 0) return 0;
+  for (let n = maxCount; n >= Math.min(maxCount, 2); n--) {
+    const { sizes } = computeGallerySizes(width, height, n, scale, labelsTakeSpace(n));
+    if (Math.min(...sizes) >= MIN_PREVIEW_SIZE) return n;
+  }
+  return 0;
 }

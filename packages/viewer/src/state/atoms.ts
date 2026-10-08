@@ -1,11 +1,17 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
+import { selectAtom } from 'jotai/utils';
 import {
-  type PreviewScale,
-  type PreviewScaleSetting,
-  resolvePreviewScale,
+  fitPreviewCount,
+  MAX_PREVIEW_COUNT,
+  PREVIEW_SIZE_SCALE,
+  PREVIEW_SPACING,
+  type PreviewSize,
+  type PreviewSizeSetting,
+  resolvePreviewSize,
 } from '../layout/gallery-positions.ts';
-import type { EmbeddedConfig, KeyframeLoading, PreviewCount } from '../spec.ts';
+import { selectPreviewKeyframes } from '../layout/preview-keyframes.ts';
+import type { EmbeddedConfig, KeyframeLoading } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -29,26 +35,32 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // View state — controls preview layout and keyframe selection
 // ---------------------------------------------------------------------------
 
-export const previewCountAtom = atom<PreviewCount>(4);
-/** User setting for preview size: explicit S/M/L factor or viewport-derived 'auto'. */
-export const previewScaleAtom = atom<PreviewScaleSetting>('auto');
+export const previewCountAtom = atom(4);
+/** User setting for preview size: explicit small/medium/large or viewport-derived 'auto'. */
+export const previewSizeAtom = atom<PreviewSizeSetting>('auto');
 export const previewPaddingAtom = atom(12);
 
 /**
- * Resolved preview-size factor (S/M/L). Resolves 'auto' from the main canvas's
- * smaller dimension so the Gallery and the circular-selector sizing agree.
+ * Resolved preview size. Resolves 'auto' from the main canvas's smaller
+ * dimension so the Gallery and the circular-selector sizing agree.
  */
-export const resolvedPreviewScaleAtom = atom<PreviewScale>((get) => {
-  const setting = get(previewScaleAtom);
+export const resolvedPreviewSizeAtom = atom<PreviewSize>((get) => {
   const { width, height } = get(canvasSizeAtom);
-  return resolvePreviewScale(setting, Math.min(width, height));
+  return resolvePreviewSize(get(previewSizeAtom), Math.min(width, height));
 });
-export const selectedKeyframeAtom = atom<number | null>(null);
 
-/** Which gallery preview is currently hovered (index), or null. */
+/** Scale factor of the resolved preview size. */
+export const resolvedPreviewScaleAtom = atom(
+  (get) => PREVIEW_SIZE_SCALE[get(resolvedPreviewSizeAtom)],
+);
+
+/** Keyframe whose preview is hovered, or null. */
 export const hoveredKeyframeAtom = atom<number | null>(null);
 
-/** Preview center positions relative to the container center, plus preview size. */
+/**
+ * Preview center positions relative to the container center, plus preview
+ * size. Indexed by keyframe; keyframes without a preview have no entry.
+ */
 export const previewCentersAtom = atom<{ x: number; y: number; size: number }[]>([]);
 
 /** Derived: nearest keyframe to the current tour position. */
@@ -191,6 +203,12 @@ export const animationGenAtom = atom(0);
 
 export const canvasSizeAtom = atom({ width: 0, height: 0 });
 
+/**
+ * Space for the preview gallery: the canvas below the toolbar, before the
+ * gallery's insets. null until the canvas has been measured.
+ */
+export const galleryAreaAtom = atom<{ width: number; height: number } | null>(null);
+
 // ---------------------------------------------------------------------------
 // Read-only / derived — not exposed to AI setters
 // ---------------------------------------------------------------------------
@@ -233,11 +251,32 @@ export const showLegendAtom = atom(true);
 /** User preference for showing axis biplot in guided mode. */
 export const showAxesAtom = atom(false);
 
-/** User preference for showing keyframe numbers on preview thumbnails. */
-export const showKeyframeNumbersAtom = atom(false);
+/** Keyframe numbers on previews. 'auto' shows them only when some keyframes have no preview. */
+export const previewKeyframeNumbersAtom = atom<'auto' | 'visible' | 'hidden'>('auto');
 
-/** User preference for showing feature loading pills on preview thumbnails. */
-export const showKeyframeLoadingsAtom = atom(true);
+/** Preview label content. 'auto' shows feature loadings when available, else the keyframe description. */
+export const previewLabelContentAtom = atom<'auto' | 'description' | 'loadings'>('auto');
+
+/**
+ * When preview labels show. 'interactive' shows them over the preview on hover
+ * and for the current keyframe. 'auto' is 'visible' up to
+ * {@link MAX_PREVIEWS_WITH_VISIBLE_LABELS} previews and 'interactive' above.
+ */
+export const previewLabelVisibilityAtom = atom<'auto' | 'visible' | 'interactive' | 'hidden'>(
+  'auto',
+);
+
+/** Up to this many previews, 'auto' labels stay visible below each preview. */
+const MAX_PREVIEWS_WITH_VISIBLE_LABELS = 16;
+
+/** Label visibility for a preview count, with 'auto' resolved. */
+const labelVisibilityFor = (
+  setting: 'auto' | 'visible' | 'interactive' | 'hidden',
+  previewCount: number,
+) => {
+  if (setting !== 'auto') return setting;
+  return previewCount > MAX_PREVIEWS_WITH_VISIBLE_LABELS ? 'interactive' : 'visible';
+};
 
 /** User preference for showing the tour description sub-bar. null = derive from tourDescription. */
 export const showTourDescriptionAtom = atom<boolean | null>(null);
@@ -264,9 +303,74 @@ export const predefinedTourAtom = atom<{
   keyframeCount: number;
 } | null>(null);
 
+/** Number of tour keyframes: from the predefined tour, otherwise {@link previewCountAtom}. */
+export const keyframeCountAtom = atom(
+  (get) => get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom),
+);
+
+/**
+ * Number of previews shown: one per keyframe, up to {@link MAX_PREVIEW_COUNT}
+ * and as many as fit the gallery at a readable size. 0 when not even two fit.
+ */
+export const resolvedPreviewCountAtom = atom((get) => {
+  const maxCount = Math.min(get(keyframeCountAtom), MAX_PREVIEW_COUNT);
+  const area = get(galleryAreaAtom);
+  // Before measuring, assume everything fits so canvases are not rebuilt on startup
+  if (!area) return maxCount;
+  const hasLabels = get(resolvedPreviewLabelContentAtom) !== null;
+  const labelSetting = get(previewLabelVisibilityAtom);
+  return fitPreviewCount(
+    area.width - 2 * PREVIEW_SPACING,
+    area.height - 2 * PREVIEW_SPACING,
+    maxCount,
+    get(resolvedPreviewScaleAtom),
+    (previewCount) => hasLabels && labelVisibilityFor(labelSetting, previewCount) === 'visible',
+  );
+});
+
+/**
+ * Keyframe shown by each preview. Tours with more keyframes than previews show
+ * the subset that is most evenly spaced along the tour, always including the
+ * first and last keyframe. Keeps its identity while the selection is unchanged,
+ * so preview canvases are only rebuilt when they show different keyframes.
+ */
+export const previewKeyframesAtom = selectAtom(
+  atom((get) =>
+    selectPreviewKeyframes(
+      get(keyframeCountAtom),
+      get(resolvedPreviewCountAtom),
+      get(arcLengthsAtom),
+    ),
+  ),
+  (keyframes) => keyframes,
+  (a, b) => a.length === b.length && a.every((keyframe, i) => keyframe === b[i]),
+);
+
+/** Whether previews show keyframe numbers, with 'auto' resolved. */
+export const resolvedPreviewKeyframeNumbersAtom = atom((get) => {
+  const setting = get(previewKeyframeNumbersAtom);
+  if (setting !== 'auto') return setting;
+  return get(keyframeCountAtom) > get(resolvedPreviewCountAtom) ? 'visible' : 'hidden';
+});
+
 /** Per-keyframe descriptions: string[] of literals, or a template string with
  *  {primary}, {secondary}, {relation} placeholders. */
 export const keyframeDescriptionsAtom = atom<string | string[] | null>(null);
+
+/** What preview labels show, with 'auto' resolved. null when there is nothing to show. */
+export const resolvedPreviewLabelContentAtom = atom((get) => {
+  const setting = get(previewLabelContentAtom);
+  const loadings = get(keyframeLoadingsAtom);
+  if (setting !== 'description' && loadings && loadings.length > 0) return 'loadings';
+  if (setting !== 'loadings' && Array.isArray(get(keyframeDescriptionsAtom))) return 'description';
+  return null;
+});
+
+/** When preview labels show, with 'auto' resolved. 'hidden' when there is nothing to show. */
+export const resolvedPreviewLabelVisibilityAtom = atom((get) => {
+  if (get(resolvedPreviewLabelContentAtom) === null) return 'hidden';
+  return labelVisibilityFor(get(previewLabelVisibilityAtom), get(resolvedPreviewCountAtom));
+});
 
 /** Tour description string from embedded config (shown in description sub-bar). */
 export const tourDescriptionAtom = atom<string | null>(null);

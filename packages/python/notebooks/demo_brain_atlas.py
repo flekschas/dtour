@@ -124,7 +124,7 @@ def _(class_cmap, df, dtour, height, pa, pc_cols):
         tour_dimensions=pc_cols,
         preview_size="small",
         preview_count=8,
-        theme="dark",
+        theme_mode="dark",
         height=height,
     )
     return pca_tour, tour_widget

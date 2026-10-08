@@ -23,14 +23,14 @@ import "@dtour/viewer/dist/viewer.css";
 <Dtour data={arrowBuffer} />
 ```
 
-`data` is an Arrow IPC or Parquet `ArrayBuffer`. With no `views`, a tour is auto-generated.
+`data` is an Arrow IPC or Parquet `ArrayBuffer`. With no `keyframes`, a tour is auto-generated.
 
 ## Component API
 
 ```tsx
 <Dtour
   data={arrowBuffer}          // Arrow IPC or Parquet ArrayBuffer (ownership transferred)
-  views={views}               // Float32Array[] of p×2 column-major view matrices
+  keyframes={keyframes}       // Float32Array[] of p×2 column-major bases
   metrics={metricsBuffer}     // Arrow IPC ArrayBuffer with per-view quality metrics
   metricTracks={tracks}       // RadialTrackConfig[] for radial bar chart customization
   metricBarWidth="full"       // "full" | number — global bar width for radial charts
@@ -68,9 +68,12 @@ type DtourSpec = {
   tourDirection?: "forward" | "backward";
   tourSliderSpacing?: "equal" | "geodesic"; // default "equal"
   tourSliderVisibility?: "visible" | "subtle" | "hidden";
-  previewCount?: 2–16;               // default 4
-  previewScale?: 1 | 0.75 | 0.5;     // default 1
+  previewCount?: 2–32;               // default 4
+  previewSize?: "auto" | "small" | "medium" | "large"; // default "auto"
   previewPadding?: number;            // default 12
+  previewKeyframeNumbers?: "auto" | "visible" | "hidden"; // default "auto": only when some keyframes have no preview
+  previewLabelContent?: "auto" | "description" | "loadings"; // default "auto": loadings when available
+  previewLabelVisibility?: "auto" | "visible" | "interactive" | "hidden"; // default "auto": visible up to 16 previews, on hover above
   pointSize?: number | "auto";        // default "auto"
   pointOpacity?: number | "auto";     // 0–1, default "auto"
   minPointSize?: number;              // 1–20, default 2
@@ -83,8 +86,6 @@ type DtourSpec = {
   centering?: "midrange" | "mean";    // default "midrange"
   showLegend?: boolean;               // default true
   showAxes?: boolean;                 // default false
-  showKeyframeNumbers?: boolean;      // default false
-  showKeyframeLoadings?: boolean;     // default true
   showTourDescription?: boolean | null; // default null
   themeMode?: "light" | "dark" | "system"; // default "dark"
 };
@@ -111,7 +112,7 @@ For granular control beyond the self-contained `<Dtour>`:
 - **`RadialChart` / `parseMetrics`** (`RadialChartProps`, `RadialTrackConfig`, `ParsedTrack`) — the quality-metrics visualization used on the circular slider.
 - **`CircularSlider`** (`CircularSliderHandle`, `CircularSliderProps`) and **`DtourToolbar`** — the individual UI pieces.
 - **`PortalContainerContext`** — portal target for Shadow DOM isolation (used by the anywidget/marimo integration).
-- **`DTOUR_DEFAULTS`, `dtourSpecSchema`, `parseEmbeddedConfig`, `createDefaultViews`** — defaults, the [Zod](https://zod.dev) schema for `DtourSpec`, and helpers for embedded config and fallback views.
+- **`DTOUR_DEFAULTS`, `dtourSpecSchema`, `parseEmbeddedConfig`, `createDefaultKeyframes`** — defaults, the [Zod](https://zod.dev) schema for `DtourSpec`, and helpers for embedded config and fallback keyframes.
 
 ## Development
 

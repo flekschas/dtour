@@ -235,7 +235,7 @@ def _(ImagesWidget, color_map, dtour, label_names, tour):
         color_map=color_map,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
 
     w_images = ImagesWidget()

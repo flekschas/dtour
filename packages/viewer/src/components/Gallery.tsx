@@ -1,6 +1,6 @@
 import { ArrowsLeftRightIcon, EqualsIcon } from '@phosphor-icons/react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import {
   computeGallerySizes,
@@ -14,21 +14,22 @@ import {
   arcLengthsAtom,
   currentKeyframeAtom,
   hoveredKeyframeAtom,
+  keyframeCountAtom,
   keyframeDescriptionsAtom,
   keyframeLoadingsAtom,
-  predefinedTourAtom,
   previewCentersAtom,
-  previewCountAtom,
+  previewKeyframesAtom,
+  resolvedPreviewCountAtom,
+  resolvedPreviewKeyframeNumbersAtom,
+  resolvedPreviewLabelContentAtom,
+  resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
-  selectedKeyframeAtom,
-  showKeyframeLoadingsAtom,
-  showKeyframeNumbersAtom,
   tourPlayingAtom,
 } from '../state/atoms.ts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 
 export type GalleryProps = {
-  /** Fixed pool of preview canvas elements (created at scatter init). */
+  /** Preview canvases in preview-slot order. Each one shows the keyframe at the same slot. */
   previewCanvases: HTMLCanvasElement[];
   /** Container width (px). */
   containerWidth: number;
@@ -75,17 +76,17 @@ export const Gallery = ({
   toolbarHeight,
   onResumeGuided,
 }: GalleryProps) => {
-  const basePreviewCount = useAtomValue(previewCountAtom);
-  const predefinedTour = useAtomValue(predefinedTourAtom);
-  const previewCount = predefinedTour?.keyframeCount ?? basePreviewCount;
+  const previewCount = useAtomValue(resolvedPreviewCountAtom);
+  const previewKeyframes = useAtomValue(previewKeyframesAtom);
+  const keyframeCount = useAtomValue(keyframeCountAtom);
   const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const currentKeyframe = useAtomValue(currentKeyframeAtom);
-  const [selectedKeyframe, setSelectedKeyframe] = useAtom(selectedKeyframeAtom);
   const setPlaying = useSetAtom(tourPlayingAtom);
   const arcLengths = useAtomValue(arcLengthsAtom);
-  const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
-  const showKeyframeNumbers = useAtomValue(showKeyframeNumbersAtom);
-  const showKeyframeLoadings = useAtomValue(showKeyframeLoadingsAtom);
+  const [hoveredKeyframe, setHoveredKeyframe] = useAtom(hoveredKeyframeAtom);
+  const showKeyframeNumbers = useAtomValue(resolvedPreviewKeyframeNumbersAtom) === 'visible';
+  const labelContent = useAtomValue(resolvedPreviewLabelContentAtom);
+  const labelVisibility = useAtomValue(resolvedPreviewLabelVisibilityAtom);
   const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
   const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
@@ -93,12 +94,11 @@ export const Gallery = ({
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Whether loading pills are actually visible (data available + user toggle on)
-  const loadingsVisible =
-    showKeyframeLoadings && keyframeLoadings !== null && keyframeLoadings.length > 0;
-  const descriptionsVisible =
-    !loadingsVisible && keyframeDescriptions !== null && Array.isArray(keyframeDescriptions);
-  const showBarSpace = loadingsVisible || descriptionsVisible;
+  const loadingsVisible = labelVisibility !== 'hidden' && labelContent === 'loadings';
+  const descriptionsVisible = labelVisibility !== 'hidden' && labelContent === 'description';
+  // Only visible labels take up space in the grid
+  const showBarSpace = labelVisibility === 'visible';
+  const labelsInside = labelVisibility === 'interactive';
 
   // Grid area = container minus its CSS insets.
   const verticalInset = PREVIEW_SPACING + toolbarHeight / 2;
@@ -121,6 +121,9 @@ export const Gallery = ({
     }
   }, [previewCanvases]);
 
+  // Without a gallery there are no previews for the slider to point at
+  useEffect(() => () => setPreviewCenters([]), [setPreviewCenters]);
+
   // Measure preview center positions relative to the container center.
   const canvasCount = previewCanvases.length;
   useEffect(() => {
@@ -129,55 +132,58 @@ export const Gallery = ({
     const galleryRect = galleryEl.getBoundingClientRect();
     const centers: { x: number; y: number; size: number }[] = [];
     for (let i = 0; i < previewCount; i++) {
+      const keyframe = previewKeyframes[i]!;
       const wrapper = wrapperRefs.current[i];
       if (!wrapper) {
-        centers.push({ x: 0, y: 0, size: sizes[i] ?? 0 });
+        centers[keyframe] = { x: 0, y: 0, size: sizes[i] ?? 0 };
         continue;
       }
       const r = wrapper.getBoundingClientRect();
       const cx = r.left - galleryRect.left + r.width / 2;
       const cy = r.top - galleryRect.top + r.height / 2;
-      centers.push({
+      centers[keyframe] = {
         x: cx + 16 - containerWidth / 2,
         y: cy + verticalInset - containerHeight / 2,
         size: sizes[i] ?? r.width,
-      });
+      };
     }
     setPreviewCenters(centers);
   }, [
     containerWidth,
     containerHeight,
     previewCount,
+    previewKeyframes,
     canvasCount,
     sizes,
     verticalInset,
     setPreviewCenters,
   ]);
 
-  const getBorderColor = (i: number): string | undefined => {
-    const isActive = i === selectedKeyframe || i === currentKeyframe;
-    if (isActive || i === hoveredIndex) return 'var(--color-dtour-highlight)';
+  const getBorderColor = (keyframe: number): string | undefined => {
+    if (keyframe === currentKeyframe || keyframe === hoveredKeyframe) {
+      return 'var(--color-dtour-highlight)';
+    }
     return undefined;
   };
 
-  const getBoxShadow = (i: number): string => {
-    if (i === selectedKeyframe)
+  const getBoxShadow = (keyframe: number): string => {
+    if (keyframe === currentKeyframe)
       return '0 0 8px color-mix(in srgb, var(--color-dtour-highlight) 30%, transparent)';
-    if (i === currentKeyframe)
-      return '0 0 8px color-mix(in srgb, var(--color-dtour-highlight) 30%, transparent)';
-    if (i === hoveredIndex) return '0 0 6px rgba(255, 255, 255, 0.15)';
+    if (keyframe === hoveredKeyframe) return '0 0 6px rgba(255, 255, 255, 0.15)';
     return 'none';
   };
 
   const handleClick = useCallback(
-    (i: number) => {
+    (keyframe: number) => {
       onResumeGuided(300);
-      setSelectedKeyframe(i);
       setPlaying(false);
-      const target = arcLengths && i < arcLengths.length ? arcLengths[i]! : i / previewCount;
+      const target =
+        arcLengths && keyframe < arcLengths.length
+          ? arcLengths[keyframe]!
+          : keyframe / keyframeCount;
       animateTo(target);
     },
-    [previewCount, arcLengths, setSelectedKeyframe, setPlaying, onResumeGuided, animateTo],
+    [keyframeCount, arcLengths, setPlaying, onResumeGuided, animateTo],
   );
 
   const layout = useMemo(() => computeLayout(previewCount), [previewCount]);
@@ -190,6 +196,7 @@ export const Gallery = ({
     >
       {previewCanvases.map((_, i) => {
         const visible = i < previewCount;
+        const keyframe = previewKeyframes[i] ?? i;
 
         const pos = layout.positions[i];
         const col = pos?.col ?? 0;
@@ -200,17 +207,119 @@ export const Gallery = ({
         const horizontalAlignment =
           col === 0 ? 'justify-start' : col < layout.cols - 1 ? 'justify-center' : 'justify-end';
 
-        // For bottom-edge previews, put loading bar above (flex-col-reverse)
+        // For bottom-edge previews, put the label above (flex-col-reverse)
         const isBottomEdge = row === layout.rows - 1;
+        const isHighlighted = keyframe === currentKeyframe || keyframe === hoveredKeyframe;
         const loading: KeyframeLoading | null =
-          loadingsVisible && keyframeLoadings && i < keyframeLoadings.length
-            ? keyframeLoadings[i]!
+          loadingsVisible && keyframeLoadings && keyframe < keyframeLoadings.length
+            ? keyframeLoadings[keyframe]!
             : null;
-        const hasLoadingPills = loading !== null;
         const keyframeDescription =
-          !hasLoadingPills && descriptionsVisible && Array.isArray(keyframeDescriptions)
-            ? (keyframeDescriptions[i] ?? null)
+          !loading && descriptionsVisible && Array.isArray(keyframeDescriptions)
+            ? (keyframeDescriptions[keyframe] ?? null)
             : null;
+        const hasLabelBelow = !labelsInside && (loading !== null || keyframeDescription !== null);
+
+        // Visible labels attach to the outside of the preview; interactive
+        // labels sit inside along the same edge.
+        const labelClassName = labelsInside
+          ? cn(
+              'absolute inset-x-0 z-10',
+              isBottomEdge ? 'top-0' : 'bottom-0',
+              isHighlighted ? 'opacity-100' : 'opacity-0 pointer-events-none',
+            )
+          : cn(
+              'relative z-20 border border-dtour-border',
+              isBottomEdge ? 'border-b-0 rounded-t-sm' : 'border-t-0 rounded-b-sm',
+            );
+        const labelStyle = {
+          width: labelsInside ? undefined : sizes[i],
+          height: LOADING_BAR_HEIGHT,
+          borderColor: labelsInside ? undefined : getBorderColor(keyframe),
+          backgroundColor: isHighlighted
+            ? 'var(--color-dtour-highlight)'
+            : 'var(--color-dtour-border)',
+        };
+        const labelTextClassName = isHighlighted ? 'text-dtour-bg' : 'text-dtour-highlight/70';
+
+        let label: ReactNode = null;
+        if (visible && loading) {
+          // Loading pills: [primary] [≠ or =] [secondary]
+          const n0 = loading.primary[0];
+          const n1 = loading.secondary[0];
+          const same = sameSign(loading);
+          const tooltipText = resolveDescription(keyframeDescriptions, loading, keyframe);
+          label = (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      'flex items-center cursor-default select-none transition-[color,background-color,border-color,opacity] duration-200',
+                      labelClassName,
+                    )}
+                    style={labelStyle}
+                  >
+                    <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
+                      <span
+                        className={cn(
+                          'text-[10px] transition-colors duration-200 truncate px-1',
+                          labelTextClassName,
+                        )}
+                      >
+                        {n0}
+                      </span>
+                    </div>
+                    <span
+                      className={cn(
+                        'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
+                        labelTextClassName,
+                      )}
+                    >
+                      {same ? (
+                        <EqualsIcon size={10} weight="bold" />
+                      ) : (
+                        <ArrowsLeftRightIcon size={10} weight="bold" />
+                      )}
+                    </span>
+                    <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
+                      <span
+                        className={cn(
+                          'text-[10px] transition-colors duration-200 truncate px-1',
+                          labelTextClassName,
+                        )}
+                      >
+                        {n1}
+                      </span>
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
+                  {tooltipText ?? `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        } else if (visible && keyframeDescription) {
+          label = (
+            <div
+              className={cn(
+                'flex items-center justify-center select-none transition-[color,background-color,border-color,opacity] duration-200',
+                labelClassName,
+              )}
+              style={labelStyle}
+            >
+              <span
+                className={cn(
+                  'text-[10px] truncate px-1 transition-colors duration-200',
+                  labelTextClassName,
+                )}
+              >
+                {keyframeDescription}
+              </span>
+            </div>
+          );
+        }
 
         return (
           <div
@@ -225,29 +334,25 @@ export const Gallery = ({
                 isBottomEdge ? 'flex-col-reverse' : 'flex-col',
                 visible ? '' : 'hidden',
               )}
-              onMouseEnter={visible ? () => setHoveredIndex(i) : undefined}
-              onMouseLeave={visible ? () => setHoveredIndex(null) : undefined}
+              onMouseEnter={visible ? () => setHoveredKeyframe(keyframe) : undefined}
+              onMouseLeave={visible ? () => setHoveredKeyframe(null) : undefined}
             >
               <div
                 ref={(el) => {
                   wrapperRefs.current[i] = el;
                 }}
-                onClick={visible ? () => handleClick(i) : undefined}
+                onClick={visible ? () => handleClick(keyframe) : undefined}
                 onKeyDown={undefined}
                 className={cn(
                   'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
-                  hasLoadingPills || keyframeDescription
-                    ? isBottomEdge
-                      ? 'rounded-b'
-                      : 'rounded-t'
-                    : 'rounded',
+                  hasLabelBelow ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
                   visible ? 'block cursor-pointer' : 'hidden',
                 )}
                 style={{
                   width: visible ? sizes[i] : 0,
                   height: visible ? sizes[i] : 0,
-                  borderColor: getBorderColor(i),
-                  boxShadow: getBoxShadow(i),
+                  borderColor: getBorderColor(keyframe),
+                  boxShadow: getBoxShadow(keyframe),
                 }}
               >
                 {visible && showKeyframeNumbers && (
@@ -264,121 +369,17 @@ export const Gallery = ({
                         : col === layout.cols - 1
                           ? 'right-1'
                           : 'left-1/2 -translate-x-1/2',
-                      i === selectedKeyframe || i === currentKeyframe
+                      keyframe === currentKeyframe
                         ? 'opacity-100'
                         : 'opacity-40 group-hover:opacity-100',
                     )}
                   >
-                    {i + 1}
+                    {keyframe + 1}
                   </span>
                 )}
+                {labelsInside && label}
               </div>
-              {/* Loading pills: [primary] [≠ or =] [secondary] */}
-              {visible &&
-                loading &&
-                (() => {
-                  const n0 = loading.primary[0];
-                  const n1 = loading.secondary[0];
-                  const same = sameSign(loading);
-                  const isActive = i === selectedKeyframe || i === currentKeyframe;
-                  const tooltipText = resolveDescription(keyframeDescriptions, loading, i);
-                  return (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className={cn(
-                              'flex items-center cursor-default select-none transition-[color,background-color,border-color] duration-200 relative z-20',
-                              'border border-dtour-border',
-                              isBottomEdge ? 'border-b-0 rounded-t-sm' : 'border-t-0 rounded-b-sm',
-                            )}
-                            style={{
-                              width: sizes[i],
-                              height: LOADING_BAR_HEIGHT,
-                              borderColor: getBorderColor(i),
-                              backgroundColor:
-                                isActive || i === hoveredIndex
-                                  ? 'var(--color-dtour-highlight)'
-                                  : 'var(--color-dtour-border)',
-                            }}
-                          >
-                            <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
-                              <span
-                                className={cn(
-                                  'text-[10px] transition-colors duration-200 truncate px-1',
-                                  isActive || i === hoveredIndex
-                                    ? 'text-dtour-bg'
-                                    : 'text-dtour-highlight/70',
-                                )}
-                              >
-                                {n0}
-                              </span>
-                            </div>
-                            <span
-                              className={cn(
-                                'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
-                                isActive || i === hoveredIndex
-                                  ? 'text-dtour-bg'
-                                  : 'text-dtour-highlight/70',
-                              )}
-                            >
-                              {same ? (
-                                <EqualsIcon size={10} weight="bold" />
-                              ) : (
-                                <ArrowsLeftRightIcon size={10} weight="bold" />
-                              )}
-                            </span>
-                            <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
-                              <span
-                                className={cn(
-                                  'text-[10px] transition-colors duration-200 truncate px-1',
-                                  isActive || i === hoveredIndex
-                                    ? 'text-dtour-bg'
-                                    : 'text-dtour-highlight/70',
-                                )}
-                              >
-                                {n1}
-                              </span>
-                            </div>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
-                          {tooltipText ?? `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  );
-                })()}
-              {/* Keyframe description label (shown when no loading pills) */}
-              {visible && keyframeDescription && (
-                <div
-                  className={cn(
-                    'flex items-center justify-center select-none',
-                    isBottomEdge ? 'rounded-t-sm border-b-0' : 'rounded-b-sm border-t-0',
-                    'border border-dtour-border',
-                  )}
-                  style={{
-                    width: sizes[i],
-                    height: LOADING_BAR_HEIGHT,
-                    borderColor: getBorderColor(i),
-                    backgroundColor:
-                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
-                        ? 'var(--color-dtour-highlight)'
-                        : 'var(--color-dtour-border)',
-                  }}
-                >
-                  <span
-                    className={cn(
-                      'text-[10px] truncate px-1 transition-colors duration-200',
-                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
-                        ? 'text-dtour-bg'
-                        : 'text-dtour-highlight/70',
-                    )}
-                  >
-                    {keyframeDescription}
-                  </span>
-                </div>
-              )}
+              {!labelsInside && label}
             </div>
           </div>
         );
