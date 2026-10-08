@@ -116,6 +116,22 @@ def test_tour_result_deprecated_view_aliases():
     with pytest.warns(DeprecationWarning, match="TourResult.views_raw"):
         assert result.views_raw == result.keyframes_raw
 
+    reversed_keyframes = result.keyframes[::-1]
+    with pytest.warns(DeprecationWarning, match="TourResult.views"):
+        result.views = reversed_keyframes
+    assert result.keyframes is reversed_keyframes
+
+
+def test_tour_result_rejects_old_constructor_calls():
+    keyframes = little_tour(make_data(), n_components=3).keyframes
+    # The old positional form TourResult(views, n_views, n_dims) must not
+    # silently bind n_views to n_dims
+    with pytest.raises(TypeError):
+        TourResult(keyframes, 3, 5)
+    with pytest.raises(TypeError, match="views"):
+        TourResult(views=keyframes, n_views=3, n_dims=5)
+    assert TourResult(keyframes, n_dims=5).n_keyframes == 3
+
 
 def test_load_tour_saved_by_older_version():
     loaded = TourResult.load(Path(__file__).parents[1] / "tour_cache.npz")

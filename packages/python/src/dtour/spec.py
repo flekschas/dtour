@@ -72,8 +72,7 @@ def _encode_tour(
     # nViews/nDims are only needed by the parser to decode the base64 blob.
     # nDims must match the basis matrix row count (tour.n_dims), NOT len(dims).
     # For sequential tours, n_dims = 2 * n_frames while dims lists the original features.
-    # The keys keep their original "views" names so files stay readable by
-    # every dtour version.
+    # The basis payload is stored as `nViews`, `nDims`, and `views`.
     result: dict[str, Any] = {
         "nViews": tour.n_keyframes,
         "nDims": tour.n_dims,

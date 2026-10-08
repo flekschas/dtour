@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import warnings
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import KW_ONLY, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -51,6 +51,8 @@ class TourResult:
     """
 
     keyframes: list[np.ndarray]
+    # Keyword-only, so positional arguments cannot bind to the wrong fields
+    _: KW_ONLY
     n_dims: int
     explained_variance_ratio: list[float] = field(default_factory=list)
     embedding: np.ndarray | None = None
@@ -81,6 +83,11 @@ class TourResult:
         _warn_renamed("TourResult.views", "TourResult.keyframes")
         return self.keyframes
 
+    @views.setter
+    def views(self, keyframes: list[np.ndarray]) -> None:
+        _warn_renamed("TourResult.views", "TourResult.keyframes")
+        self.keyframes = keyframes
+
     @property
     def n_views(self) -> int:
         """Deprecated alias of :attr:`n_keyframes`."""
@@ -100,8 +107,7 @@ class TourResult:
         the tour can be restored without recomputation.
         """
         path = Path(path)
-        # The .npz keys keep their original "view" names so saved files stay
-        # readable by every dtour version.
+        # The keyframes are stored as `n_views` and `view_<index>`.
         arrays: dict[str, np.ndarray] = {
             "n_views": np.array([self.n_keyframes]),
             "n_dims": np.array([self.n_dims]),
