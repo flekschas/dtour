@@ -10,7 +10,14 @@ from typing import TYPE_CHECKING, Any
 import anywidget
 import traitlets as t
 
-from .data import _to_ipc_bytes
+from .data import (
+    _add_embedding,
+    _is_numeric_field,
+    _numeric_columns,
+    _read_table,
+    _to_ipc_bytes,
+    _write_ipc,
+)
 
 if TYPE_CHECKING:
     from .metrics import MetricResult
@@ -103,19 +110,21 @@ class Widget(anywidget.AnyWidget):
     Parameters
     ----------
     data:
-        Any Arrow-compatible object (DataFrame, Arrow table, RecordBatch,
-        or raw IPC bytes).  Anything with ``__arrow_c_stream__`` works.
+        One row per point, in the order the tour was computed with: the
+        columns the tour projects plus any columns to color by. A tour with an
+        ``embedding`` brings its own columns, so its data can hold only the
+        columns to color by, or be omitted. Any Arrow-compatible object
+        (DataFrame, Arrow table, RecordBatch), a numpy array, raw IPC bytes,
+        or a path to an Arrow or Parquet file. The widget keeps a snapshot.
     tour:
-        A :class:`~dtour.tours.TourResult` providing basis matrices.
+        A :class:`~dtour.tours.TourResult`. When it has an ``embedding``, the
+        widget adds the embedding columns to the data itself.
 
     Example
     -------
     >>> import dtour, numpy as np
     >>> X = np.random.randn(500, 5).astype(np.float32)
-    >>> w = dtour.Widget(
-    ...     data=dtour.data.from_numpy(X),
-    ...     tour=dtour.little_tour(X),
-    ... )
+    >>> w = dtour.Widget(X, dtour.little_tour(X))
     >>> w
     """
 
@@ -275,22 +284,25 @@ class Widget(anywidget.AnyWidget):
         return value
 
     # ── Init ─────────────────────────────────────────────────────────────
-    def __init__(self, *, data: object | None = None, tour: TourResult | None = None, **kwargs):
+    def __init__(self, data: object | None = None, tour: TourResult | None = None, **kwargs):
         for old in _RENAMED_TRAITS.keys() & kwargs.keys():
             _warn_renamed(old, stacklevel=2)
             new, to_new, _ = _RENAMED_TRAITS[old]
             kwargs.setdefault(new, to_new(kwargs.pop(old)))
         super().__init__(**kwargs)
+        # The data as given, and the data sent to the viewer (with the embedding of the tour)
+        self._source: bytes | None = None if data is None else _to_ipc_bytes(data)
         self._data_buf: bytes | None = None
         self._keyframes_buf: bytes | None = None
         self._keyframes_msg: dict | None = None
         self._metrics_buf: bytes | None = None
         self._tour: TourResult | None = None
         self.on_msg(self._handle_custom_msg)
-        if data is not None:
-            self.set_data(data)
         if tour is not None:
-            self.set_tour(tour)
+            self._set_tour(tour, kwargs.get("tour_dimensions"))
+        elif self._source is not None:
+            self._data_buf = self._source
+            self.send({"type": "data"}, buffers=[self._data_buf])
 
     # ── Public properties ────────────────────────────────────────────────
     @property
@@ -309,15 +321,25 @@ class Widget(anywidget.AnyWidget):
         """Load data from any Arrow-compatible source.
 
         Accepts anything with ``__arrow_c_stream__`` (pandas/polars
-        DataFrames, pyarrow/arro3 Tables, etc.), raw ``bytes`` (Arrow IPC),
-        or a file path.
+        DataFrames, pyarrow/arro3 Tables, etc.), a numpy array, raw ``bytes``
+        (Arrow IPC), or a file path.
         """
-        self._data_buf = _to_ipc_bytes(data)
+        source = _to_ipc_bytes(data)
+        data_buf, dims = _viewer_data(source, self._tour, self.tour_dimensions)
+        self._source = source
+        self._data_buf = data_buf
+        if self._tour is not None:
+            self.tour_dimensions = dims or []
         self.send({"type": "data"}, buffers=[self._data_buf])
 
     def set_tour(self, tour: TourResult) -> None:
         """Set tour keyframes from a :class:`~dtour.tours.TourResult`."""
-        self._keyframes_buf = tour.keyframes_raw
+        self._set_tour(tour, None)
+
+    def _set_tour(self, tour: TourResult, tour_dimensions: list[str] | None) -> None:
+        """Set *tour*, using *tour_dimensions* as its columns if it doesn't name them."""
+        data_buf, dims = _viewer_data(self._source, tour, tour_dimensions)
+        keyframes_buf = tour.keyframes_raw
 
         msg: dict = {"type": "keyframes", "n_dims": tour.n_dims}
 
@@ -348,6 +370,7 @@ class Widget(anywidget.AnyWidget):
         # Cache the full TourResult for save_spec_to_parquet. Set before
         # tour_by because its validator coerces against the active tour.
         self._tour = tour
+        self._keyframes_buf = keyframes_buf
 
         # Sync the family and tour_by together so the frontend never sees a
         # mismatched pair
@@ -361,10 +384,10 @@ class Widget(anywidget.AnyWidget):
         self._keyframes_msg = msg
         self.send(msg, buffers=[self._keyframes_buf])
 
-        # Feature names only name the projected columns when the keyframes
-        # project the input features. Embedding tours project tour.embedding instead.
-        if tour.embedding is None and tour.feature_names is not None:
-            self.tour_dimensions = tour.feature_names
+        self.tour_dimensions = dims or []
+        if data_buf is not self._data_buf:
+            self._data_buf = data_buf
+            self.send({"type": "data"}, buffers=[self._data_buf])
 
     def set_metrics(self, metric_result: MetricResult) -> None:
         """Send quality metrics to the JS frontend for radial chart display."""
@@ -403,17 +426,20 @@ class Widget(anywidget.AnyWidget):
         """Clear the current point selection."""
         self.send({"type": "clear_selection"})
 
-    def save_spec_to_parquet(self, table: object) -> object:
+    def save_spec_to_parquet(self, table: object | None = None) -> object:
         """Save the widget's current spec + tour to Parquet file metadata.
 
-        Reads the widget's current traitlet values and embeds them as a
-        ``"dtour"`` key in the table's schema metadata.
+        Reads the widget's current traitlet values and the tour set from
+        Python, and embeds them as a ``"dtour"`` key in the table's schema
+        metadata, replacing any existing one. A tour embedded in the data's
+        file and the columns checked for an auto-generated tour aren't saved.
 
         Parameters
         ----------
-        table : Arrow-compatible table
+        table : Arrow-compatible table, optional
             Any object with ``__arrow_c_stream__`` (pyarrow Table,
-            polars DataFrame, arro3 Table, etc.).
+            polars DataFrame, arro3 Table, etc.). Defaults to the widget's
+            data, including the embedding columns of the tour.
 
         Returns
         -------
@@ -425,7 +451,28 @@ class Widget(anywidget.AnyWidget):
         >>> annotated = widget.save_spec_to_parquet(table)
         """
 
+        import arro3.core as ac
+
         from .spec import add_spec_to_parquet
+
+        if table is None:
+            if self._data_buf is None:
+                raise ValueError("The widget has no data to save. Pass a table.")
+            table = _read_table(self._data_buf)
+        table = ac.Table.from_arrow(table)
+
+        tour_dimensions = list(self.tour_dimensions)
+        if self._tour is not None:
+            if not tour_dimensions:
+                # The viewer projects the first n_dims numeric columns of unnamed tours
+                numeric = [f.name for f in table.schema if _is_numeric_field(f)]
+                tour_dimensions = numeric[: self._tour.n_dims]
+            missing = [name for name in tour_dimensions if name not in table.column_names]
+            if missing or len(tour_dimensions) < self._tour.n_dims:
+                raise ValueError(
+                    "The table lacks the columns the tour projects. Call "
+                    "save_spec_to_parquet() without a table to save the widget's data."
+                )
 
         kwargs: dict = {}
 
@@ -486,8 +533,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["centering"] = self.centering
 
         # Tour dimensions (written inside tour.dimensions by build_dtour_metadata)
-        if self.tour_dimensions:
-            kwargs["tour_dimensions"] = list(self.tour_dimensions)
+        if tour_dimensions:
+            kwargs["tour_dimensions"] = tour_dimensions
 
         # Color map
         if self.color_map:
@@ -520,3 +567,43 @@ class Widget(anywidget.AnyWidget):
             self.send(self._keyframes_msg, buffers=[self._keyframes_buf])
         if self._metrics_buf is not None:
             self.send({"type": "metrics"}, buffers=[self._metrics_buf])
+
+
+def _viewer_data(
+    source: bytes | None, tour: TourResult | None, tour_dimensions: list[str] | None = None
+) -> tuple[bytes | None, list[str] | None]:
+    """The data the viewer gets for *source* and *tour*, and the columns the tour projects.
+
+    Tours with an embedding get its columns added in front. Other tours project
+    the columns named by ``tour.feature_names`` or, when the tour doesn't name
+    them, by *tour_dimensions*. The columns are ``None`` when neither names
+    them; the viewer then uses the first ``tour.n_dims`` numeric columns.
+    Raises when the data doesn't fit the tour.
+    """
+    if tour is None:
+        return source, None
+    if tour.embedding is not None:
+        table = None if source is None else _read_table(source)
+        table, names = _add_embedding(table, tour.embedding, tour.embedding_names)
+        return _write_ipc(table), names
+
+    # Feature names identify projected columns only when their count matches n_dims
+    names = tour.feature_names
+    if not names or len(names) != tour.n_dims:
+        names = list(tour_dimensions) if tour_dimensions else None
+    if names is None:
+        return source, None
+    if len(names) != tour.n_dims or len(set(names)) != len(names):
+        raise ValueError(
+            f"The tour projects {tour.n_dims} columns; tour_dimensions must name each "
+            f"once. Got {names}."
+        )
+    if source is not None:
+        numeric = set(_numeric_columns(source))
+        missing = [name for name in names if name not in numeric]
+        if missing:
+            raise ValueError(
+                f"The data has no numeric columns named {missing}, which the tour "
+                "projects. Pass the data the tour was computed from."
+            )
+    return source, names

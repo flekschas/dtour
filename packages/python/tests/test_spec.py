@@ -306,7 +306,7 @@ def test_widget_save_spec_with_tour():
     tour = little_tour(X)
     tour.feature_names = ["a", "b", "c", "d"]
     w = Widget(tour=tour)
-    table = w.save_spec_to_parquet(_make_table())
+    table = w.save_spec_to_parquet(pl.DataFrame(X, schema=["a", "b", "c", "d"]))
     meta = json.loads(table.schema.metadata_str["dtour"])
     assert "tour" in meta
     assert meta["tour"]["nDims"] == 4
@@ -338,16 +338,19 @@ def test_widget_save_spec_embedding_tour_dimensions():
     from dtour.widget import Widget
 
     tour = _embedding_tour()
-    table = pl.DataFrame(
-        {
-            "e0": tour.embedding[:, 0],
-            "e1": tour.embedding[:, 1],
-            "e2": tour.embedding[:, 2],
-            "extra": np.arange(50, dtype=np.float32),
-            "label": ["x"] * 50,
-        }
-    )
+    data = pl.DataFrame({"extra": np.arange(50, dtype=np.float32), "label": ["x"] * 50})
+    w = Widget(data, tour)
+    table = w.save_spec_to_parquet()
+    names = ["embedding_0", "embedding_1", "embedding_2"]
+    assert table.column_names == [*names, "extra", "label"]
+    meta = json.loads(table.schema.metadata_str["dtour"])
+    assert meta["tour"]["dimensions"] == names
+
+
+def test_widget_save_spec_rejects_table_without_tour_columns():
+    from dtour.widget import Widget
+
+    tour = _embedding_tour()
     w = Widget(tour=tour)
-    assert w.tour_dimensions == []
-    meta = json.loads(w.save_spec_to_parquet(table).schema.metadata_str["dtour"])
-    assert meta["tour"]["dimensions"] == ["e0", "e1", "e2"]
+    with pytest.raises(ValueError, match="lacks the columns"):
+        w.save_spec_to_parquet(pl.DataFrame({"label": ["x"] * 50}))

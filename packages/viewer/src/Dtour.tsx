@@ -30,11 +30,13 @@ import {
   legendVisibleAtom,
   metadataAtom,
   pointColorByAtom,
+  predefinedTourAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
   tourByAtom,
   tourDescriptionAtom,
   tourFamilyAtom,
+  tourRejectedAtom,
   tourTraversalAtom,
 } from './state/atoms.ts';
 import { applySpecToStore, initStoreFromSpec, useSpecSync } from './state/spec-sync.ts';
@@ -56,6 +58,10 @@ export type DtourProps = {
   data?: ArrayBuffer;
   /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
   keyframes?: Float32Array[];
+  /** Names of the numeric columns in the tour. With `keyframes`, the columns they
+   *  project (default: the first p numeric columns). Without, the columns that
+   *  start out checked in the toolbar's column menu (default: all). */
+  tourDimensions?: string[];
   /** Arrow IPC ArrayBuffer with per-keyframe quality metrics (columns = metrics, rows = keyframes). */
   metrics?: ArrayBuffer;
   /** Track configuration for radial bar charts. When omitted, all metrics are shown with defaults. */
@@ -131,6 +137,7 @@ function InlineMarkdown({ text }: { text: string }) {
 export const Dtour = ({
   data,
   keyframes,
+  tourDimensions,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -166,6 +173,7 @@ export const Dtour = ({
         <DtourInner
           data={data}
           keyframes={keyframes}
+          tourDimensions={tourDimensions}
           metrics={metrics}
           metricTracks={metricTracks}
           metricBarWidth={metricBarWidth}
@@ -194,6 +202,7 @@ export const Dtour = ({
 const DtourInner = ({
   data,
   keyframes,
+  tourDimensions,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -215,6 +224,7 @@ const DtourInner = ({
 }: {
   data: ArrayBuffer | undefined;
   keyframes: Float32Array[] | undefined;
+  tourDimensions: string[] | undefined;
   metrics: ArrayBuffer | undefined;
   metricTracks: RadialTrackConfig[] | undefined;
   metricBarWidth: 'full' | number | undefined;
@@ -286,25 +296,33 @@ const DtourInner = ({
     setColorMap(colorMap ?? embeddedConfig?.spec?.pointColorMap ?? null);
   }, [colorMap, embeddedConfig, setColorMap]);
 
-  // Sync tour metadata: props take priority over embedded config
+  // Sync tour metadata: props take priority over embedded config. A rejected
+  // tour's metadata doesn't describe the auto-generated tour shown instead.
   const setKeyframeLoadings = useSetAtom(keyframeLoadingsAtom);
   const setKeyframeDescriptions = useSetAtom(keyframeDescriptionsAtom);
   const setTourFamily = useSetAtom(tourFamilyAtom);
   const setTourDescription = useSetAtom(tourDescriptionAtom);
   const setTourBy = useSetAtom(tourByAtom);
+  const tourRejected = useAtomValue(tourRejectedAtom);
   useEffect(() => {
-    setKeyframeLoadings(keyframeLoadingsProp ?? embeddedConfig?.tour?.keyframeLoadings ?? null);
-    setKeyframeDescriptions(
-      keyframeDescriptionsProp ?? embeddedConfig?.tour?.keyframeDescriptions ?? null,
+    const tour = tourRejected ? undefined : embeddedConfig?.tour;
+    setKeyframeLoadings(
+      tourRejected ? null : (keyframeLoadingsProp ?? tour?.keyframeLoadings ?? null),
     );
-    setTourDescription(tourDescriptionProp ?? embeddedConfig?.tour?.description ?? null);
+    setKeyframeDescriptions(
+      tourRejected ? null : (keyframeDescriptionsProp ?? tour?.keyframeDescriptions ?? null),
+    );
+    setTourDescription(tourRejected ? null : (tourDescriptionProp ?? tour?.description ?? null));
 
     // Resolve tourFamily and enforce tourBy consistency
-    const resolvedKind = tourFamilyProp ?? embeddedConfig?.tour?.family ?? 'hyperdimensional';
+    const resolvedKind = tourRejected
+      ? 'hyperdimensional'
+      : (tourFamilyProp ?? tour?.family ?? 'hyperdimensional');
     setTourFamily(resolvedKind);
 
     type TourBy = 'dimensions' | 'pca' | 'parameter';
-    const specWillSetTourBy = embeddedConfig?.spec?.tourBy;
+    // A rejected tour's settings don't apply to the generated tour
+    const specWillSetTourBy = tourRejected ? undefined : embeddedConfig?.spec?.tourBy;
     if (resolvedKind === 'sequential') {
       setTourBy((prev: TourBy) => {
         if (prev !== 'parameter') {
@@ -331,6 +349,7 @@ const DtourInner = ({
     }
   }, [
     embeddedConfig,
+    tourRejected,
     keyframeLoadingsProp,
     keyframeDescriptionsProp,
     tourFamilyProp,
@@ -353,12 +372,18 @@ const DtourInner = ({
   const pointColorBy = useAtomValue(pointColorByAtom);
   const metadata = useAtomValue(metadataAtom);
 
-  // Apply tour.dimensions → activeColumnsAtom so the toolbar shows which
-  // numeric columns participate in the predefined tour.
+  // Apply the tour dimensions → activeColumnsAtom so the toolbar shows which
+  // numeric columns participate in the tour. A predefined tour uses the columns
+  // its keyframes resolved to. Keyed by value so a new array with the same names
+  // doesn't reset the user's column toggles.
   const setActiveColumns = useSetAtom(activeColumnsAtom);
+  const predefinedTour = useAtomValue(predefinedTourAtom);
+  const activeDims = predefinedTour?.dimensions ?? tourDimensions;
+  const tourDimsKey = activeDims?.join('\u0000');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tourDimsKey stands in for activeDims
   useEffect(() => {
     if (!metadata) return;
-    const tourDims = embeddedConfig?.tour?.dimensions;
+    const tourDims = activeDims;
     if (!tourDims || tourDims.length === 0) {
       setActiveColumns(null);
       return;
@@ -371,7 +396,7 @@ const DtourInner = ({
     if (indices.size >= 2) {
       setActiveColumns(indices);
     }
-  }, [metadata, embeddedConfig, setActiveColumns]);
+  }, [metadata, tourDimsKey, setActiveColumns]);
 
   useEffect(() => {
     if (!onSelectionChange) return;
@@ -600,6 +625,7 @@ const DtourInner = ({
           <DtourViewer
             data={data}
             keyframes={keyframes}
+            tourDimensions={tourDimensions}
             metrics={metrics}
             metricTracks={metricTracks}
             metricBarWidth={metricBarWidth}

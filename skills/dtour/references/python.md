@@ -24,9 +24,10 @@ and marimo. Optional extras:
 
 ```py
 w = dtour.Widget(
-    data=...,                 # polars/pandas DataFrame, pyarrow/arro3 Table, numpy 2D array,
+    data,                     # the data the tour was computed from, plus columns to color by:
+                              # polars/pandas DataFrame, pyarrow/arro3 Table, numpy 2D array,
                               # Arrow IPC bytes, or a path to an Arrow/Parquet file
-    tour=...,                 # TourResult; omit for an auto-generated tour
+    tour,                     # TourResult; omit for an auto-generated tour
     height=720,
     preview_count=4,          # 2–32, keyframes of an auto-generated tour
     preview_size="auto",      # "auto" | "small" | "medium" | "large"
@@ -72,7 +73,7 @@ w.set_metrics(metric_result)   # radial quality charts on the slider
 w.select([0, 5, 9])            # select by row index
 w.select_by_labels(["B cell"]) # select by labels of the active color column
 w.clear_selection()
-w.save_spec_to_parquet(table)  # see Saving and sharing
+w.save_spec_to_parquet()       # see Saving and sharing
 w.tour_family                  # "hyperdimensional" | "sequential" | None
 ```
 
@@ -85,13 +86,21 @@ Selection state is synced in both directions: `w.selected_indices` and
   categories that you can color by. Cast integer labels to string.
 - Without a tour, the viewer builds its own from all numeric columns. `tour_by`
   chooses dimension pairs (`"dimensions"`) or in-browser PCA (`"pca"`).
-- To leave numeric columns out of the tour, don't pass them (`df.select(...)`), or
-  uncheck them in the toolbar's column menu. The menu only allows this for
-  auto-generated tours, since a precomputed tour fixes its columns. The `tour_dimensions`
-  traitlet does not change the live widget; it is only recorded in Parquet exports.
-- With a tour of `p = tour.n_dims` dimensions, the widget projects the **first p numeric
-  columns, in order**. Put the tour columns first. Extra numeric columns after them
-  (e.g. raw marker values) are allowed.
+- A precomputed tour uses only its own columns; other numeric columns (e.g. raw marker
+  values) can stay in `data` for coloring. For an auto-generated tour, set
+  `tour_dimensions` to the columns to use, or uncheck columns in the toolbar's column
+  menu (the PCA tour always uses all numeric columns).
+- Every numeric column is loaded onto the GPU and must not contain missing values. For
+  wide data, pass only the columns you need; an embedding tour needs no input columns
+  at all (`Widget(df.select("cell_type"), tour)`).
+- Pass the data the tour was computed from. A tour finds its columns by name: `little_tour`
+  records the DataFrame's numeric column names in `tour.feature_names`, and the widget
+  adds the `tour.embedding` columns of all other tours itself, named after
+  `tour.embedding_names`. `w.tour_dimensions` shows the columns the tour projects. For
+  unnamed input, like numpy arrays, the tour uses the first `tour.n_dims` numeric
+  columns. Rows are matched by position, so keep them in the order the tour was
+  computed with; for sequential tours, pass one table with one row per point.
+- The widget keeps a snapshot of `data`; call `set_data` to show changes.
 - A tour can have any number of keyframes. The gallery previews up to 32 of them, evenly
   spaced along the tour, and fewer when space is short. `preview_count` only applies
   to auto-generated tours.
@@ -106,8 +115,9 @@ Every tour function returns a `TourResult`:
 |---|---|
 | `keyframes` | list of `(p, 2)` float32 orthonormal bases, one per keyframe |
 | `n_keyframes`, `n_dims` | number of keyframes, p |
-| `embedding` | `(n, p)` matrix the bases project, or `None` when they project the input columns (`little_tour`) |
-| `feature_names`, `feature_loadings`, `feature_r2` | correlations between tour dims and original features (`le_tour`). Drive the loading labels under the previews |
+| `embedding`, `embedding_names` | `(n, p)` matrix the bases project and its column names (e.g. `LE1`, `UMAP1`, `frame1_x`), or `None` when they project the input columns (`little_tour`) |
+| `feature_names` | input feature names. For `little_tour`, the columns the bases project |
+| `feature_loadings`, `feature_r2` | correlations between tour dims and input features (`le_tour`). Drive the loading labels under the previews |
 | `explained_variance_ratio` | PCA tours |
 | `tour_family` | `"hyperdimensional"` or `"sequential"` |
 | `description`, `keyframe_descriptions` | text shown in the description bar and per keyframe |
@@ -126,7 +136,7 @@ dtour.little_tour(X, n_components=None)
 ```
 PCA, then consecutive component pairs, wrapping around: [PC1,PC2] → [PC2,PC3] → … →
 [PCk,PC1]. `n_components` defaults to `min(n_features, 10)`. The bases live in the
-**input** space (`embedding is None`), so pass the input columns as `data`.
+**input** space (`embedding is None`) and project the input columns by name.
 
 ```py
 dtour.umap_little_tour(X, n_components=10, umap_kwargs=None)   # dtour[umap]
@@ -201,17 +211,29 @@ regularization is strong.
 
 ### Data for embedding tours
 
-Every tour except `little_tour` projects `tour.embedding`, not the input columns. Build
-the widget data from the embedding, followed by label columns:
+Every tour except `little_tour` projects `tour.embedding`, not the input columns. The
+widget puts the embedding columns first and keeps the columns of `data` for coloring,
+tooltips, and labels:
 
 ```py
 df = pl.read_parquet("cells.parquet")          # marker columns + a "cell_type" string column
 markers = [c for c in df.columns if c != "cell_type"]
 
 tour = dtour.le_tour(df.select(markers), n_frames=8, random_state=42)
+w = dtour.Widget(df, tour, point_color_by="cell_type")   # sends LE1…LE9, the markers, cell_type
+```
+
+`dtour.Widget(tour=tour)` alone shows just the embedding.
+
+dtour 0.4.4 and older don't add the embedding. There, build the data from it, with the
+embedding columns first:
+
+```py
 emb = pl.DataFrame({f"le_{i}": tour.embedding[:, i] for i in range(tour.n_dims)})
 w = dtour.Widget(data=emb.with_columns(df["cell_type"]), tour=tour, point_color_by="cell_type")
 ```
+
+Newer versions still accept such data, with a warning.
 
 ## Quality metrics
 
@@ -245,8 +267,8 @@ be slow; cache `m.values` and rebuild with
   columns.
 
 A 2D colormap on one keyframe's coordinates is a strong tool for **sequential tours**.
-Color by the x/y columns of one frame (with the embedding columns first, that is the
-first frame's pair), then scrub to the others. Points keep the color of where they sat
+Color by the x/y columns of one frame (e.g. `frame1_x` and `frame1_y`; entering 2D mode
+preselects the first frame's pair), then scrub to the others. Points keep the color of where they sat
 in the reference frame, so a group whose structure changed stands out, e.g. bright red
 points in a dark blue neighborhood. The paper uses this to find a cluster of physics
 education papers that one embedding model pulls together and the others spread out.
@@ -294,10 +316,7 @@ import pandas as pd
 cmap = dtour.build_color_map(sorted(df["cell_type"].unique()), theme="dark")
 
 tour = dtour.little_tour(df[pc_cols])
-w = dtour.Widget(
-    data=df[pc_cols + ["cell_type"]], tour=tour,
-    point_color_by="cell_type", color_map=cmap,
-)
+w = dtour.Widget(df, tour, point_color_by="cell_type", color_map=cmap)
 
 umap_df = pd.DataFrame({"x": umap_2d[:, 0], "y": umap_2d[:, 1], "cell_type": df["cell_type"]})
 s = jscatter.Scatter(data=umap_df, x="x", y="y", color_by="cell_type", color_map=cmap)
@@ -327,34 +346,35 @@ complement each other.
 
 ## Saving and sharing
 
-Embed the widget's current settings and tour in Parquet metadata. dtour.dev and the
-React viewer restore them when they open the file. In Python,
+Embed the widget's current settings and the tour you set from Python in Parquet
+metadata. dtour.dev and the React viewer restore them when they open the file. In Python,
 `dtour.TourResult.from_parquet(path)` recovers the tour and `dtour.read_spec_from_parquet(path)`
-recovers the settings.
+recovers the settings. Saving replaces any existing dtour metadata: a widget opened from
+an annotated file without a Python tour, e.g. `Widget("tour.pq")`, saves no tour, and the
+columns checked for an auto-generated tour aren't saved either. To keep a file's tour,
+pass it explicitly: `Widget(path, dtour.TourResult.from_parquet(path))`.
 
 ```py
 import pyarrow as pa, pyarrow.parquet as pq
 
-annotated = w.save_spec_to_parquet(table)   # returns an arro3 Table with a "dtour" metadata key
+annotated = w.save_spec_to_parquet()   # the widget's data, incl. embedding columns, as an arro3 Table
 pq.write_table(pa.table(annotated), "tour.pq", compression="zstd")
 ```
 
-Or build the metadata without a widget:
+Or build the metadata without a widget. The table must contain the columns the tour
+projects, so this suits `little_tour`, whose columns are in your data:
 
 ```py
 meta = dtour.build_dtour_metadata(
     tour=tour, point_color_by="label", point_color_map=cmap,
     preview_count=8, camera_zoom=0.5, theme_mode="light",
-    tour_dimensions=[f"d{i}" for i in range(tour.n_dims)],
 )
 df.write_parquet("tour.pq", metadata={"dtour": meta})    # polars
 ```
 
-`tour_dimensions` names the columns the tour projects. `little_tour` exports can rely on
-`tour.feature_names` when it is set. For embedding tours, pass the embedding column
-names, because `tour.feature_names` holds the *input* features (used for the loading
-labels). Older dtour versions silently recorded the input features there, which breaks
-files with extra numeric columns.
+`tour_dimensions` in the metadata names the columns the tour projects. It defaults to
+`tour.feature_names` for `little_tour`. For embedding tours, `build_dtour_metadata`
+needs it explicitly, because `tour.feature_names` holds the *input* features there.
 
 ## Recipes from the example notebooks
 

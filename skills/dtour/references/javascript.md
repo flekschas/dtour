@@ -36,6 +36,8 @@ columns: dimension pairs by default, or PCA with `spec.tourBy = "pca"`.
 <Dtour
   data={buffer}
   keyframes={keyframes}          // Float32Array[], one p×2 basis per keyframe (see below)
+  tourDimensions={names}         // columns the keyframes project; without keyframes, the
+                                 //   columns checked in the toolbar's column menu
   tourFamily="hyperdimensional"  // or "sequential" for stacked 2D embeddings
   tourDescription={null}         // text for the description bar
   keyframeDescriptions={[...]}   // string[] or a template using {primary} {secondary} {relation}
@@ -62,7 +64,9 @@ columns: dimension pairs by default, or PCA with `spec.tourBy = "pca"`.
 
 Each keyframe is a `Float32Array` of length `2p`, laid out column-major as
 `[x_0 … x_{p-1}, y_0 … y_{p-1}]`, with orthonormal x and y columns. The keyframes project the
-**first p numeric columns** of `data`, in order. For a sequential tour, pass
+numeric columns named in `tourDimensions`, or the **first p numeric columns** of `data`
+when it is omitted. If they don't name one existing column per keyframe dimension, the
+viewer logs an error and shows an auto-generated tour instead. For a sequential tour, pass
 `tourFamily="sequential"`, with columns `[f0_x, f0_y, f1_x, f1_y, …]` and keyframe `k`
 selecting the pair for frame `k`.
 

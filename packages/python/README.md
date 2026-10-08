@@ -38,8 +38,8 @@ dtour.Widget(data=df)
 
 ```py
 dtour.Widget(
-    data=...,  # DataFrame, pyarrow Table, Arrow IPC bytes, or file path
-    tour=...,  # TourResult from little_tour() / umap_little_tour()
+    data=...,  # the data the tour was computed from: DataFrame, Arrow table, numpy array, or file path
+    tour=...,  # TourResult from any tour generator
     # display
     height=720,  # canvas height in pixels
     preview_count=4,  # keyframe previews: 2–32
@@ -63,7 +63,7 @@ dtour.Widget(
     tour_direction="forward",  # "forward" | "backward"
     tour_slider_spacing="equal",  # "equal" | "geodesic"
     tour_slider_visibility="visible",  # "visible" | "subtle" | "hidden"
-    tour_dimensions=[],  # column names the tour projects (recorded in Parquet exports)
+    tour_dimensions=[],  # columns in the tour (set by the tour; without one, the columns checked in the toolbar)
     # camera
     camera_pan_x=0.0,
     camera_pan_y=0.0,
@@ -129,12 +129,11 @@ tour = dtour.attraction_repulsion_tour(X, n_frames=4)
 tour = dtour.aligned_umap_tour([X_1, X_2, X_3])
 ```
 
-All generators return a `TourResult` with `.keyframes` (list of p×2 float32 arrays), `.n_keyframes`, `.n_dims`, `.tour_family`, and `.save(path)` / `TourResult.load(path)` for persistence. `little_tour` projects the input columns directly. All other tours project their own `.embedding`, so pass that to the widget, with the embedding columns first:
+All generators return a `TourResult` with `.keyframes` (list of p×2 float32 arrays), `.n_keyframes`, `.n_dims`, `.tour_family`, and `.save(path)` / `TourResult.load(path)` for persistence. `little_tour` projects the input columns. All other tours project their own `.embedding`, which the widget adds to the data. Either way, pass the data you computed the tour from, plus any columns to color by:
 
 ```py
-tour = dtour.le_tour(X, n_frames=8)
-emb = pl.DataFrame({f"le_{i}": tour.embedding[:, i] for i in range(tour.n_dims)})
-dtour.Widget(data=emb.with_columns(df["cell_type"]), tour=tour, point_color_by="cell_type")
+tour = dtour.le_tour(df.select(features), n_frames=8)
+dtour.Widget(df, tour, point_color_by="cell_type")
 ```
 
 ## Quality metrics

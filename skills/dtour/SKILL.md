@@ -74,43 +74,50 @@ df = pl.read_parquet("https://github.com/uwdata/mosaic/raw/main/data/athletes.pa
 features = ["height", "weight", "gold", "silver", "bronze"]
 df = df.drop_nulls(features)
 
-# little_tour projects the input columns directly
 tour = dtour.little_tour(df.select(features))
 
 dtour.Widget(
-    data=df.select([*features, "sex"]),  # tour columns first, labels after
-    tour=tour,
+    df,  # the data the tour was computed from, plus columns to color by
+    tour,
     point_color_by="sex",
     color_map=dtour.build_color_map(sorted(df["sex"].unique())),
 )
 ```
 
-Every other tour computes its own embedding and projects `tour.embedding`, not the
-input columns. Passing the tour alone is not enough: the data you pass must start with
-the embedding columns.
+Pass the same kind of `data` for every tour. `little_tour` projects the input columns,
+which the widget finds by name. All other tours compute their own embedding
+(`tour.embedding`), and the widget adds its columns to the data itself:
 
 ```py
 tour = dtour.le_tour(df.select(features), n_frames=8, random_state=42)
-emb = pl.DataFrame({f"le_{i}": tour.embedding[:, i] for i in range(tour.n_dims)})
-dtour.Widget(data=emb.with_columns(df["sex"]), tour=tour, point_color_by="sex")
+dtour.Widget(df, tour, point_color_by="sex")
 ```
+
+This needs a dtour release newer than 0.4.4. With 0.4.4, put the tour's columns first in
+`data`, and for embedding tours build that data from `tour.embedding` (see
+[references/python.md](references/python.md#data-for-embedding-tours)).
 
 ## Data rules (most common mistakes)
 
 1. **Numeric columns are dimensions; string columns are categories.** An integer label
-   column becomes a tour dimension, so cast labels to string. To keep other numeric
-   columns out of the tour, leave them out of `data` or uncheck them in the toolbar's
-   column menu (auto-generated tours only).
-2. **With a precomputed tour, the viewer projects the first `tour.n_dims` numeric
-   columns, in order.** Put the tour columns first and any extra numeric columns after
-   them.
+   column becomes a tour dimension, so cast labels to string. A precomputed tour uses
+   only its own columns. For an auto-generated tour, set `tour_dimensions` to the columns
+   to use, or uncheck columns in the toolbar's column menu (the PCA tour always uses all
+   numeric columns).
+2. **Pass the data the tour was computed from.** Tours find their columns by name. Only
+   for unnamed input, like numpy arrays, the tour uses the first `tour.n_dims` numeric
+   columns.
 3. **Keep the default `tour_by` when passing a tour.** `tour_by="pca"` replaces your
    tour with an in-browser PCA tour. Sequential tours switch to `"parameter"`
    automatically.
 4. **Scale features with different units** (e.g. `StandardScaler`) before computing a
    tour. Otherwise one feature dominates every projection.
-5. **Drop or impute nulls** in the tour columns.
-6. **Computing a tour can be slow; rendering is not.** `le_tour` (kNN graph +
+5. **Drop or impute missing values** in every numeric column you pass, not only the tour
+   columns. A missing value in any numeric column can break the projection.
+6. **Keep wide data out of `data`.** Every numeric column is loaded onto the GPU. For an
+   embedding tour over thousands of features, pass only the columns to color by, e.g.
+   `Widget(df.select("cell_type"), tour)`.
+7. **Computing a tour can be slow; rendering is not.** `le_tour` (kNN graph +
    eigensolver) and the UMAP/t-SNE-based tours take minutes on large data, and so do
    quality metrics. `little_tour` is fast. Cache results with `tour.save(path)` /
    `dtour.TourResult.load(path)`, and use `le_tour(subsample=...)` above ~100K rows.
@@ -158,7 +165,8 @@ embed the settings in the file (see Sharing a result).
 ## Sharing a result
 
 Embed the tour and the widget settings into the Parquet file's metadata with
-`w.save_spec_to_parquet(table)` (details in [references/python.md](references/python.md)).
+`w.save_spec_to_parquet()`, which saves the widget's data, including any embedding
+columns (details in [references/python.md](references/python.md#saving-and-sharing)).
 The file then opens with the same tour and settings on dtour.dev or in React. In
 Python, `dtour.TourResult.from_parquet(path)` recovers the tour.
 

@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import warnings
 from typing import TYPE_CHECKING, Any
+
+from .data import _is_numeric_field
 
 if TYPE_CHECKING:
     from .tours import TourResult
@@ -276,16 +277,6 @@ def build_dtour_metadata(
     return json.dumps(config, separators=(",", ":"))
 
 
-def _is_numeric_field(field: Any) -> bool:
-    """Whether the viewer reads this column as a numeric dimension."""
-    import arro3.core as ac
-
-    if re.fullmatch(r"__index_level_\d+__", field.name):
-        return False
-    t = field.type
-    return ac.DataType.is_floating(t) or ac.DataType.is_integer(t) or ac.DataType.is_boolean(t)
-
-
 def add_spec_to_parquet(
     table: object,
     **kwargs: Any,
@@ -327,14 +318,18 @@ def add_spec_to_parquet(
 
     tour = kwargs.get("tour")
     if tour is not None and tour.embedding is not None and not kwargs.get("tour_dimensions"):
-        # The viewer projects the first n_dims numeric columns
-        numeric = [f.name for f in tbl.schema if _is_numeric_field(f)]
-        if len(numeric) < tour.n_dims:
-            raise ValueError(
-                f"The tour projects {tour.n_dims} columns but the table has only "
-                f"{len(numeric)} numeric columns. Add the tour.embedding columns first."
-            )
-        kwargs["tour_dimensions"] = numeric[: tour.n_dims]
+        names = tour.embedding_names or []
+        if names and set(names) <= set(tbl.column_names):
+            dims = names
+        else:
+            # Without its names, the viewer projects the first n_dims numeric columns
+            dims = [f.name for f in tbl.schema if _is_numeric_field(f)][: tour.n_dims]
+            if len(dims) < tour.n_dims:
+                raise ValueError(
+                    f"The tour projects {tour.n_dims} columns but the table has only "
+                    f"{len(dims)} numeric columns. Add the tour.embedding columns first."
+                )
+        kwargs["tour_dimensions"] = dims
 
     dtour_json = build_dtour_metadata(**kwargs)
 

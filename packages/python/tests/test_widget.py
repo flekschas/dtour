@@ -12,7 +12,7 @@ import dtour
 import numpy as np
 import pytest
 from dtour import widget
-from dtour.tours import little_tour, sequential_tour
+from dtour.tours import TourResult, little_tour, sequential_tour
 from dtour.widget import Widget
 
 
@@ -223,3 +223,191 @@ def test_check_bundle_warns_when_older_than_sources(tmp_path, monkeypatch):
     bundle.unlink()
     with pytest.raises(FileNotFoundError, match="pnpm build:widget"):
         widget._check_bundle()
+
+
+# ── Data + tour ─────────────────────────────────────────────────────────
+
+
+def _sent_columns(w: Widget) -> list[str]:
+    from dtour.data import _read_table
+
+    return _read_table(w._data_buf).column_names
+
+
+def _embedding_tour(n: int = 30) -> TourResult:
+    emb = np.random.default_rng(0).standard_normal((n, 3)).astype(np.float32)
+    keyframes = [np.eye(3, 2, k, dtype=np.float32) for k in (0, -1)]
+    return TourResult(keyframes, n_dims=3, embedding=emb, embedding_names=["E1", "E2", "E3"])
+
+
+def _labeled_data(n: int = 30):
+    import polars as pl
+
+    rng = np.random.default_rng(1)
+    return pl.DataFrame(
+        {"f1": rng.normal(size=n), "f2": rng.normal(size=n), "label": rng.choice(["a", "b"], n)}
+    )
+
+
+def test_widget_adds_embedding_columns_first():
+    w = Widget(_labeled_data(), _embedding_tour())
+    assert _sent_columns(w) == ["E1", "E2", "E3", "f1", "f2", "label"]
+    assert w.tour_dimensions == ["E1", "E2", "E3"]
+
+
+def test_widget_tour_without_data_sends_embedding():
+    w = Widget(tour=_embedding_tour())
+    assert _sent_columns(w) == ["E1", "E2", "E3"]
+
+
+def test_widget_keeps_data_that_starts_with_embedding():
+    import polars as pl
+
+    tour = _embedding_tour()
+    data = pl.DataFrame({f"e{i}": tour.embedding[:, i] for i in range(3)}).with_columns(
+        _labeled_data()["label"]
+    )
+    with pytest.warns(FutureWarning, match="already starts with the tour's embedding"):
+        w = Widget(data, tour)
+    assert _sent_columns(w) == ["e0", "e1", "e2", "label"]
+    assert w.tour_dimensions == ["e0", "e1", "e2"]
+
+
+def test_widget_rejects_data_with_other_row_count():
+    with pytest.raises(ValueError, match="rows"):
+        Widget(_labeled_data(10), _embedding_tour(30))
+
+
+def test_widget_drops_embedding_when_tour_changes():
+    data = _labeled_data()
+    w = Widget(data, _embedding_tour())
+    w.set_tour(little_tour(data.select("f1", "f2")))
+    assert _sent_columns(w) == ["f1", "f2", "label"]
+    assert w.tour_dimensions == ["f1", "f2"]
+
+
+def test_widget_little_tour_names_its_columns():
+    data = _labeled_data()
+    w = Widget(data.select("label", "f2", "f1"), little_tour(data.select("f1", "f2")))
+    assert w.tour_dimensions == ["f1", "f2"]
+
+
+def test_widget_unnamed_tour_clears_previous_mapping():
+    data = _labeled_data()
+    w = Widget(data, little_tour(data.select("f2", "f1")))
+    assert w.tour_dimensions == ["f2", "f1"]
+    w.set_tour(little_tour(data.select("f1", "f2").to_numpy()))
+    assert w.tour_dimensions == []
+
+    w = Widget(data, _embedding_tour())
+    w.set_tour(little_tour(data.select("f1", "f2").to_numpy()))
+    assert w.tour_dimensions == []
+    assert _sent_columns(w) == ["f1", "f2", "label"]
+
+
+def test_widget_rejects_tour_columns_missing_from_data():
+    data = _labeled_data()
+    with pytest.raises(ValueError, match="no numeric columns named"):
+        Widget(data.select("f1", "label"), little_tour(data.select("f1", "f2")))
+
+
+def test_widget_keeps_state_when_update_fails():
+    data = _labeled_data()
+    tour = little_tour(data.select("f1", "f2"))
+    w = Widget(data, tour)
+    data_buf = w._data_buf
+    with pytest.raises(ValueError, match="rows"):
+        w.set_tour(_embedding_tour(2))
+    assert w._tour is tour
+    assert w._data_buf is data_buf
+    assert w.tour_dimensions == ["f1", "f2"]
+
+    w = Widget(data, _embedding_tour())
+    with pytest.raises(ValueError, match="rows"):
+        w.set_data(_labeled_data(10))
+    assert w.save_spec_to_parquet().num_rows == 30
+
+
+def test_widget_snapshots_data():
+    import pyarrow as pa
+
+    X = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
+    reader = pa.RecordBatchReader.from_batches(
+        pa.schema([("a", pa.float32()), ("b", pa.float32()), ("c", pa.float32())]),
+        [pa.record_batch([pa.array(X[:, i]) for i in range(3)], names=["a", "b", "c"])],
+    )
+    assert Widget(reader, little_tour(X)).save_spec_to_parquet().num_rows == 30
+
+    w = Widget(X, little_tour(X))
+    first = X[0, 0]
+    X[:, 0] += 100
+    assert w.save_spec_to_parquet().column("dim_0").to_numpy()[0] == first
+
+
+def test_widget_saves_unnamed_tour():
+    import json
+
+    X = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
+    table = Widget(X, little_tour(X)).save_spec_to_parquet()
+    meta = json.loads(table.schema.metadata_str["dtour"])
+    assert meta["tour"]["dimensions"] == ["dim_0", "dim_1", "dim_2"]
+
+
+def test_widget_unnamed_embedding_and_numpy_data():
+    tour = _embedding_tour()
+    tour.embedding_names = None
+    X = np.random.default_rng(2).standard_normal((30, 3)).astype(np.float32)
+    w = Widget(X, tour)
+    assert _sent_columns(w) == [f"embedding_{i}" for i in range(3)] + ["dim_0", "dim_1", "dim_2"]
+
+
+def test_widget_reads_ipc_file_bytes():
+    import io
+
+    import pyarrow as pa
+    import pyarrow.ipc
+
+    table = _labeled_data().to_arrow()
+    buf = io.BytesIO()
+    with pa.ipc.new_file(buf, table.schema) as writer:
+        writer.write_table(table)
+    w = Widget(buf.getvalue(), _embedding_tour())
+    assert _sent_columns(w) == ["E1", "E2", "E3", "f1", "f2", "label"]
+
+
+def test_widget_rejects_invalid_embedding_names():
+    tour = _embedding_tour()
+    tour.embedding_names = ["E1", "E1", "E3"]
+    with pytest.raises(ValueError, match="unique names"):
+        Widget(_labeled_data(), tour)
+
+
+def test_widget_validates_explicit_mapping():
+    data = _labeled_data()
+    unnamed = little_tour(data.select("f1", "f2").to_numpy())
+    w = Widget(data, unnamed, tour_dimensions=["f1", "f2"])
+    assert w.tour_dimensions == ["f1", "f2"]
+
+    with pytest.raises(ValueError, match="no numeric columns named"):
+        w.set_data(data.rename({"f1": "other"}))
+    assert w.tour_dimensions == ["f1", "f2"]
+    assert _sent_columns(w) == ["f1", "f2", "label"]
+
+    for names in (["f1"], ["f1", "f1"]):
+        with pytest.raises(ValueError, match="name each once"):
+            Widget(data, unnamed, tour_dimensions=names)
+    with pytest.raises(ValueError, match="no numeric columns named"):
+        Widget(data, unnamed, tour_dimensions=["f1", "missing"])
+
+
+def test_widget_keeps_state_when_keyframes_fail_to_serialize():
+    data = _labeled_data()
+    tour = little_tour(data.select("f1", "f2"))
+    w = Widget(data, tour)
+    keyframes_buf = w._keyframes_buf
+    bad = TourResult([np.eye(2, 2, dtype=np.float32), np.eye(3, 2, dtype=np.float32)], n_dims=2)
+    with pytest.raises(ValueError):
+        w.set_tour(bad)
+    assert w._tour is tour
+    assert w._keyframes_buf is keyframes_buf
+    assert w.tour_dimensions == ["f1", "f2"]

@@ -1322,3 +1322,20 @@ def test_from_parquet_no_tour_raises():
     table = ac.Table.from_pydict({"x": ac.Array.from_numpy(np.zeros(10, dtype=np.float32))})
     with pytest.raises(ValueError, match="No embedded tour"):
         TourResult.from_parquet(table)
+
+
+def test_little_tour_records_dataframe_feature_names():
+    import polars as pl
+
+    df = pl.DataFrame(make_data(n=50, p=3), schema=["a", "b", "c"]).with_columns(
+        pl.lit("x").alias("label")
+    )
+    assert little_tour(df).feature_names == ["a", "b", "c"]
+    assert little_tour(make_data(n=50, p=3)).feature_names is None
+
+
+def test_embedding_names_save_load(tmp_path):
+    result = le_tour(make_data(n=100, p=4), n_components=3, n_neighbors=10)
+    assert result.embedding_names == [f"LE{i + 1}" for i in range(result.n_dims)]
+    result.save(tmp_path / "tour.npz")
+    assert TourResult.load(tmp_path / "tour.npz").embedding_names == result.embedding_names
