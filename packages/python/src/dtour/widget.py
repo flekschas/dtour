@@ -299,7 +299,7 @@ class Widget(anywidget.AnyWidget):
         self._tour: TourResult | None = None
         self.on_msg(self._handle_custom_msg)
         if tour is not None:
-            self._set_tour(tour, kwargs.get("tour_dimensions"))
+            self._set_tour(tour, kwargs.get("tour_dimensions"), self._source)
         elif self._source is not None:
             self._data_buf = self._source
             self.send({"type": "data"}, buffers=[self._data_buf])
@@ -317,14 +317,18 @@ class Widget(anywidget.AnyWidget):
     theme = _renamed_trait("theme")
 
     # ── Public methods ───────────────────────────────────────────────────
-    def set_data(self, data: object) -> None:
+    def set_data(self, data: object, tour: TourResult | None = None) -> None:
         """Load data from any Arrow-compatible source.
 
         Accepts anything with ``__arrow_c_stream__`` (pandas/polars
         DataFrames, pyarrow/arro3 Tables, etc.), a numpy array, raw ``bytes``
-        (Arrow IPC), or a file path.
+        (Arrow IPC), or a file path. Pass *tour* to replace the data and tour
+        together, e.g., when the rows or columns change.
         """
         source = _to_ipc_bytes(data)
+        if tour is not None:
+            self._set_tour(tour, None, source)
+            return
         data_buf, dims = _viewer_data(source, self._tour, self.tour_dimensions)
         self._source = source
         self._data_buf = data_buf
@@ -334,11 +338,14 @@ class Widget(anywidget.AnyWidget):
 
     def set_tour(self, tour: TourResult) -> None:
         """Set tour keyframes from a :class:`~dtour.tours.TourResult`."""
-        self._set_tour(tour, None)
+        self._set_tour(tour, None, self._source)
 
-    def _set_tour(self, tour: TourResult, tour_dimensions: list[str] | None) -> None:
-        """Set *tour*, using *tour_dimensions* as its columns if it doesn't name them."""
-        data_buf, dims = _viewer_data(self._source, tour, tour_dimensions)
+    def _set_tour(
+        self, tour: TourResult, tour_dimensions: list[str] | None, source: bytes | None
+    ) -> None:
+        """Set *tour* and the data *source*, using *tour_dimensions* as the tour's
+        columns if it doesn't name them."""
+        data_buf, dims = _viewer_data(source, tour, tour_dimensions)
         keyframes_buf = tour.keyframes_raw
 
         msg: dict = {"type": "keyframes", "n_dims": tour.n_dims}
@@ -385,6 +392,7 @@ class Widget(anywidget.AnyWidget):
         self.send(msg, buffers=[self._keyframes_buf])
 
         self.tour_dimensions = dims or []
+        self._source = source
         if data_buf is not self._data_buf:
             self._data_buf = data_buf
             self.send({"type": "data"}, buffers=[self._data_buf])

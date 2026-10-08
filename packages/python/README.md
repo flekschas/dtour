@@ -85,6 +85,7 @@ can be read, set, and observed live from the notebook.
 ```py
 w = dtour.Widget(data=X, tour=tour)
 w.set_data(df)  # load new data
+w.set_data(df, tour)  # load new data with its tour
 w.set_tour(tour)  # set tour keyframes
 w.set_metrics(metrics)  # display radial quality charts
 w.select([0, 1, 2])  # select points by index

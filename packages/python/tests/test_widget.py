@@ -411,3 +411,23 @@ def test_widget_keeps_state_when_keyframes_fail_to_serialize():
     assert w._tour is tour
     assert w._keyframes_buf is keyframes_buf
     assert w.tour_dimensions == ["f1", "f2"]
+
+
+def test_widget_replaces_data_and_tour_together():
+    data = _labeled_data()
+    w = Widget(data, _embedding_tour(30))
+    w.set_data(_labeled_data(20), _embedding_tour(20))
+    assert w.save_spec_to_parquet().num_rows == 20
+
+    w = Widget(data, little_tour(data.select("f1", "f2")))
+    renamed = data.rename({"f1": "x", "f2": "y"})
+    w.set_data(renamed, little_tour(renamed.select("x", "y")))
+    assert w.tour_dimensions == ["x", "y"]
+    assert _sent_columns(w) == ["x", "y", "label"]
+
+    tour, data_buf = w._tour, w._data_buf
+    with pytest.raises(ValueError, match="rows"):
+        w.set_data(_labeled_data(10), _embedding_tour(20))
+    assert w._tour is tour
+    assert w._data_buf is data_buf
+    assert w.tour_dimensions == ["x", "y"]

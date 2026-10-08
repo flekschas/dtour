@@ -68,6 +68,7 @@ Methods:
 
 ```py
 w.set_data(df)                 # replace data
+w.set_data(df, tour)           # replace data and tour together (rows or columns changed)
 w.set_tour(tour)               # replace tour
 w.set_metrics(metric_result)   # radial quality charts on the slider
 w.select([0, 5, 9])            # select by row index
@@ -201,7 +202,7 @@ across frames) and `alignment_window_size`.
 
 | | `sequential_tour` | `aligned_umap_tour` |
 |---|---|---|
-| How frames relate | Each frame is its own embedding, warm-started from the previous one, then rotated/scaled onto it (Procrustes) | All frames are optimized together, with a penalty for moving corresponding points between adjacent frames |
+| How frames relate | Each frame is its own embedding, warm-started from the previous one, then rotated or reflected and centered to match it (Procrustes) | All frames are optimized together, with a penalty for moving corresponding points between adjacent frames |
 | Each keyframe is… | a faithful standalone embedding | a compromise between fitting its own data and matching its neighbors |
 | Methods | UMAP, t-SNE, PyMDE, any callable, precomputed layouts | UMAP only |
 | Use for | comparing models, methods, or hyperparameters, where differences are the point | smooth series of closely related slices (time points, gradual parameter sweeps), where stable motion matters more than per-frame fidelity |
@@ -241,12 +242,14 @@ Newer versions still accept such data, with a warning.
 m = dtour.compute_metrics(
     X,                 # the matrix the keyframes project: tour.embedding, or the input columns for little_tour
     tour.keyframes,
-    labels=None,       # needed for silhouette, calinski_harabasz, neighborhood_hit, confusion
+    labels=y,          # needed for silhouette, calinski_harabasz, neighborhood_hit, confusion
     metrics=None,      # default ["silhouette", "trustworthiness"]
     k=7, subsample=None, exclude_labels=None,
 )
 w.set_metrics(m)
 ```
+Without labels, pick label-free metrics, e.g. `metrics=["trustworthiness"]`; the
+default includes `silhouette`, which needs labels.
 Available metrics: `silhouette`, `trustworthiness`, `calinski_harabasz`,
 `neighborhood_hit`, `confusion` (needs `dtour[cev]`), and `hdbscan_score`. They are
 drawn as radial bars per keyframe. Configure the bars with
@@ -304,8 +307,10 @@ programmatic selections. `selected_labels` holds legend selections (and clears
 ### dtour + jupyter-scatter: validate a UMAP against a PCA tour
 
 Tour the PCA space that UMAP was computed from, next to the 2D UMAP, and sync selections
-both ways. Cells that cluster in UMAP but scatter in every PCA keyframe point to
-structure that UMAP introduced (`pip install jupyter-scatter`):
+both ways. Cells that cluster in UMAP but scatter in every PCA keyframe deserve a closer
+look: check their neighbors and distances in the full PCA space before calling the
+cluster an artifact, since the tour shows only consecutive PC pairs
+(`pip install jupyter-scatter`):
 
 ```py
 import dtour

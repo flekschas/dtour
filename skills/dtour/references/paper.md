@@ -5,7 +5,9 @@ Preprint: [arXiv:2605.04306](https://arxiv.org/abs/2605.04306)
 
 This is the text of the paper converted to Markdown for agents. Citations are shortened
 to first author and year; the full references are in the preprint. Figures are described
-in words. Bold marks key takeaways and was added for this version.
+in words. Bold marks key takeaways and was added for this version. The usage scenarios
+interpret specific datasets; when applying their reasoning elsewhere, treat a disagreement
+between views as a lead to check, not proof.
 
 ## Contents
 
@@ -353,9 +355,9 @@ addresses this by touring higher-dimensional embeddings or across multiple model
 **UMAP-validating PCA tour.** Single-cell analysis pipelines commonly select highly
 variable genes, reduce to the top principal components, and embed the resulting PCA
 space into 2D with UMAP (Becht 2019). Because UMAP operates directly on the PCA output,
-touring through PC pairs provides a natural validation layer: **structure present in
+touring through PC pairs provides a natural validation layer: structure present in
 UMAP but absent from the PCA tour must have been introduced by the non-linear
-embedding.** We apply a little PCA tour to 276K cells from a developing mouse brain atlas
+embedding. We apply a little PCA tour to 276K cells from a developing mouse brain atlas
 (La Manno 2021), touring the first 8 principal components alongside a 2D UMAP of the
 same PCA space. Some structures are stable across both representations: (2a)
 gastrulation and ectoderm cells form a consistent progression in every PCA keyframe and

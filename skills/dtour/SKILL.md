@@ -49,7 +49,7 @@ or PCA with `tour_by="pca"` / `tourBy: "pca"`. Start there for a quick first loo
 | What nonlinear manifold or cluster structure is there? | `le_tour(X, n_frames=8)` | Laplacian Eigenmaps, coarse → fine. `subsample=` for >100K rows |
 | Which directions separate my known labels? | `le_tour(X, labels=y, discriminative=True)` | Spectral Fisher. Keyframes are ordered by how well they separate classes |
 | Too many dims for a linear tour? | `umap_little_tour(X, n_components=8)` | Needs `dtour[umap]` |
-| Is my UMAP/t-SNE structure real? | `little_tour` over the PCA space UMAP was fit on, next to the 2D UMAP with linked selections | Structure present in UMAP but in no PCA keyframe was probably introduced by UMAP. Example: [dtour + jupyter-scatter](references/python.md#dtour--jupyter-scatter-validate-a-umap-against-a-pca-tour) |
+| Is my UMAP/t-SNE structure real? | `little_tour` over the PCA space UMAP was fit on, next to the 2D UMAP with linked selections | A group that separates in UMAP but overlaps in every PCA keyframe is worth checking: inspect its neighbors and distances in the full PCA space before calling it an artifact, since the tour shows only consecutive PC pairs. Example: [dtour + jupyter-scatter](references/python.md#dtour--jupyter-scatter-validate-a-umap-against-a-pca-tour) |
 | How do clusters form as repulsion increases? | `attraction_repulsion_tour(X)` | Moves from LE-like through UMAP-like to t-SNE. Needs `dtour[tsne]` |
 | How do models, methods, or hyperparameters differ? | `sequential_tour([X1, X2, ...])` | Each keyframe is its own embedding (UMAP, t-SNE, PyMDE, or precomputed layouts), aligned to the previous one. Keyframes stay faithful, so differences show up |
 | How does a gradual series evolve (e.g. time points)? | `aligned_umap_tour([X1, X2, ...])` | UMAP only. Optimizes all frames jointly and penalizes moving points, giving smoother motion. Strong alignment can hide real change |
@@ -76,7 +76,7 @@ df = df.drop_nulls(features)
 
 tour = dtour.little_tour(df.select(features))
 
-dtour.Widget(
+w = dtour.Widget(
     df,  # the data the tour was computed from, plus columns to color by
     tour,
     point_color_by="sex",
@@ -132,7 +132,7 @@ setting has a traitlet. The most useful ones:
 |---|---|---|
 | `tour_traversal` | `tourTraversal` | `"guided"` \| `"manual"` \| `"grand"` |
 | `tour_position`, `tour_playing`, `tour_speed` | `tourPosition`, `tourPlaying`, `tourSpeed` | 0–1, bool, 0.1–5 |
-| `point_color_by`, `color_map` | `pointColorBy`, `pointColorMap` | column name, label → color |
+| `point_color_by`, `color_map` (export: `point_color_map`) | `pointColorBy`, `pointColorMap` | column name, label → color |
 | `point_size`, `point_opacity` | `pointSize`, `pointOpacity` | number or `"auto"` |
 | `preview_count` | `previewCount` | 2–32, keyframes of an auto-generated tour |
 | `preview_size` | `previewSize` | `"auto"` \| `"small"` \| `"medium"` \| `"large"` |
@@ -147,8 +147,9 @@ embed the settings in the file (see Sharing a result).
 
 ## Reading a tour
 
-- Scrub slowly between keyframes. The motion of point groups is the signal: clusters
-  that stay together in every view are probably real.
+- Scrub slowly between keyframes. The motion of point groups is the signal. A tour
+  shows a limited set of 2D views, so treat what you see as a lead to check, not proof:
+  a group can be real yet overlap in every keyframe.
 - **Select, then explore**: lasso a group in one keyframe, scrub to the others, then
   switch to manual mode and drag axes to find which dimensions separate it.
 - Keyframe previews can show the top-loading features (`le_tour` fills these in).
@@ -159,8 +160,9 @@ embed the settings in the file (see Sharing a result).
   colors, so a group whose position changed stands out, e.g. bright red in a dark blue
   neighborhood. See [Coloring](references/python.md#coloring).
 - A cluster that is tight in t-SNE-like keyframes but scatters toward the LE-like end of
-  an attraction–repulsion tour is likely a repulsion artifact. Boundary points that stay
-  put across the spectrum are more trustworthy.
+  an attraction–repulsion tour may be a repulsion artifact; check its members (e.g. the
+  raw items or their neighbors in the input space) before concluding so. Boundary points
+  that stay put across the spectrum are more trustworthy.
 
 ## Sharing a result
 
@@ -183,4 +185,5 @@ Load these only when needed:
   (tour theory, the design of the steerability spectrum, interpolation math, the tour
   strategies) and the usage scenarios on Fashion-MNIST, single-cell, and arXiv data.
   Read it when explaining *why* dtour works the way it does, or when interpreting tours
-  in depth.
+  in depth. When quoting its validation claims, add that a disagreement between views is
+  a lead to check, not proof.

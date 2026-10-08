@@ -26,6 +26,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: `Widget(data, tour)` takes the data the tour was computed from for every tour, and accepts both as positional arguments. For tours with an `embedding`, the widget adds the embedding columns itself, so `Widget(df, dtour.le_tour(df[features]))` just works; data that already starts with the embedding still works but warns. `Widget(tour=tour)` alone shows the embedding
 - feat: tours find their columns by name, so the tour columns no longer need to come first. `little_tour` records the DataFrame's column names as `feature_names`, and tours with an embedding name its columns in the new `TourResult.embedding_names` (e.g., `LE1`, `UMAP1`, `frame1_x`; `embedding_0` for tours saved without names). The widget raises a `ValueError` when the data lacks the tour's columns or has a different number of rows, and keeps its previous data and tour
 - feat: the `tour_dimensions` traitlet reaches the viewer. Without a tour, it sets the columns checked in the toolbar's column menu
+- feat: `Widget.set_data(data, tour)` replaces the data and tour together, for when the rows or columns change
 - feat: `Widget.save_spec_to_parquet()` saves the widget's data as shown, including the embedding columns, when called without a table. It raises a `ValueError` when a given table lacks the tour's columns
 - fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
@@ -63,6 +64,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
 - fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
 - fix: `?url=` and `?dataset=` links load their data without also needing `&benchmark`
+- fix: `?dataset=` slugs load the example they name. Since the examples were reordered, they had loaded other examples (e.g., `lorenz` loaded Fashion MNIST), including in benchmark runs
 
 ### agents
 
