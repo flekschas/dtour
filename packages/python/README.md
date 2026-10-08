@@ -42,11 +42,12 @@ dtour.Widget(
     tour=...,             # TourResult from little_tour() / umap_little_tour()
     # display
     height=720,           # canvas height in pixels
-    preview_count=4,      # keyframe previews: 2–16
+    preview_count=4,      # keyframe previews: 2–32
     preview_size="auto",  # "auto" | "small" | "medium" | "large"
     preview_padding=12.0, # gap between previews
     preview_keyframe_numbers="auto",  # "auto" | "visible" | "hidden"
     preview_label_content="auto",     # "auto" | "description" | "loadings"
+    preview_label_visibility="auto",  # "auto" | "visible" | "interactive" | "hidden"
     # point style
     point_size="auto",    # point radius or "auto"
     point_opacity="auto", # point alpha or "auto"
@@ -68,7 +69,7 @@ dtour.Widget(
     # mode & appearance
     tour_traversal="guided",   # "guided" | "manual" | "grand"
     show_legend=True,     # show/hide color legend
-    theme="dark",         # "light" | "dark" | "system"
+    theme_mode="dark",    # "light" | "dark" | "system"
 )
 ```
 

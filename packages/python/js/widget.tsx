@@ -16,35 +16,43 @@ type TourMeta = {
 import preflightCss from './preflight.css?inline';
 
 // ---------------------------------------------------------------------------
-// Traitlet (snake_case) ↔ DtourSpec (camelCase) mapping
+// Traitlets (snake_case) ↔ DtourSpec (camelCase)
 // ---------------------------------------------------------------------------
 
-const TRAIT_TO_SPEC: Record<string, keyof DtourSpec> = {
-  tour_by: 'tourBy',
-  tour_position: 'tourPosition',
-  tour_playing: 'tourPlaying',
-  tour_speed: 'tourSpeed',
-  tour_direction: 'tourDirection',
-  preview_count: 'previewCount',
-  preview_size: 'previewSize',
-  preview_padding: 'previewPadding',
-  preview_keyframe_numbers: 'previewKeyframeNumbers',
-  preview_label_content: 'previewLabelContent',
-  point_size: 'pointSize',
-  point_opacity: 'pointOpacity',
-  point_color: 'pointColor',
-  point_color_by: 'pointColorBy',
-  camera_pan_x: 'cameraPanX',
-  camera_pan_y: 'cameraPanY',
-  camera_zoom: 'cameraZoom',
-  tour_traversal: 'tourTraversal',
-  show_legend: 'showLegend',
-  show_tour_description: 'showTourDescription',
-  theme: 'themeMode',
-  centering: 'centering',
-};
+/** snake_case form of a camelCase string type, e.g. 'cameraPanX' → 'camera_pan_x'. */
+type SnakeCase<S extends string> = S extends `${infer Head}${infer Tail}`
+  ? `${Head extends Lowercase<Head> ? Head : `_${Lowercase<Head>}`}${SnakeCase<Tail>}`
+  : S;
 
-const TRAIT_NAMES = Object.keys(TRAIT_TO_SPEC);
+/** Traitlets that mirror DtourSpec fields. Each trait name is its spec key in snake_case. */
+const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
+  'tour_by',
+  'tour_position',
+  'tour_playing',
+  'tour_speed',
+  'tour_direction',
+  'preview_count',
+  'preview_size',
+  'preview_padding',
+  'preview_keyframe_numbers',
+  'preview_label_content',
+  'preview_label_visibility',
+  'point_size',
+  'point_opacity',
+  'point_color',
+  'point_color_by',
+  'camera_pan_x',
+  'camera_pan_y',
+  'camera_zoom',
+  'tour_traversal',
+  'show_legend',
+  'show_tour_description',
+  'theme_mode',
+  'centering',
+];
+
+const toSpecKey = (trait: string) =>
+  trait.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()) as keyof DtourSpec;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,8 +86,8 @@ const arraysEqual = (a: readonly unknown[], b: readonly unknown[]): boolean =>
 // biome-ignore lint/suspicious/noExplicitAny: anywidget model is untyped
 function readSpecFromModel(model: any): DtourSpec {
   const spec: Record<string, unknown> = {};
-  for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
-    spec[specKey] = model.get(trait);
+  for (const trait of SPEC_TRAITS) {
+    spec[toSpecKey(trait)] = model.get(trait);
   }
   return spec as DtourSpec;
 }
@@ -181,11 +189,11 @@ function Widget() {
         setSpec(readSpecFromModel(model));
       }
     }
-    for (const trait of TRAIT_NAMES) {
+    for (const trait of SPEC_TRAITS) {
       model.on(`change:${trait}`, onChange);
     }
     return () => {
-      for (const trait of TRAIT_NAMES) {
+      for (const trait of SPEC_TRAITS) {
         model.off(`change:${trait}`, onChange);
       }
     };
@@ -195,8 +203,8 @@ function Widget() {
   const handleSpecChange = useCallback(
     (newSpec: Required<DtourSpec>) => {
       suppressRef.current = true;
-      for (const [trait, specKey] of Object.entries(TRAIT_TO_SPEC)) {
-        const value = newSpec[specKey];
+      for (const trait of SPEC_TRAITS) {
+        const value = newSpec[toSpecKey(trait)];
         if (value !== undefined) {
           model.set(trait, value);
         }

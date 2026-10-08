@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import anywidget
 import traitlets as t
@@ -17,8 +18,8 @@ if TYPE_CHECKING:
 
 _STATIC = Path(__file__).parent / "static"
 _BUNDLE = _STATIC / "widget.js"
-# Most gallery previews the viewer can lay out.
-_MAX_PREVIEW_COUNT = 16
+# Most gallery previews the viewer shows.
+_MAX_PREVIEW_COUNT = 32
 
 # Repo root for a checkout (dtour/ → src/ → python/ → packages/ → root). Only a
 # checkout has the bundle's inputs, where the locally built bundle can go stale.
@@ -53,12 +54,39 @@ def _check_bundle() -> None:
 _check_bundle()
 
 
-def _warn_show_keyframe_loadings() -> None:
+# Renamed traitlets: old name → (new name, old value → new value, new value → old value)
+_RENAMED_TRAITS: dict[str, tuple[str, Callable[[Any], Any], Callable[[Any], Any]]] = {
+    "show_keyframe_loadings": (
+        "preview_label_content",
+        lambda show: "auto" if show else "description",
+        lambda content: content != "description",
+    ),
+    "theme": ("theme_mode", lambda value: value, lambda value: value),
+}
+
+
+def _warn_renamed(old: str, stacklevel: int) -> None:
+    new = _RENAMED_TRAITS[old][0]
     warnings.warn(
-        "`show_keyframe_loadings` is deprecated; use `preview_label_content` instead.",
+        f"`{old}` is deprecated; use `{new}` instead.",
         DeprecationWarning,
-        stacklevel=3,
+        stacklevel=stacklevel + 1,
     )
+
+
+def _renamed_trait(old: str) -> property:
+    """Deprecated alias of a renamed traitlet."""
+    new, to_new, to_old = _RENAMED_TRAITS[old]
+
+    def getter(self: Widget) -> Any:
+        _warn_renamed(old, stacklevel=2)
+        return to_old(getattr(self, new))
+
+    def setter(self: Widget, value: Any) -> None:
+        _warn_renamed(old, stacklevel=2)
+        setattr(self, new, to_new(value))
+
+    return property(getter, setter, doc=f"Deprecated alias of :attr:`{new}`.")
 
 
 class Widget(anywidget.AnyWidget):
@@ -110,6 +138,9 @@ class Widget(anywidget.AnyWidget):
     preview_label_content = t.Enum(["auto", "description", "loadings"], default_value="auto").tag(
         sync=True
     )
+    preview_label_visibility = t.Enum(
+        ["auto", "visible", "interactive", "hidden"], default_value="auto"
+    ).tag(sync=True)
     point_size = t.Union(
         [t.Float(), t.Unicode()],
         default_value="auto",
@@ -126,7 +157,7 @@ class Widget(anywidget.AnyWidget):
     tour_traversal = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
-    theme = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
+    theme_mode = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
     centering = t.Enum(["midrange", "mean"], default_value="midrange").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
@@ -214,11 +245,11 @@ class Widget(anywidget.AnyWidget):
             )
         return value
 
-    @t.validate("theme")
-    def _validate_theme(self, proposal: t.Bunch) -> str:
+    @t.validate("theme_mode")
+    def _validate_theme_mode(self, proposal: t.Bunch) -> str:
         value = proposal["value"]
         if value not in ("light", "dark", "system"):
-            raise t.TraitError(f"theme must be 'light', 'dark', or 'system'; got {value!r}")
+            raise t.TraitError(f"theme_mode must be 'light', 'dark', or 'system'; got {value!r}")
         return value
 
     @t.validate("metric_bar_width")
@@ -232,10 +263,10 @@ class Widget(anywidget.AnyWidget):
 
     # ── Init ─────────────────────────────────────────────────────────────
     def __init__(self, *, data: object | None = None, tour: TourResult | None = None, **kwargs):
-        if "show_keyframe_loadings" in kwargs:
-            _warn_show_keyframe_loadings()
-            show = kwargs.pop("show_keyframe_loadings")
-            kwargs.setdefault("preview_label_content", "auto" if show else "description")
+        for old in _RENAMED_TRAITS.keys() & kwargs.keys():
+            _warn_renamed(old, stacklevel=2)
+            new, to_new, _ = _RENAMED_TRAITS[old]
+            kwargs.setdefault(new, to_new(kwargs.pop(old)))
         super().__init__(**kwargs)
         self._data_buf: bytes | None = None
         self._keyframes_buf: bytes | None = None
@@ -257,16 +288,8 @@ class Widget(anywidget.AnyWidget):
         """
         return self._tour_family
 
-    @property
-    def show_keyframe_loadings(self) -> bool:
-        """Deprecated: use :attr:`preview_label_content`."""
-        _warn_show_keyframe_loadings()
-        return self.preview_label_content != "description"
-
-    @show_keyframe_loadings.setter
-    def show_keyframe_loadings(self, show: bool) -> None:
-        _warn_show_keyframe_loadings()
-        self.preview_label_content = "auto" if show else "description"
+    show_keyframe_loadings = _renamed_trait("show_keyframe_loadings")
+    theme = _renamed_trait("theme")
 
     # ── Public methods ───────────────────────────────────────────────────
     def set_data(self, data: object) -> None:
@@ -420,6 +443,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["preview_keyframe_numbers"] = self.preview_keyframe_numbers
         if self.preview_label_content != "auto":
             kwargs["preview_label_content"] = self.preview_label_content
+        if self.preview_label_visibility != "auto":
+            kwargs["preview_label_visibility"] = self.preview_label_visibility
         if self.point_size != "auto":
             kwargs["point_size"] = self.point_size
         if self.point_opacity != "auto":
@@ -440,8 +465,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["show_legend"] = self.show_legend
         if self.show_tour_description:
             kwargs["show_tour_description"] = self.show_tour_description
-        if self.theme != "dark":
-            kwargs["theme_mode"] = self.theme
+        if self.theme_mode != "dark":
+            kwargs["theme_mode"] = self.theme_mode
         if self.centering != "midrange":
             kwargs["centering"] = self.centering
 

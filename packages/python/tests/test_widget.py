@@ -28,6 +28,7 @@ def test_widget_default_traits():
     assert w.preview_padding == 12.0
     assert w.preview_keyframe_numbers == "auto"
     assert w.preview_label_content == "auto"
+    assert w.preview_label_visibility == "auto"
     assert w.point_size == "auto"
     assert w.point_opacity == "auto"
     assert w.point_color == [0.25, 0.5, 0.9]
@@ -36,16 +37,18 @@ def test_widget_default_traits():
     assert w.camera_zoom == pytest.approx(1 / 1.5)
     assert w.tour_traversal == "guided"
     assert w.show_legend is True
-    assert w.theme == "dark"
+    assert w.theme_mode == "dark"
     assert w.height == 720
 
 
 def test_widget_preview_count_validation():
-    w = Widget(preview_count=8)
-    assert w.preview_count == 8
+    w = Widget(preview_count=32)
+    assert w.preview_count == 32
 
     with pytest.raises(Exception):
         Widget(preview_count=1)
+    with pytest.raises(Exception):
+        Widget(preview_count=33)
 
 
 def test_widget_show_keyframe_loadings_is_deprecated():
@@ -58,6 +61,21 @@ def test_widget_show_keyframe_loadings_is_deprecated():
     assert w.preview_label_content == "auto"
     with pytest.warns(DeprecationWarning):
         assert w.show_keyframe_loadings is True
+
+
+def test_widget_theme_is_deprecated():
+    # Warnings point at the caller so they show up in notebooks
+    with pytest.warns(DeprecationWarning, match="theme_mode") as record:
+        w = Widget(theme="light")
+    assert w.theme_mode == "light"
+    assert record[0].filename == __file__
+
+    with pytest.warns(DeprecationWarning) as record:
+        w.theme = "system"
+    assert w.theme_mode == "system"
+    assert record[0].filename == __file__
+    with pytest.warns(DeprecationWarning):
+        assert w.theme == "system"
 
 
 def test_widget_tour_direction_validation():
@@ -129,10 +147,10 @@ def test_widget_set_tour_syncs_tour_family_and_tour_by():
 
 def test_widget_set_tour_warns_when_keyframes_exceed_gallery():
     rng = np.random.default_rng(42)
-    frames = [rng.standard_normal((50, 2)).astype(np.float32) for _ in range(18)]
+    frames = [rng.standard_normal((50, 2)).astype(np.float32) for _ in range(33)]
     tour = sequential_tour(frames, method=lambda embedding, _previous: embedding)
     w = Widget()
-    with pytest.warns(UserWarning, match="18 keyframes"):
+    with pytest.warns(UserWarning, match="33 keyframes"):
         w.set_tour(tour)
     assert w._keyframes_msg is not None
 

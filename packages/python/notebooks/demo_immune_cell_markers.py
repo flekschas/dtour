@@ -46,7 +46,7 @@ def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
         metric_tracks=[{"metric": "confusion", "height": 64, "domain": [0, 1]}],
         camera_zoom=0.5,
         height=960,
-        theme="light",
+        theme_mode="light",
     )
     w
     return w, widget_df

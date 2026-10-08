@@ -1,24 +1,5 @@
 import { z } from 'zod';
-
-export type PreviewCount = 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
-
-const previewCountSchema = z.union([
-  z.literal(2),
-  z.literal(3),
-  z.literal(4),
-  z.literal(5),
-  z.literal(6),
-  z.literal(7),
-  z.literal(8),
-  z.literal(9),
-  z.literal(10),
-  z.literal(11),
-  z.literal(12),
-  z.literal(13),
-  z.literal(14),
-  z.literal(15),
-  z.literal(16),
-]);
+import { MAX_PREVIEW_COUNT } from './layout/gallery-positions.ts';
 
 /**
  * JSON-serializable spec for the Dtour component.
@@ -34,11 +15,12 @@ export const dtourSpecSchema = z.object({
   tourDirection: z.enum(['forward', 'backward']).optional(),
   tourSliderSpacing: z.enum(['equal', 'geodesic']).optional(),
   tourSliderVisibility: z.enum(['visible', 'subtle', 'hidden']).optional(),
-  previewCount: previewCountSchema.optional(),
+  previewCount: z.number().int().min(2).max(MAX_PREVIEW_COUNT).optional(),
   previewSize: z.enum(['auto', 'small', 'medium', 'large']).optional(),
   previewPadding: z.number().nonnegative().optional(),
   previewKeyframeNumbers: z.enum(['auto', 'visible', 'hidden']).optional(),
   previewLabelContent: z.enum(['auto', 'description', 'loadings']).optional(),
+  previewLabelVisibility: z.enum(['auto', 'visible', 'interactive', 'hidden']).optional(),
   pointSize: z.union([z.number().positive(), z.literal('auto')]).optional(),
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
   minPointSize: z.number().min(1).max(20).optional(),
@@ -250,6 +232,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   previewPadding: 12,
   previewKeyframeNumbers: 'auto',
   previewLabelContent: 'auto',
+  previewLabelVisibility: 'auto',
   pointSize: 'auto',
   pointOpacity: 'auto',
   minPointSize: 2,

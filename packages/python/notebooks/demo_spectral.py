@@ -45,7 +45,7 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     w
     return (le_df,)
@@ -80,7 +80,7 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     signed_w
     return (signed_df,)
@@ -336,7 +336,7 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
         color_map=phenotype_colors,
         camera_zoom=0.5,
         height=900,
-        theme="light",
+        theme_mode="light",
     )
     fisher_w
     return (fisher_df,)

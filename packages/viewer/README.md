@@ -68,11 +68,12 @@ type DtourSpec = {
   tourDirection?: "forward" | "backward";
   tourSliderSpacing?: "equal" | "geodesic"; // default "equal"
   tourSliderVisibility?: "visible" | "subtle" | "hidden";
-  previewCount?: 2–16;               // default 4
+  previewCount?: 2–32;               // default 4
   previewSize?: "auto" | "small" | "medium" | "large"; // default "auto"
   previewPadding?: number;            // default 12
   previewKeyframeNumbers?: "auto" | "visible" | "hidden"; // default "auto": only when some keyframes have no preview
   previewLabelContent?: "auto" | "description" | "loadings"; // default "auto": loadings when available
+  previewLabelVisibility?: "auto" | "visible" | "interactive" | "hidden"; // default "auto": visible up to 16 previews, on hover above
   pointSize?: number | "auto";        // default "auto"
   pointOpacity?: number | "auto";     // 0–1, default "auto"
   minPointSize?: number;              // 1–20, default 2

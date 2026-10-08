@@ -47,6 +47,7 @@ export {
   previewCountAtom,
   previewKeyframeNumbersAtom,
   previewLabelContentAtom,
+  previewLabelVisibilityAtom,
   previewPaddingAtom,
   previewSizeAtom,
   resolvedThemeAtom,

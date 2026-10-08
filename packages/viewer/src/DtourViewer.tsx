@@ -68,7 +68,7 @@ import {
   previewCentersAtom,
   previewCountAtom,
   resolvedPreviewCountAtom,
-  resolvedPreviewLabelContentAtom,
+  resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
   resolvedThemeAtom,
   resumeGuidedAtom,
@@ -218,7 +218,7 @@ export const DtourViewer = ({
   const spacingMode = useAtomValue(tourSliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = tourTraversal === 'guided';
-  const showBarSpace = useAtomValue(resolvedPreviewLabelContentAtom) !== null;
+  const showBarSpace = useAtomValue(resolvedPreviewLabelVisibilityAtom) === 'visible';
 
   // Resolve keyframes (from props or auto-generated) and precompute arc lengths
   // so we can track the current tour basis on the main thread.

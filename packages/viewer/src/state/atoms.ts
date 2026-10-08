@@ -7,7 +7,7 @@ import {
   type PreviewSizeSetting,
   resolvePreviewSize,
 } from '../layout/gallery-positions.ts';
-import type { EmbeddedConfig, KeyframeLoading, PreviewCount } from '../spec.ts';
+import type { EmbeddedConfig, KeyframeLoading } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -31,7 +31,7 @@ export const arcLengthsAtom = atom<Float32Array | null>(null);
 // View state — controls preview layout and keyframe selection
 // ---------------------------------------------------------------------------
 
-export const previewCountAtom = atom<PreviewCount>(4);
+export const previewCountAtom = atom(4);
 /** User setting for preview size: explicit small/medium/large or viewport-derived 'auto'. */
 export const previewSizeAtom = atom<PreviewSizeSetting>('auto');
 export const previewPaddingAtom = atom(12);
@@ -245,6 +245,18 @@ export const previewKeyframeNumbersAtom = atom<'auto' | 'visible' | 'hidden'>('a
 /** Preview label content. 'auto' shows feature loadings when available, else the keyframe description. */
 export const previewLabelContentAtom = atom<'auto' | 'description' | 'loadings'>('auto');
 
+/**
+ * When preview labels show. 'interactive' shows them over the preview on hover
+ * and for the current or selected keyframe. 'auto' is 'visible' up to
+ * {@link MAX_PREVIEWS_WITH_VISIBLE_LABELS} previews and 'interactive' above.
+ */
+export const previewLabelVisibilityAtom = atom<'auto' | 'visible' | 'interactive' | 'hidden'>(
+  'auto',
+);
+
+/** Up to this many previews, 'auto' labels stay visible below each preview. */
+const MAX_PREVIEWS_WITH_VISIBLE_LABELS = 16;
+
 /** User preference for showing the tour description sub-bar. null = derive from tourDescription. */
 export const showTourDescriptionAtom = atom<boolean | null>(null);
 
@@ -296,6 +308,16 @@ export const resolvedPreviewLabelContentAtom = atom((get) => {
   if (setting !== 'description' && loadings && loadings.length > 0) return 'loadings';
   if (setting !== 'loadings' && Array.isArray(get(keyframeDescriptionsAtom))) return 'description';
   return null;
+});
+
+/** When preview labels show, with 'auto' resolved. 'hidden' when there is nothing to show. */
+export const resolvedPreviewLabelVisibilityAtom = atom((get) => {
+  if (get(resolvedPreviewLabelContentAtom) === null) return 'hidden';
+  const setting = get(previewLabelVisibilityAtom);
+  if (setting !== 'auto') return setting;
+  return get(resolvedPreviewCountAtom) > MAX_PREVIEWS_WITH_VISIBLE_LABELS
+    ? 'interactive'
+    : 'visible';
 });
 
 /** Tour description string from embedded config (shown in description sub-bar). */

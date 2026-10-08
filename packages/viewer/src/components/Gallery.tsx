@@ -1,6 +1,6 @@
 import { ArrowsLeftRightIcon, EqualsIcon } from '@phosphor-icons/react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
 import {
   computeGallerySizes,
@@ -20,6 +20,7 @@ import {
   resolvedPreviewCountAtom,
   resolvedPreviewKeyframeNumbersAtom,
   resolvedPreviewLabelContentAtom,
+  resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
   selectedKeyframeAtom,
   tourPlayingAtom,
@@ -83,6 +84,7 @@ export const Gallery = ({
   const [hoveredIndex, setHoveredIndex] = useAtom(hoveredKeyframeAtom);
   const showKeyframeNumbers = useAtomValue(resolvedPreviewKeyframeNumbersAtom) === 'visible';
   const labelContent = useAtomValue(resolvedPreviewLabelContentAtom);
+  const labelVisibility = useAtomValue(resolvedPreviewLabelVisibilityAtom);
   const keyframeLoadings = useAtomValue(keyframeLoadingsAtom);
   const keyframeDescriptions = useAtomValue(keyframeDescriptionsAtom);
   const setPreviewCenters = useSetAtom(previewCentersAtom);
@@ -90,9 +92,11 @@ export const Gallery = ({
   const galleryRef = useRef<HTMLDivElement>(null);
   const wrapperRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  const loadingsVisible = labelContent === 'loadings';
-  const descriptionsVisible = labelContent === 'description';
-  const showBarSpace = labelContent !== null;
+  const loadingsVisible = labelVisibility !== 'hidden' && labelContent === 'loadings';
+  const descriptionsVisible = labelVisibility !== 'hidden' && labelContent === 'description';
+  // Only visible labels take up space in the grid
+  const showBarSpace = labelVisibility === 'visible';
+  const labelsInside = labelVisibility === 'interactive';
 
   // Grid area = container minus its CSS insets.
   const verticalInset = PREVIEW_SPACING + toolbarHeight / 2;
@@ -194,17 +198,119 @@ export const Gallery = ({
         const horizontalAlignment =
           col === 0 ? 'justify-start' : col < layout.cols - 1 ? 'justify-center' : 'justify-end';
 
-        // For bottom-edge previews, put loading bar above (flex-col-reverse)
+        // For bottom-edge previews, put the label above (flex-col-reverse)
         const isBottomEdge = row === layout.rows - 1;
+        const isHighlighted = i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex;
         const loading: KeyframeLoading | null =
           loadingsVisible && keyframeLoadings && i < keyframeLoadings.length
             ? keyframeLoadings[i]!
             : null;
-        const hasLoadingPills = loading !== null;
         const keyframeDescription =
-          !hasLoadingPills && descriptionsVisible && Array.isArray(keyframeDescriptions)
+          !loading && descriptionsVisible && Array.isArray(keyframeDescriptions)
             ? (keyframeDescriptions[i] ?? null)
             : null;
+        const hasLabelBelow = !labelsInside && (loading !== null || keyframeDescription !== null);
+
+        // Visible labels attach to the outside of the preview; interactive
+        // labels sit inside along the same edge.
+        const labelClassName = labelsInside
+          ? cn(
+              'absolute inset-x-0 z-10',
+              isBottomEdge ? 'top-0' : 'bottom-0',
+              isHighlighted ? 'opacity-100' : 'opacity-0 pointer-events-none',
+            )
+          : cn(
+              'relative z-20 border border-dtour-border',
+              isBottomEdge ? 'border-b-0 rounded-t-sm' : 'border-t-0 rounded-b-sm',
+            );
+        const labelStyle = {
+          width: labelsInside ? undefined : sizes[i],
+          height: LOADING_BAR_HEIGHT,
+          borderColor: labelsInside ? undefined : getBorderColor(i),
+          backgroundColor: isHighlighted
+            ? 'var(--color-dtour-highlight)'
+            : 'var(--color-dtour-border)',
+        };
+        const labelTextClassName = isHighlighted ? 'text-dtour-bg' : 'text-dtour-highlight/70';
+
+        let label: ReactNode = null;
+        if (visible && loading) {
+          // Loading pills: [primary] [≠ or =] [secondary]
+          const n0 = loading.primary[0];
+          const n1 = loading.secondary[0];
+          const same = sameSign(loading);
+          const tooltipText = resolveDescription(keyframeDescriptions, loading, i);
+          label = (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      'flex items-center cursor-default select-none transition-[color,background-color,border-color,opacity] duration-200',
+                      labelClassName,
+                    )}
+                    style={labelStyle}
+                  >
+                    <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
+                      <span
+                        className={cn(
+                          'text-[10px] transition-colors duration-200 truncate px-1',
+                          labelTextClassName,
+                        )}
+                      >
+                        {n0}
+                      </span>
+                    </div>
+                    <span
+                      className={cn(
+                        'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
+                        labelTextClassName,
+                      )}
+                    >
+                      {same ? (
+                        <EqualsIcon size={10} weight="bold" />
+                      ) : (
+                        <ArrowsLeftRightIcon size={10} weight="bold" />
+                      )}
+                    </span>
+                    <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
+                      <span
+                        className={cn(
+                          'text-[10px] transition-colors duration-200 truncate px-1',
+                          labelTextClassName,
+                        )}
+                      >
+                        {n1}
+                      </span>
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
+                  {tooltipText ?? `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        } else if (visible && keyframeDescription) {
+          label = (
+            <div
+              className={cn(
+                'flex items-center justify-center select-none transition-[color,background-color,border-color,opacity] duration-200',
+                labelClassName,
+              )}
+              style={labelStyle}
+            >
+              <span
+                className={cn(
+                  'text-[10px] truncate px-1 transition-colors duration-200',
+                  labelTextClassName,
+                )}
+              >
+                {keyframeDescription}
+              </span>
+            </div>
+          );
+        }
 
         return (
           <div
@@ -230,11 +336,7 @@ export const Gallery = ({
                 onKeyDown={undefined}
                 className={cn(
                   'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
-                  hasLoadingPills || keyframeDescription
-                    ? isBottomEdge
-                      ? 'rounded-b'
-                      : 'rounded-t'
-                    : 'rounded',
+                  hasLabelBelow ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
                   visible ? 'block cursor-pointer' : 'hidden',
                 )}
                 style={{
@@ -266,113 +368,9 @@ export const Gallery = ({
                     {i + 1}
                   </span>
                 )}
+                {labelsInside && label}
               </div>
-              {/* Loading pills: [primary] [≠ or =] [secondary] */}
-              {visible &&
-                loading &&
-                (() => {
-                  const n0 = loading.primary[0];
-                  const n1 = loading.secondary[0];
-                  const same = sameSign(loading);
-                  const isActive = i === selectedKeyframe || i === currentKeyframe;
-                  const tooltipText = resolveDescription(keyframeDescriptions, loading, i);
-                  return (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className={cn(
-                              'flex items-center cursor-default select-none transition-[color,background-color,border-color] duration-200 relative z-20',
-                              'border border-dtour-border',
-                              isBottomEdge ? 'border-b-0 rounded-t-sm' : 'border-t-0 rounded-b-sm',
-                            )}
-                            style={{
-                              width: sizes[i],
-                              height: LOADING_BAR_HEIGHT,
-                              borderColor: getBorderColor(i),
-                              backgroundColor:
-                                isActive || i === hoveredIndex
-                                  ? 'var(--color-dtour-highlight)'
-                                  : 'var(--color-dtour-border)',
-                            }}
-                          >
-                            <div className="flex-1 flex items-center justify-center rounded-l-sm overflow-hidden h-full">
-                              <span
-                                className={cn(
-                                  'text-[10px] transition-colors duration-200 truncate px-1',
-                                  isActive || i === hoveredIndex
-                                    ? 'text-dtour-bg'
-                                    : 'text-dtour-highlight/70',
-                                )}
-                              >
-                                {n0}
-                              </span>
-                            </div>
-                            <span
-                              className={cn(
-                                'text-[10px] leading-none transition-colors duration-200 px-0.5 shrink-0',
-                                isActive || i === hoveredIndex
-                                  ? 'text-dtour-bg'
-                                  : 'text-dtour-highlight/70',
-                              )}
-                            >
-                              {same ? (
-                                <EqualsIcon size={10} weight="bold" />
-                              ) : (
-                                <ArrowsLeftRightIcon size={10} weight="bold" />
-                              )}
-                            </span>
-                            <div className="flex-1 flex items-center justify-center rounded-r-sm overflow-hidden h-full">
-                              <span
-                                className={cn(
-                                  'text-[10px] transition-colors duration-200 truncate px-1',
-                                  isActive || i === hoveredIndex
-                                    ? 'text-dtour-bg'
-                                    : 'text-dtour-highlight/70',
-                                )}
-                              >
-                                {n1}
-                              </span>
-                            </div>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side={isBottomEdge ? 'top' : 'bottom'} sideOffset={0}>
-                          {tooltipText ?? `${same ? 'Co-varying' : 'Contrasting'} ${n0} and ${n1}`}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  );
-                })()}
-              {/* Keyframe description label (shown when no loading pills) */}
-              {visible && keyframeDescription && (
-                <div
-                  className={cn(
-                    'flex items-center justify-center select-none',
-                    isBottomEdge ? 'rounded-t-sm border-b-0' : 'rounded-b-sm border-t-0',
-                    'border border-dtour-border',
-                  )}
-                  style={{
-                    width: sizes[i],
-                    height: LOADING_BAR_HEIGHT,
-                    borderColor: getBorderColor(i),
-                    backgroundColor:
-                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
-                        ? 'var(--color-dtour-highlight)'
-                        : 'var(--color-dtour-border)',
-                  }}
-                >
-                  <span
-                    className={cn(
-                      'text-[10px] truncate px-1 transition-colors duration-200',
-                      i === selectedKeyframe || i === currentKeyframe || i === hoveredIndex
-                        ? 'text-dtour-bg'
-                        : 'text-dtour-highlight/70',
-                    )}
-                  >
-                    {keyframeDescription}
-                  </span>
-                </div>
-              )}
+              {!labelsInside && label}
             </div>
           </div>
         );

@@ -9,7 +9,6 @@ import arro3.io
 import numpy as np
 import pytest
 from dtour.spec import (
-    _SNAKE_TO_CAMEL,
     add_spec_to_parquet,
     build_dtour_metadata,
     read_spec_from_parquet,
@@ -83,15 +82,41 @@ def test_build_snake_to_camel_all_keys():
         "show_axes": True,
         "preview_keyframe_numbers": "visible",
         "preview_label_content": "description",
+        "preview_label_visibility": "interactive",
         "show_tour_description": True,
         "tour_slider_spacing": "equal",
         "theme_mode": "light",
         "centering": "mean",
     }
     result = json.loads(build_dtour_metadata(**kwargs))
-    for snake, camel in _SNAKE_TO_CAMEL.items():
-        assert camel in result, f"Missing camelCase key {camel} for {snake}"
-        assert result[camel] == kwargs[snake]
+    assert result == {
+        "tourBy": "dimensions",
+        "tourPosition": 0.5,
+        "tourPlaying": True,
+        "tourSpeed": 2.0,
+        "tourDirection": "backward",
+        "previewCount": 8,
+        "previewSize": "medium",
+        "previewPadding": 16.0,
+        "pointSize": 4,
+        "pointOpacity": 0.8,
+        "pointColor": "col",
+        "pointColorBy": "label",
+        "pointColorMap": {"A": "#ff0000"},
+        "cameraPanX": 0.1,
+        "cameraPanY": -0.1,
+        "cameraZoom": 1.5,
+        "tourTraversal": "manual",
+        "showLegend": False,
+        "showAxes": True,
+        "previewKeyframeNumbers": "visible",
+        "previewLabelContent": "description",
+        "previewLabelVisibility": "interactive",
+        "showTourDescription": True,
+        "tourSliderSpacing": "equal",
+        "themeMode": "light",
+        "centering": "mean",
+    }
 
 
 def test_build_maps_deprecated_kwargs():

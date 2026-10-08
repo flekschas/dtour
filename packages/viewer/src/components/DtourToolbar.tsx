@@ -21,9 +21,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAnimatePosition } from '../hooks/useAnimatePosition.ts';
-import type { PreviewSizeSetting } from '../layout/gallery-positions.ts';
+import { MAX_PREVIEW_COUNT, type PreviewSizeSetting } from '../layout/gallery-positions.ts';
 import { usePortalContainer } from '../portal-container.tsx';
-import type { PreviewCount } from '../spec.ts';
 import { DTOUR_DEFAULTS } from '../spec.ts';
 import {
   activeColumnsAtom,
@@ -46,8 +45,11 @@ import {
   previewCountAtom,
   previewKeyframeNumbersAtom,
   previewLabelContentAtom,
+  previewLabelVisibilityAtom,
   previewSizeAtom,
   resolvedPreviewKeyframeNumbersAtom,
+  resolvedPreviewLabelContentAtom,
+  resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewSizeAtom,
   resumeGuidedAtom,
   selectedKeyframeAtom,
@@ -110,6 +112,9 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [previewCount, setPreviewCount] = useAtom(previewCountAtom);
   const [previewSize, setPreviewSize] = useAtom(previewSizeAtom);
   const resolvedPreviewSize = useAtomValue(resolvedPreviewSizeAtom);
+  const [previewLabelVisibility, setPreviewLabelVisibility] = useAtom(previewLabelVisibilityAtom);
+  const resolvedPreviewLabelVisibility = useAtomValue(resolvedPreviewLabelVisibilityAtom);
+  const hasPreviewLabels = useAtomValue(resolvedPreviewLabelContentAtom) !== null;
   const [showLegend, setShowLegend] = useAtom(showLegendAtom);
   const legendVisible = useAtomValue(legendVisibleAtom);
   const [themeMode, setThemeMode] = useAtom(themeModeAtom);
@@ -799,6 +804,34 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                     className="w-full"
                   />
                 </DropdownMenuItem>
+                {hasPreviewLabels && (
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-1"
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <span className="text-xs">Labels</span>
+                      <span className="text-xs font-medium text-dtour-highlight">
+                        {previewLabelVisibility === 'auto'
+                          ? `Auto · ${LABEL_VISIBILITY_LABELS[resolvedPreviewLabelVisibility]}`
+                          : LABEL_VISIBILITY_LABELS[previewLabelVisibility]}
+                      </span>
+                    </div>
+                    <Slider
+                      min={0}
+                      max={LABEL_VISIBILITY_STEPS.length - 1}
+                      step={1}
+                      ticks={LABEL_VISIBILITY_STEPS.length}
+                      value={[LABEL_VISIBILITY_STEPS.indexOf(previewLabelVisibility)]}
+                      onValueChange={([step]: number[]) => {
+                        if (step !== undefined) {
+                          setPreviewLabelVisibility(LABEL_VISIBILITY_STEPS[step]!);
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   className="gap-4"
                   onSelect={(e) => {
@@ -1163,7 +1196,14 @@ const SLIDER_VIS_LABELS: Record<string, string> = {
   hidden: 'Hidden',
 };
 
-const PREVIEW_COUNT_STEPS: PreviewCount[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const PREVIEW_COUNT_STEPS = Array.from({ length: MAX_PREVIEW_COUNT - 1 }, (_, i) => i + 2);
+const LABEL_VISIBILITY_STEPS = ['auto', 'hidden', 'interactive', 'visible'] as const;
+const LABEL_VISIBILITY_LABELS: Record<(typeof LABEL_VISIBILITY_STEPS)[number], string> = {
+  auto: 'Auto',
+  hidden: 'Hidden',
+  interactive: 'Hover',
+  visible: 'Visible',
+};
 const PREVIEW_SIZE_STEPS: PreviewSizeSetting[] = ['auto', 'small', 'medium', 'large'];
 const SIZE_LABELS: Record<PreviewSizeSetting, string> = {
   auto: 'Auto',

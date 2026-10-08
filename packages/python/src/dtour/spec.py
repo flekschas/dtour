@@ -15,39 +15,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .tours import TourResult
 
-# ── Snake → Camel conversion ────────────────────────────────────────────
 
-_SNAKE_TO_CAMEL: dict[str, str] = {
-    "tour_by": "tourBy",
-    "tour_position": "tourPosition",
-    "tour_playing": "tourPlaying",
-    "tour_speed": "tourSpeed",
-    "tour_direction": "tourDirection",
-    "preview_count": "previewCount",
-    "preview_size": "previewSize",
-    "preview_padding": "previewPadding",
-    "preview_keyframe_numbers": "previewKeyframeNumbers",
-    "preview_label_content": "previewLabelContent",
-    "point_size": "pointSize",
-    "point_opacity": "pointOpacity",
-    "point_color": "pointColor",
-    "point_color_by": "pointColorBy",
-    "point_color_map": "pointColorMap",
-    "camera_pan_x": "cameraPanX",
-    "camera_pan_y": "cameraPanY",
-    "camera_zoom": "cameraZoom",
-    "tour_traversal": "tourTraversal",
-    "show_legend": "showLegend",
-    "show_axes": "showAxes",
-    "show_tour_description": "showTourDescription",
-    "tour_slider_spacing": "tourSliderSpacing",
-    "theme_mode": "themeMode",
-    "centering": "centering",
-}
+def _to_camel(snake: str) -> str:
+    """camelCase form of a snake_case name, e.g. ``camera_pan_x`` → ``cameraPanX``."""
+    head, *rest = snake.split("_")
+    return head + "".join(part.capitalize() for part in rest)
 
-_CAMEL_TO_SNAKE: dict[str, str] = {v: k for k, v in _SNAKE_TO_CAMEL.items()}
-
-_SPEC_KEYS = set(_SNAKE_TO_CAMEL.values())
 
 # Renamed keyword arguments: old name → new name and value.
 _LEGACY_SPEC_KWARGS: dict[str, tuple[str, Any]] = {
@@ -148,6 +121,7 @@ def build_dtour_metadata(
     preview_padding: float | None = None,
     preview_keyframe_numbers: str | None = None,
     preview_label_content: str | None = None,
+    preview_label_visibility: str | None = None,
     point_size: float | str | None = None,
     point_opacity: float | str | None = None,
     point_color: list[float] | None = None,
@@ -182,7 +156,7 @@ def build_dtour_metadata(
     tour_direction : str, optional
         ``"forward"`` or ``"backward"``.
     preview_count : int, optional
-        Number of gallery previews (2-16).
+        Number of gallery previews (2-32).
     preview_size : str, optional
         ``"auto"``, ``"small"``, ``"medium"``, or ``"large"``.
     preview_padding : float, optional
@@ -193,6 +167,10 @@ def build_dtour_metadata(
     preview_label_content : str, optional
         Preview label content: ``"auto"`` (feature loadings when available,
         else the keyframe description), ``"description"``, or ``"loadings"``.
+    preview_label_visibility : str, optional
+        When preview labels show: ``"auto"`` (``"visible"`` up to 16 previews,
+        ``"interactive"`` above), ``"visible"``, ``"interactive"`` (on hover
+        and for the current or selected keyframe), or ``"hidden"``.
     point_size : float or str, optional
         Point size in pixels, or ``"auto"`` for density-adaptive.
     point_opacity : float or str, optional
@@ -252,6 +230,7 @@ def build_dtour_metadata(
         "preview_padding": preview_padding,
         "preview_keyframe_numbers": preview_keyframe_numbers,
         "preview_label_content": preview_label_content,
+        "preview_label_visibility": preview_label_visibility,
         "point_size": point_size,
         "point_opacity": point_opacity,
         "point_color": point_color,
@@ -277,8 +256,7 @@ def build_dtour_metadata(
 
     for snake_key, value in spec_kwargs.items():
         if value is not None:
-            camel_key = _SNAKE_TO_CAMEL[snake_key]
-            config[camel_key] = value
+            config[_to_camel(snake_key)] = value
 
     if tour is not None:
         config["tour"] = _encode_tour(tour, tour_dimensions)
