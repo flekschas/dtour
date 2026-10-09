@@ -25,7 +25,7 @@ import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
-import { createDefaultKeyframes, createPCAKeyframes, fitTour } from './keyframes.ts';
+import { createDefaultKeyframes, createPCAKeyframes, createStaticKeyframe } from './keyframes.ts';
 import { computeStartAngle } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
@@ -56,16 +56,19 @@ import {
   colorMapAtom,
   currentBasisAtom,
   currentKeyframeAtom,
-  embeddedConfigAtom,
+  defaultCameraZoomAtom,
+  fittedTourAtom,
   galleryAreaAtom,
   guidedSuspendedAtom,
   hoveredKeyframeAtom,
   is3dRotatedAtom,
   legendSelectionAtom,
+  MAX_ZOOM,
+  MIN_ZOOM,
   metadataAtom,
+  orthonormalizeAtom,
   panZoomModeAtom,
   pointColorByAtom,
-  predefinedTourAtom,
   previewCentersAtom,
   previewCountAtom,
   previewKeyframesAtom,
@@ -76,6 +79,8 @@ import {
   resumeGuidedAtom,
   showAxesAtom,
   sliderVisibilityAtom,
+  staticAxesAtom,
+  suppliedTourAtom,
   tourByAtom,
   tourFamilyAtom,
   tourPlayingAtom,
@@ -155,7 +160,6 @@ export const DtourViewer = ({
   const [previewCanvases, setPreviewCanvases] = useState<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
   const metadata = useAtomValue(metadataAtom);
-  const embeddedConfig = useAtomValue(embeddedConfigAtom);
   const previewCount = useAtomValue(previewCountAtom);
   const previewScale = useAtomValue(resolvedPreviewScaleAtom);
   const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
@@ -214,6 +218,8 @@ export const DtourViewer = ({
   const setCurrentBasis = useSetAtom(currentBasisAtom);
   const tourBy = useAtomValue(tourByAtom);
   const tourFamily = useAtomValue(tourFamilyAtom);
+  const staticAxes = useAtomValue(staticAxesAtom);
+  const orthonormalize = useAtomValue(orthonormalizeAtom);
   const betweenKeyframes = useAtomValue(betweenKeyframesAtom);
   const [pcaResult, setPcaResult] = useState<{
     eigenvectors: Float32Array[];
@@ -225,61 +231,24 @@ export const DtourViewer = ({
   const spacingMode = useAtomValue(tourSliderSpacingAtom);
   const setArcLengthsAtom_ = useSetAtom(arcLengthsAtom);
   const isGuidedMode = tourTraversal === 'guided';
+  const isTouring = isGuidedMode && !staticAxes;
   const showBarSpace = useAtomValue(resolvedPreviewLabelVisibilityAtom) === 'visible';
 
-  // Resolve keyframes (from props or auto-generated) and precompute arc lengths
-  // so we can track the current tour basis on the main thread.
-  // Embedded tour keyframes from Parquet metadata.
-  const embeddedKeyframes =
-    embeddedConfig?.tour && metadata && embeddedConfig.tour.keyframes.length > 0
-      ? embeddedConfig.tour.keyframes
-      : null;
-
-  // Track whether the active tour is predefined (externally computed) vs auto-generated.
-  // Predefined tours lock down column toggles, preview count, and the Dims/PCA selector.
-  // The supplied tour fitted to the data, or null to generate one. Names passed
-  // with `keyframes` must match the data; an embedded tour falls back to the
-  // first columns.
-  const hasKeyframes = keyframes != null && keyframes.length > 0;
-  const fittedTour = useMemo(() => {
-    if (!metadata) return null;
-    if (hasKeyframes) return fitTour(keyframes, metadata.columnNames, tourDimensions, true);
-    if (embeddedKeyframes) {
-      return fitTour(
-        embeddedKeyframes,
-        metadata.columnNames,
-        embeddedConfig?.tour?.dimensions,
-        false,
-      );
-    }
-    return null;
-  }, [hasKeyframes, keyframes, tourDimensions, embeddedKeyframes, embeddedConfig, metadata]);
-
-  const setPredefinedTour = useSetAtom(predefinedTourAtom);
-  const setTourRejected = useSetAtom(tourRejectedAtom);
+  // The supplied tour, fitted to the data in fittedTourAtom
+  const setSuppliedTour = useSetAtom(suppliedTourAtom);
   useEffect(() => {
-    const rejected =
-      metadata != null && fittedTour == null && (hasKeyframes || embeddedKeyframes != null);
-    if (rejected) {
-      console.error(
-        `[dtour] The tour doesn't fit the data's numeric columns (tourDimensions: ${tourDimensions?.join(', ') ?? 'none'}). Showing an auto-generated tour instead.`,
-      );
-    }
-    setTourRejected(rejected);
-    setPredefinedTour(
-      fittedTour
-        ? { dimensions: fittedTour.dimensions, keyframeCount: fittedTour.keyframes.length }
-        : null,
+    setSuppliedTour(
+      keyframes && keyframes.length > 0 ? { keyframes, dimensions: tourDimensions } : null,
     );
-  }, [
-    fittedTour,
-    hasKeyframes,
-    embeddedKeyframes,
-    metadata,
-    tourDimensions,
-    setPredefinedTour,
-    setTourRejected,
-  ]);
+  }, [keyframes, tourDimensions, setSuppliedTour]);
+  const fittedTour = useAtomValue(fittedTourAtom);
+  const tourRejected = useAtomValue(tourRejectedAtom);
+  useEffect(() => {
+    if (!tourRejected) return;
+    console.error(
+      `[dtour] The tour doesn't fit the data's numeric columns (tourDimensions: ${tourDimensions?.join(', ') ?? 'none'}). Showing an auto-generated tour instead.`,
+    );
+  }, [tourRejected, tourDimensions]);
 
   const resolvedPreviewCount = useAtomValue(resolvedPreviewCountAtom);
   const previewKeyframes = useAtomValue(previewKeyframesAtom);
@@ -289,19 +258,29 @@ export const DtourViewer = ({
     if (activeIndices.length < 2) return { resolvedKeyframes: null, arcLengths: null };
     const dims = metadata.dimCount;
     let rb: Float32Array[];
-    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
+    if (staticAxes) {
+      rb = [createStaticKeyframe(dims, staticAxes, metadata.ranges)];
+    } else if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
       rb = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
     } else if (fittedTour) {
-      // Copies, since the renderer takes ownership of the buffers
-      rb = fittedTour.keyframes.map((keyframe) => new Float32Array(keyframe));
+      rb = fittedTour.keyframes;
     } else {
       rb = createDefaultKeyframes(dims, previewCount, activeIndices);
     }
     return {
       resolvedKeyframes: rb,
-      arcLengths: computeArcLengths(rb, dims, tourFamily !== 'sequential'),
+      arcLengths: computeArcLengths(rb, dims, orthonormalize),
     };
-  }, [fittedTour, metadata, previewCount, activeIndices, tourBy, tourFamily, pcaResult]);
+  }, [
+    fittedTour,
+    metadata,
+    previewCount,
+    activeIndices,
+    staticAxes,
+    tourBy,
+    orthonormalize,
+    pcaResult,
+  ]);
 
   // Sync arcLengths atom so Gallery and other components can access it
   useEffect(() => {
@@ -318,7 +297,6 @@ export const DtourViewer = ({
   resolvedKeyframesRef.current = resolvedKeyframes;
   const metadataRef = useRef(metadata);
   metadataRef.current = metadata;
-  const orthonormalize = tourFamily !== 'sequential';
   const orthonormalizeRef = useRef(orthonormalize);
   orthonormalizeRef.current = orthonormalize;
   // Pre-allocated scratch buffer for imperative basis interpolation
@@ -725,33 +703,60 @@ export const DtourViewer = ({
 
   // Trigger PCA computation when tourBy is 'pca' and data is loaded
   useEffect(() => {
-    if (tourBy !== 'pca' || !metadata || metadata.dimCount < 2 || !scatter) return;
+    if (tourBy !== 'pca' || staticAxes || !metadata || metadata.dimCount < 2 || !scatter) return;
     scatter.computePCA();
-  }, [tourBy, metadata, scatter]);
+  }, [tourBy, staticAxes, metadata, scatter]);
 
-  // Set keyframes when available (from props, PCA, embedded, or auto-generated from metadata).
-  // Predefined tours (keyframes prop, embeddedKeyframes) are used as-is — column selection
-  // only affects auto-generated keyframes (createDefaultKeyframes).
+  // Send the resolved keyframes to the renderer
   useEffect(() => {
-    if (!scatter || !metadata || metadata.dimCount < 2) return;
-    if (activeIndices.length < 2) return;
-    const dims = metadata.dimCount;
-    let bases: Float32Array[];
-    if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
-      bases = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
-    } else if (fittedTour) {
-      // Copies, since the renderer takes ownership of the buffers
-      bases = fittedTour.keyframes.map((keyframe) => new Float32Array(keyframe));
-    } else {
-      bases = createDefaultKeyframes(dims, previewCount, activeIndices);
-    }
-    scatter.setBases(bases, tourFamily);
+    if (!scatter || !resolvedKeyframes) return;
+    // Copies, since the renderer takes ownership of the buffers
+    const bases = resolvedKeyframes.map((keyframe) => new Float32Array(keyframe));
+    scatter.setBases(bases, orthonormalize ? 'hyperdimensional' : 'sequential');
     // setBases resets the GPU's tour position to 0 on first load; re-apply the
     // current (possibly persisted/restored) position so the rendered projection
     // matches the slider instead of snapping back to the first keyframe.
     scatter.setTourPosition(positionRef.current);
     scatter.render();
-  }, [scatter, fittedTour, metadata, previewCount, activeIndices, tourBy, tourFamily, pcaResult]);
+  }, [scatter, resolvedKeyframes, orthonormalize]);
+
+  // An untouched camera follows the default zoom, e.g., when the view switches
+  // between a tour and a static scatter. The effects below read the store
+  // because an earlier effect can pass a supplied tour, which changes both.
+  const defaultZoom = useAtomValue(defaultCameraZoomAtom);
+  const prevDefaultZoomRef = useRef(defaultZoom);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: defaultZoom triggers reading the current value
+  useEffect(() => {
+    const target = store.get(defaultCameraZoomAtom);
+    const untouched =
+      store.get(cameraZoomAtom) === prevDefaultZoomRef.current &&
+      store.get(cameraPanXAtom) === 0 &&
+      store.get(cameraPanYAtom) === 0;
+    prevDefaultZoomRef.current = target;
+    if (untouched) store.set(cameraZoomAtom, target);
+  }, [defaultZoom, store]);
+
+  // A static scatter has nothing to play or traverse, so it always shows the
+  // guided view of its single keyframe
+  useEffect(() => {
+    if (!staticAxes || !store.get(staticAxesAtom)) return;
+    if (playing) setPlaying(false);
+    if (tourTraversal !== 'guided') {
+      setTourTraversal('guided');
+      return;
+    }
+    setGuidedSuspended(false);
+    scatter?.setTourPosition(positionRef.current);
+  }, [
+    store,
+    staticAxes,
+    playing,
+    tourTraversal,
+    scatter,
+    setPlaying,
+    setTourTraversal,
+    setGuidedSuspended,
+  ]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
   const { resumeWithTransition, cancelTransition, isTransitioning } = useGuidedResume(
@@ -814,14 +819,16 @@ export const DtourViewer = ({
   // Wheel → zoom-about-cursor or tour scrub, depending on mode and Shift key.
   // Normal guided: scroll = tour scrub, Shift+scroll = zoom.
   // Pan/zoom guided (or manual/grand): scroll = zoom, Shift+scroll = tour scrub.
+  // Static scatter: scroll = zoom.
   // Imperative listener with { passive: false } so preventDefault() works.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const handler = (e: WheelEvent) => {
       const traversal = store.get(tourTraversalAtom);
+      const isStatic = store.get(staticAxesAtom) !== null;
       const isPanZoom = traversal !== 'guided' || store.get(panZoomModeAtom);
-      const wantsZoom = isPanZoom ? !e.shiftKey : e.shiftKey;
+      const wantsZoom = isStatic || (isPanZoom ? !e.shiftKey : e.shiftKey);
 
       if (wantsZoom) {
         e.preventDefault();
@@ -846,7 +853,7 @@ export const DtourViewer = ({
         const cursorProjY = (ndcY - iy) / zoomIz - oldPanY;
 
         const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
-        const newZoom = Math.min(4, Math.max(0.25, oldZoom * factor));
+        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldZoom * factor));
 
         // Adjust pan so cursor stays at same screen position
         const ratio = newZoom / oldZoom;
@@ -1094,8 +1101,8 @@ export const DtourViewer = ({
       {/* Overlay wrapper — positioned below the toolbar so overlays
           are visually centered in the area below the toolbar. */}
       <div className="absolute left-0 right-0 bottom-0" style={{ top: `${overlayOffsetY}px` }}>
-        {/* Preview gallery — only in guided mode */}
-        {isGuidedMode && hasData && containerSize.width > 0 && previewCanvases.length > 0 && (
+        {/* Preview gallery — only while touring in guided mode */}
+        {isTouring && hasData && containerSize.width > 0 && previewCanvases.length > 0 && (
           <Gallery
             previewCanvases={previewCanvases}
             containerWidth={containerSize.width}
@@ -1120,7 +1127,7 @@ export const DtourViewer = ({
 
         {/* Axis overlay — interactive in manual mode (disabled during 3D rotation),
             read-only in guided when enabled */}
-        {(tourTraversal === 'manual' || (isGuidedMode && showAxes)) &&
+        {(tourTraversal === 'manual' || (isTouring && showAxes)) &&
           hasData &&
           containerSize.width > 0 && (
             <AxisOverlay
@@ -1138,8 +1145,8 @@ export const DtourViewer = ({
         {/* Grand tour exit buttons — top-left, auto-fades, reappears on mouse move */}
         <GrandTourExitButtons />
 
-        {/* Circular selector + radial chart overlay — only in guided mode, above lasso */}
-        {isGuidedMode && hasData && (
+        {/* Circular selector + radial chart overlay — only while touring in guided mode, above lasso */}
+        {isTouring && hasData && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             {/* Radial chart — behind selector */}
             {coloredTracks.length > 0 && (

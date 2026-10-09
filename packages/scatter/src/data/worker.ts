@@ -208,7 +208,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
   if (msg.type === 'selectByColumn') {
     if (!gpuPort || rowCount === 0) return;
 
-    const { column, labelIndices, valueRanges } = msg;
+    const { id, column, labelIndices, valueRanges } = msg;
 
     // Categorical selection
     const labels = categoricalLabels.get(column);
@@ -220,7 +220,9 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       const gpuMsg: DataToGpu = {
         type: 'selectCategorical',
         dataVersion,
+        id,
         catColumnName: column,
+        labelIndices,
         selectedLabels,
       };
       gpuPort.postMessage(gpuMsg, [selectedLabels.buffer]);
@@ -233,6 +235,8 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
       const gpuMsg: DataToGpu = {
         type: 'selectContinuous',
         dataVersion,
+        id,
+        column,
         columnIndex: colIdx,
         ranges: valueRanges,
       };

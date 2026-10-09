@@ -836,6 +836,15 @@ const applySelectionUpdate = (): void => {
 
 let currentDataVersion = 0;
 
+// Selection requests can arrive out of order, since column selections pass
+// through the data worker. A request older than the latest one applied is outdated.
+let latestSelectionId = 0;
+const isLatestSelection = (id: number): boolean => {
+  if (id < latestSelectionId) return false;
+  latestSelectionId = id;
+  return true;
+};
+
 const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (!state) return;
   const gl = state.mainView.gl;
@@ -905,6 +914,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   // ── Continuous selection (CPU) ──
   if (event.data.type === 'selectContinuous') {
     if (event.data.dataVersion !== currentDataVersion) return;
+    if (!isLatestSelection(event.data.id)) return;
 
     const { columnIndex, ranges } = event.data;
     const { numPoints, dataBuffers } = state;
@@ -930,12 +940,17 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
 
     uploadSelectionMask(gl, mask);
     applySelectionUpdate();
+    postMain(
+      { type: 'columnSelectionResult', mask, id: event.data.id, column: event.data.column },
+      [mask.buffer],
+    );
     return;
   }
 
   // ── Categorical selection (CPU) ──
   if (event.data.type === 'selectCategorical') {
     if (event.data.dataVersion !== currentDataVersion) return;
+    if (!isLatestSelection(event.data.id)) return;
 
     const { catColumnName, selectedLabels } = event.data;
     const indices = state.categoricalBuffers.get(catColumnName);
@@ -953,6 +968,16 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
 
     uploadSelectionMask(gl, mask);
     applySelectionUpdate();
+    postMain(
+      {
+        type: 'columnSelectionResult',
+        mask,
+        id: event.data.id,
+        column: catColumnName,
+        labelIndices: event.data.labelIndices,
+      },
+      [mask.buffer],
+    );
     return;
   }
 
@@ -1169,8 +1194,9 @@ const pointInPolygon = (
   return inside;
 };
 
-const handleLassoSelect = (polygon: Float32Array): void => {
+const handleLassoSelect = (polygon: Float32Array, id: number): void => {
   if (!state?.normRanges || state.numPoints === 0) return;
+  if (!isLatestSelection(id)) return;
 
   const { numPoints, numDims, dataBuffers, camera } = state;
   const numVertices = polygon.length / 2;
@@ -1237,7 +1263,7 @@ const handleLassoSelect = (polygon: Float32Array): void => {
 
   // Send mask back so the host can read which points were selected
   const maskCopy = new Uint32Array(mask);
-  postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
+  postMain({ type: 'selectionResult', mask: maskCopy, id }, [maskCopy.buffer]);
 };
 
 // ─── Metrics ─────────────────────────────────────────────────────────────
@@ -1535,6 +1561,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setSelectionMask') {
+    if (!isLatestSelection(msg.id)) return;
     const gl = state.mainView.gl;
     uploadSelectionMask(gl, msg.mask);
     state.styleFlags.useSelectionMask = true;
@@ -1543,11 +1570,12 @@ const handleMessage = (msg: MainToGpu): void => {
     }
     // Emit mask so onPointSelectionChange subscribers see click selections
     const maskCopy = new Uint32Array(msg.mask);
-    postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
+    postMain({ type: 'selectionResult', mask: maskCopy, id: msg.id }, [maskCopy.buffer]);
     return;
   }
 
   if (msg.type === 'clearSelectionMask') {
+    if (!isLatestSelection(msg.id)) return;
     if (state.selectionTexture) {
       state.mainView.gl.deleteTexture(state.selectionTexture);
       state.selectionTexture = null;
@@ -1556,7 +1584,7 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.dataTexture) {
       renderAllViews();
     }
-    postMain({ type: 'selectionResult', mask: new Uint32Array(0) });
+    postMain({ type: 'selectionResult', mask: new Uint32Array(0), id: msg.id });
     return;
   }
 
@@ -1578,7 +1606,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'lassoSelect') {
-    handleLassoSelect(msg.polygon);
+    handleLassoSelect(msg.polygon, msg.id);
     return;
   }
 

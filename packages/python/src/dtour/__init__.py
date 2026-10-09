@@ -13,7 +13,7 @@ from .tours import (
     sequential_tour,
     umap_little_tour,
 )
-from .widget import Widget
+from .widget import Widget, link
 
 __all__ = [
     "EmbeddingStep",
@@ -27,6 +27,7 @@ __all__ = [
     "build_dtour_metadata",
     "compute_metrics",
     "le_tour",
+    "link",
     "little_tour",
     "read_spec_from_parquet",
     "sequential_tour",

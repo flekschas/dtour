@@ -13,22 +13,38 @@ import {
 import {
   galleryAreaAtom,
   keyframeDescriptionsAtom,
-  predefinedTourAtom,
+  metadataAtom,
   previewKeyframesAtom,
   previewLabelVisibilityAtom,
   resolvedPreviewCountAtom,
   resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
+  suppliedTourAtom,
 } from '../src/state/atoms.ts';
 
 type Store = ReturnType<typeof createStore>;
 
 const TOOLBAR_OFFSETS = [40, 72]; // toolbar, toolbar + description bar
 
-/** A store with a predefined tour, as DtourViewer sets it up. */
+/** A store with a predefined tour of three columns, as DtourViewer sets it up. */
 const tourStore = (keyframeCount: number) => {
   const store = createStore();
-  store.set(predefinedTourAtom, { dimensions: [], keyframeCount });
+  store.set(metadataAtom, {
+    columnNames: ['a', 'b', 'c'],
+    categoricalColumnNames: [],
+    categoricalLabels: {},
+    rowCount: 1,
+    dimCount: 3,
+    mins: [0, 0, 0],
+    maxes: [1, 1, 1],
+    ranges: [1, 1, 1],
+    means: [0, 0, 0],
+  });
+  const keyframes = Array.from(
+    { length: keyframeCount },
+    () => new Float32Array([1, 0, 0, 0, 1, 0]),
+  );
+  store.set(suppliedTourAtom, { keyframes, dimensions: undefined });
   store.set(
     keyframeDescriptionsAtom,
     Array.from({ length: keyframeCount }, (_, i) => `Step ${i + 1}`),

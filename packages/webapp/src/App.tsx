@@ -251,9 +251,11 @@ function loadPersistedSpec(fileName: string): DtourSpec {
   }
 }
 
+/** Save the settings for the next time this file opens. A link only applies to the views open now. */
 function savePersistedSpec(fileName: string, spec: Required<DtourSpec>): void {
+  const { link: _, ...settings } = spec;
   try {
-    localStorage.setItem(SPEC_STORAGE_PREFIX + fileName, JSON.stringify(spec));
+    localStorage.setItem(SPEC_STORAGE_PREFIX + fileName, JSON.stringify(settings));
   } catch {}
 }
 

@@ -32,6 +32,29 @@ export const createDefaultKeyframes = (
   return keyframes;
 };
 
+/** Smallest column range the renderer divides by, which keeps constant columns finite. */
+export const MIN_RANGE = 1e-6;
+
+/**
+ * Create the single keyframe of a static scatter: column `x` on the x-axis and
+ * column `y` on the y-axis. The renderer divides each column by its range (at
+ * least {@link MIN_RANGE}), so the weights multiply that range back in and
+ * divide by the larger of the two, which gives both axes the same scale.
+ */
+export const createStaticKeyframe = (
+  dims: number,
+  [x, y]: [number, number],
+  ranges: number[],
+): Float32Array => {
+  const rangeX = Math.max(ranges[x]!, MIN_RANGE);
+  const rangeY = Math.max(ranges[y]!, MIN_RANGE);
+  const scale = Math.max(rangeX, rangeY);
+  const basis = new Float32Array(dims * 2);
+  basis[x] = rangeX / scale;
+  basis[dims + y] = rangeY / scale;
+  return basis;
+};
+
 /**
  * Names of the numeric columns a predefined tour of `nDims` dimensions
  * projects. Without names, the first `nDims` columns. With names, those names

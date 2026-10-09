@@ -17,7 +17,13 @@ export type MainToData =
       columnY: string;
       colormap: string; // e.g. 'schumann', 'bremm', 'oklab_polar', ...
     }
-  | { type: 'selectByColumn'; column: string; labelIndices?: number[]; valueRanges?: Float32Array };
+  | {
+      type: 'selectByColumn';
+      id: number;
+      column: string;
+      labelIndices?: number[];
+      valueRanges?: Float32Array;
+    };
 
 // Data Worker → Main thread
 export type DataToMain =
@@ -76,6 +82,8 @@ export type DataToGpu =
   | {
       type: 'selectContinuous';
       dataVersion: number;
+      id: number;
+      column: string;
       columnIndex: number;
       /** Flat [lo0, hi0, lo1, hi1, ...] pairs. */
       ranges: Float32Array;
@@ -83,7 +91,9 @@ export type DataToGpu =
   | {
       type: 'selectCategorical';
       dataVersion: number;
+      id: number;
       catColumnName: string;
+      labelIndices: number[];
       /** Per-label mask: selectedLabels[labelIdx] = 1 or 0. */
       selectedLabels: Uint32Array;
     };

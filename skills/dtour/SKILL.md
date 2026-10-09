@@ -27,8 +27,8 @@ Use dtour when no single 2D view can tell the story:
 - you want to compare several 2D embeddings of the same points, e.g. across models,
   hyperparameters, or time
 
-For data that is already 2D, use a regular scatter plot (e.g.
-[jupyter-scatter](https://jupyter-scatter.dev)) instead.
+Data that is already 2D has nothing to tour. dtour shows two numeric columns as a static
+scatter, which is handy next to a tour with linked selections (`dtour.link`).
 
 ## Pick a surface
 
@@ -50,7 +50,7 @@ or PCA with `tour_by="pca"` / `tourBy: "pca"`. Start there for a quick first loo
 | What nonlinear manifold or cluster structure is there? | `le_tour(X, n_frames=8)` | Laplacian Eigenmaps, coarse → fine. `subsample=` for >100K rows |
 | Which directions separate my known labels? | `le_tour(X, labels=y, discriminative=True)` | Spectral Fisher. Keyframes are ordered by how well they separate classes |
 | Too many dims for a linear tour? | `umap_little_tour(X, n_components=8)` | Needs `dtour[umap]` |
-| Is my UMAP/t-SNE structure real? | `little_tour` over the PCA space UMAP was fit on, next to the 2D UMAP with linked selections | A group that separates in UMAP but overlaps in every PCA keyframe is worth checking: inspect its neighbors and distances in the full PCA space before calling it an artifact, since the tour shows only consecutive PC pairs. Example: [dtour + jupyter-scatter](references/python.md#dtour--jupyter-scatter-validate-a-umap-against-a-pca-tour) |
+| Is my UMAP/t-SNE structure real? | `little_tour` over the PCA space UMAP was fit on, next to the 2D UMAP with linked selections | A group that separates in UMAP but overlaps in every PCA keyframe is worth checking: inspect its neighbors and distances in the full PCA space before calling it an artifact, since the tour shows only consecutive PC pairs. Example: [validate a UMAP against a PCA tour](references/python.md#validate-a-umap-against-a-pca-tour) |
 | How do clusters form as repulsion increases? | `attraction_repulsion_tour(X)` | Moves from LE-like through UMAP-like to t-SNE. Needs `dtour[tsne]` |
 | How do models, methods, or hyperparameters differ? | `sequential_tour([X1, X2, ...])` | Each keyframe is its own embedding (UMAP, t-SNE, PyMDE, or precomputed layouts), aligned to the previous one. Keyframes stay faithful, so differences show up |
 | How does a gradual series evolve (e.g. time points)? | `aligned_umap_tour([X1, X2, ...])` | UMAP only. Optimizes all frames jointly and penalizes moving points, giving smoother motion. Strong alignment can hide real change |
@@ -135,7 +135,8 @@ setting has a traitlet. The most useful ones:
 | `tour_position`, `tour_playing`, `tour_speed` | `tourPosition`, `tourPlaying`, `tourSpeed` | 0–1, bool, 0.1–5 |
 | `point_color_by`, `color_map` (export: `point_color_map`) | `pointColorBy`, `pointColorMap` | column name or `[x, y]` pair for a 2D colormap, label → color |
 | `point_color_map_2d` | `pointColorMap2d` | `"schumann"` \| `"bremm"` \| `"steiger"` \| `"ziegler"` \| `"teulingfig2"` \| `"cubediagonal"` \| `"oklab_polar"` |
-| `tour_dimensions` | `tourDimensions` | columns of an auto-generated tour |
+| `tour_dimensions` | `tourDimensions` | columns of an auto-generated tour; two show a static scatter, the first on the x-axis |
+| `link` | `link` | views in the same browser with the same id share their selection (`dtour.link()` sets it) |
 | `point_size`, `point_opacity` | `pointSize`, `pointOpacity` | number or `"auto"` |
 | `preview_count` | `previewCount` | 2–32, keyframes of an auto-generated tour |
 | `preview_size` | `previewSize` | `"auto"` \| `"small"` \| `"medium"` \| `"large"` |

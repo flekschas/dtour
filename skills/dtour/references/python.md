@@ -92,6 +92,10 @@ Selection state is synced in both directions: `w.selected_indices` and
   values) can stay in `data` for coloring. For an auto-generated tour, set
   `tour_dimensions` to the columns to use, or uncheck columns in the toolbar's column
   menu (the PCA tour always uses all numeric columns).
+- An auto-generated tour of two columns has nothing to tour, so the widget shows a
+  static scatter of them instead: `Widget(df)` when `df` has two numeric columns, or
+  `tour_dimensions=["umap_x", "umap_y"]`. The first column goes on the x-axis, and both
+  axes share one scale.
 - Every numeric column is loaded onto the GPU and must not contain missing values. For
   wide data, pass only the columns you need; an embedding tour needs no input columns
   at all (`Widget(df.select("cell_type"), tour)`).
@@ -304,44 +308,34 @@ tools apply:
 
 Selection is the trait you will link most often. `selected_indices` holds lasso or
 programmatic selections. `selected_labels` holds legend selections (and clears
-`selected_indices`).
+`selected_indices`), and the reverse. `dtour.link(w1, w2, ...)` keeps the selections of
+dtour widgets that show the same points in the same row order in sync, and returns a
+function that unlinks them. It gives the widgets the same `link` id, and they
+link in the browser without a round trip through Python. Selections link by row: a
+legend selection shows in the legend of widgets colored by the same column, and as a
+point selection (`selected_indices`) in the others. A widget without a selection adopts
+the selection of the widgets it joins.
 
-### dtour + jupyter-scatter: validate a UMAP against a PCA tour
+### Validate a UMAP against a PCA tour
 
-Tour the PCA space that UMAP was computed from, next to the 2D UMAP, and sync selections
-both ways. Cells that cluster in UMAP but scatter in every PCA keyframe deserve a closer
-look: check their neighbors and distances in the full PCA space before calling the
-cluster an artifact, since the tour shows only consecutive PC pairs
-(`pip install jupyter-scatter`):
+Tour the PCA space that UMAP was computed from, next to the 2D UMAP as a static scatter,
+and link their selections. Cells that cluster in UMAP but scatter in every PCA keyframe
+deserve a closer look: check their neighbors and distances in the full PCA space before
+calling the cluster an artifact, since the tour shows only consecutive PC pairs:
 
 ```py
 import dtour
-import jscatter
-import pandas as pd
 
-# df: PCA coordinates (pc_cols) + a string "cell_type" column; umap_2d: (n, 2) UMAP of df[pc_cols]
-cmap = dtour.build_color_map(sorted(df["cell_type"].unique()), theme="dark")
+# df: PCA coordinates (pc_cols), the 2D UMAP of them ("umap_x", "umap_y"), and a string "cell_type" column
+tour = dtour.Widget(df, dtour.little_tour(df[pc_cols]), point_color_by="cell_type")
+umap = dtour.Widget(df, tour_dimensions=["umap_x", "umap_y"], point_color_by="cell_type")
+dtour.link(tour, umap)
 
-tour = dtour.little_tour(df[pc_cols])
-w = dtour.Widget(df, tour, point_color_by="cell_type", color_map=cmap)
-
-umap_df = pd.DataFrame({"x": umap_2d[:, 0], "y": umap_2d[:, 1], "cell_type": df["cell_type"]})
-s = jscatter.Scatter(data=umap_df, x="x", y="y", color_by="cell_type", color_map=cmap)
-
-def dtour_to_umap(change):
-    if set(change.new) != set(s.selection()):   # skip echoes to avoid a feedback loop
-        s.selection(change.new or None)
-
-def umap_to_dtour(change):
-    rows = list(change.new)
-    if set(rows) != set(w.selected_indices):
-        w.select(rows)
-
-w.observe(dtour_to_umap, names="selected_indices")
-s.widget.observe(umap_to_dtour, names="selection")
-
-# Show side by side: ipywidgets.HBox([w, s.show()]) in Jupyter, mo.hstack([w, s.widget]) in marimo
+# Show side by side: ipywidgets.HBox([tour, umap]) in Jupyter, mo.hstack([tour, umap]) in marimo
 ```
+
+To link a dtour widget with another library's widget, `observe` each side and skip
+echoes: only push a selection when it differs from the other widget's current one.
 
 To also mirror legend selections, observe `selected_labels` and map labels to row
 indices (`df.index[df["cell_type"].isin(labels)]`). `demo_brain_atlas.py` in the repo is

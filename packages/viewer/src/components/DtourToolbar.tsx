@@ -32,6 +32,7 @@ import {
   centeringAtom,
   color2dColumnsAtom,
   color2dEnabledAtom,
+  defaultCameraZoomAtom,
   grandExitTargetAtom,
   guidedSuspendedAtom,
   keyframeLoadingsAtom,
@@ -56,6 +57,7 @@ import {
   showLegendAtom,
   showTourDescriptionAtom,
   sliderVisibilityAtom,
+  staticAxesAtom,
   themeModeAtom,
   tourByAtom,
   tourDescriptionAtom,
@@ -100,8 +102,11 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
   const [panX, setPanX] = useAtom(cameraPanXAtom);
   const [panY, setPanY] = useAtom(cameraPanYAtom);
   const [panZoomMode, setPanZoomMode] = useAtom(panZoomModeAtom);
+  const defaultZoom = useAtomValue(defaultCameraZoomAtom);
   const metadata = useAtomValue(metadataAtom);
   const [tourTraversal, setTourTraversal] = useAtom(tourTraversalAtom);
+  const isStatic = useAtomValue(staticAxesAtom) !== null;
+  const isTouring = tourTraversal === 'guided' && !isStatic;
   const resumeGuided = useAtomValue(resumeGuidedAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
@@ -328,7 +333,23 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
             </div>
           </div>
         )}
-        {isWide ? (
+        {isStatic ? (
+          <div className="ml-2 flex items-center rounded-md border border-dtour-surface bg-dtour-surface px-2 py-1 text-dtour-highlight">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-default text-xs">
+                    Tour: <span className="text-dtour-text-muted">None</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Static 2D scatter! Two columns have nothing to tour. Select more columns to start
+                  a tour.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        ) : isWide ? (
           <div className="group/modes ml-2 flex items-center overflow-hidden rounded-md border border-dtour-surface">
             {/* Guided button — expands to include Dims/PCA sub-toggle when active */}
             <div
@@ -633,7 +654,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
                 className="w-full"
               />
             </DropdownMenuItem>
-            {!isWide && tourTraversal === 'guided' && (
+            {!isWide && isTouring && (
               <DropdownMenuItem
                 className="gap-4"
                 onSelect={(e) => {
@@ -646,7 +667,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </DropdownMenuItem>
             )}
 
-            {!isWide && (tourTraversal === 'guided' || tourTraversal === 'grand') && (
+            {!isWide && (isTouring || tourTraversal === 'grand') && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Playback</DropdownMenuLabel>
@@ -673,7 +694,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </>
             )}
 
-            {tourTraversal === 'guided' && (
+            {isTouring && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Tour</DropdownMenuLabel>
@@ -749,7 +770,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               </>
             )}
 
-            {tourTraversal === 'guided' && (
+            {isTouring && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs font-semibold">Previews</DropdownMenuLabel>
@@ -881,7 +902,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         </DropdownMenu>
 
         {/* Speed popover — standalone at ≥960px */}
-        {isWide && (tourTraversal === 'guided' || tourTraversal === 'grand') && (
+        {isWide && (isTouring || tourTraversal === 'grand') && (
           <Popover.Root>
             <Popover.Trigger asChild>
               <Button variant="ghost" size="icon" title={`Speed: ${speed}x`}>
@@ -914,8 +935,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           </Popover.Root>
         )}
 
-        {/* Play/Pause — guided only */}
-        {tourTraversal === 'guided' && (
+        {/* Play/Pause — only while touring in guided mode */}
+        {isTouring && (
           <Button
             variant="ghost"
             size="icon"
@@ -926,8 +947,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           </Button>
         )}
 
-        {/* Axes toggle — standalone at ≥960px, guided only */}
-        {isWide && tourTraversal === 'guided' && (
+        {/* Axes toggle — standalone at ≥960px, only while touring in guided mode */}
+        {isWide && isTouring && (
           <Button
             variant="ghost"
             size="icon"
@@ -939,8 +960,8 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
           </Button>
         )}
 
-        {/* Pan/zoom mode toggle — only shown in guided mode (always active in manual/grand) */}
-        {tourTraversal === 'guided' && (
+        {/* Pan/zoom mode toggle — only shown while touring in guided mode (always active in manual/grand) */}
+        {isTouring && (
           <Button
             variant="ghost"
             size="icon"
@@ -953,7 +974,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
         )}
 
         {/* Camera reset — appears when camera is not at default */}
-        {(panX !== 0 || panY !== 0 || zoom !== DTOUR_DEFAULTS.cameraZoom) && (
+        {(panX !== 0 || panY !== 0 || zoom !== defaultZoom) && (
           <Button
             variant="ghost"
             size="icon"
@@ -962,7 +983,7 @@ export const DtourToolbar = ({ onLoadData, onLogoClick }: DtourToolbarProps) => 
               const startPanX = panX;
               const startPanY = panY;
               const startZoom = zoom;
-              const targetZoom = DTOUR_DEFAULTS.cameraZoom;
+              const targetZoom = defaultZoom;
               const startTime = performance.now();
               const duration = 250;
               const tick = (now: number) => {

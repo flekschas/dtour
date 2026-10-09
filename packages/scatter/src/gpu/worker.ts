@@ -282,6 +282,10 @@ const ensurePreviewHdr = (): void => {
 /** Byte size for a bit-packed selection buffer (1 bit per point, packed into u32s). */
 const selectionBufferSize = (numPoints: number): number => Math.ceil(numPoints / 32) * 4;
 
+/** Usage of every selection mask buffer. Column selections read theirs back. */
+const SELECTION_BUFFER_USAGE =
+  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+
 /** Ensure the selection buffer exists at the right size, creating if needed. */
 const ensureSelectionBuffer = (): GPUBuffer => {
   if (!state) throw new Error('state not initialized');
@@ -291,10 +295,38 @@ const ensureSelectionBuffer = (): GPUBuffer => {
     state.selectionBuffer = state.device.createBuffer({
       label: 'selection-mask',
       size,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: SELECTION_BUFFER_USAGE,
     });
   }
   return state.selectionBuffer;
+};
+
+/** Read back the mask a column selection computed and report it with its request. */
+const postColumnSelection = (
+  selectionBuffer: GPUBuffer,
+  request: { id: number; column: string; labelIndices?: number[] },
+): void => {
+  const { device } = state!;
+  const readBuffer = device.createBuffer({
+    label: 'column-selection-readback',
+    size: selectionBuffer.size,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const encoder = device.createCommandEncoder({ label: 'column-selection-readback' });
+  encoder.copyBufferToBuffer(selectionBuffer, 0, readBuffer, 0, selectionBuffer.size);
+  device.queue.submit([encoder.finish()]);
+  const dataVersion = currentDataVersion;
+  readBuffer
+    .mapAsync(GPUMapMode.READ)
+    .then(() => {
+      const mask = new Uint32Array(readBuffer.getMappedRange().slice(0));
+      readBuffer.unmap();
+      // A newer selection or new data replaced this one while it was read back
+      if (request.id !== latestSelectionId || dataVersion !== currentDataVersion) return;
+      postMain({ type: 'columnSelectionResult', mask, ...request }, [mask.buffer]);
+    })
+    .catch(() => {})
+    .finally(() => readBuffer.destroy());
 };
 
 // ─── Inline projection helpers ────────────────────────────────────────────
@@ -821,6 +853,15 @@ const applySelectionUpdate = (): void => {
 // Track the current dataset version to discard stale color/selection messages.
 let currentDataVersion = 0;
 
+// Selection requests can arrive out of order, since column selections pass
+// through the data worker. A request older than the latest one applied is outdated.
+let latestSelectionId = 0;
+const isLatestSelection = (id: number): boolean => {
+  if (id < latestSelectionId) return false;
+  latestSelectionId = id;
+  return true;
+};
+
 const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (!state) return;
   const { device } = state;
@@ -929,6 +970,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   if (event.data.type === 'selectContinuous') {
     if (event.data.dataVersion !== currentDataVersion) return;
     if (!state.projectionResources) return;
+    if (!isLatestSelection(event.data.id)) return;
 
     const { columnIndex, ranges } = event.data;
     const { numPoints, colorPipelines } = state;
@@ -971,6 +1013,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     rangesBuf.destroy();
 
     applySelectionUpdate();
+    postColumnSelection(selBuf, { id: event.data.id, column: event.data.column });
     return;
   }
 
@@ -981,6 +1024,7 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     const { catColumnName, selectedLabels } = event.data;
     const indexBuf = state.categoricalBuffers.get(catColumnName);
     if (!indexBuf) return;
+    if (!isLatestSelection(event.data.id)) return;
 
     const { numPoints, colorPipelines } = state;
     const selBuf = ensureSelectionBuffer();
@@ -1020,6 +1064,11 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
     selLabelsBuf.destroy();
 
     applySelectionUpdate();
+    postColumnSelection(selBuf, {
+      id: event.data.id,
+      column: catColumnName,
+      labelIndices: event.data.labelIndices,
+    });
     return;
   }
 
@@ -1386,6 +1435,7 @@ const handleMessage = (msg: MainToGpu): void => {
   }
 
   if (msg.type === 'setSelectionMask') {
+    if (!isLatestSelection(msg.id)) return;
     const { mask } = msg;
 
     if (state.selectionBuffer) {
@@ -1395,7 +1445,7 @@ const handleMessage = (msg: MainToGpu): void => {
     state.selectionBuffer = state.device.createBuffer({
       label: 'selection-mask',
       size: mask.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: SELECTION_BUFFER_USAGE,
     });
     state.device.queue.writeBuffer(state.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
 
@@ -1408,11 +1458,12 @@ const handleMessage = (msg: MainToGpu): void => {
 
     // Emit mask so onPointSelectionChange subscribers see click selections
     const maskCopy = new Uint32Array(mask);
-    postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
+    postMain({ type: 'selectionResult', mask: maskCopy, id: msg.id }, [maskCopy.buffer]);
     return;
   }
 
   if (msg.type === 'clearSelectionMask') {
+    if (!isLatestSelection(msg.id)) return;
     if (state.selectionBuffer) {
       state.selectionBuffer.destroy();
       state.selectionBuffer = null;
@@ -1423,7 +1474,7 @@ const handleMessage = (msg: MainToGpu): void => {
     if ((state.tour || state.directBasis) && state.projectionResources) {
       renderAllViews();
     }
-    postMain({ type: 'selectionResult', mask: new Uint32Array(0) });
+    postMain({ type: 'selectionResult', mask: new Uint32Array(0), id: msg.id });
     return;
   }
 
@@ -1519,6 +1570,8 @@ const handleMessage = (msg: MainToGpu): void => {
 
   if (msg.type === 'lassoSelect') {
     if (!state.projectionResources || !state.projectionBindGroup || state.numPoints === 0) return;
+    if (!isLatestSelection(msg.id)) return;
+    const dataVersion = currentDataVersion;
 
     const { device, numPoints, projectionPipeline, projectionResources, camera } = state;
     const { polygon } = msg;
@@ -1588,6 +1641,12 @@ const handleMessage = (msg: MainToGpu): void => {
     device.queue.submit([encoder.finish()]);
 
     readBuffer.mapAsync(GPUMapMode.READ).then(() => {
+      // A newer selection or new data replaced this lasso while it was read back
+      if (msg.id !== latestSelectionId || dataVersion !== currentDataVersion) {
+        readBuffer.unmap();
+        readBuffer.destroy();
+        return;
+      }
       const projected = new Float32Array(readBuffer.getMappedRange());
 
       // CPU point-in-polygon (ray casting) — bit-packed mask
@@ -1612,7 +1671,7 @@ const handleMessage = (msg: MainToGpu): void => {
       state!.selectionBuffer = device.createBuffer({
         label: 'selection-mask',
         size: mask.byteLength,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: SELECTION_BUFFER_USAGE,
       });
       device.queue.writeBuffer(state!.selectionBuffer, 0, mask as Uint32Array<ArrayBuffer>);
 
@@ -1625,7 +1684,7 @@ const handleMessage = (msg: MainToGpu): void => {
 
       // Send mask back so the host can read which points were selected
       const maskCopy = new Uint32Array(mask);
-      postMain({ type: 'selectionResult', mask: maskCopy }, [maskCopy.buffer]);
+      postMain({ type: 'selectionResult', mask: maskCopy, id: msg.id }, [maskCopy.buffer]);
     });
     return;
   }

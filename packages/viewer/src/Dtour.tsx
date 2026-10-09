@@ -13,6 +13,7 @@ import {
 } from './components/ui/tooltip.tsx';
 import { DtourViewer } from './DtourViewer.tsx';
 import { useIsTruncated } from './hooks/useIsTruncated.ts';
+import { useLink } from './hooks/useLink.ts';
 import { useModeCycling } from './hooks/useModeCycling.ts';
 import { useSystemTheme } from './hooks/useSystemTheme.ts';
 import { PortalContainerContext, usePortalContainer } from './portal-container.tsx';
@@ -34,6 +35,7 @@ import {
   requestedTourDimensionsAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
+  staticAxesAtom,
   tourByAtom,
   tourDescriptionAtom,
   tourFamilyAtom,
@@ -404,6 +406,8 @@ const DtourInner = ({
 
   useEffect(() => {
     if (!onSelectionChange || !metadata) return;
+    // Skip a legend selection that changed again before this effect ran; the next run reports it
+    if (store.get(legendSelectionAtom) !== legendSelection) return;
 
     // Without a categorical color column, there is no legend to select from
     if (!pointColorBy || !metadata.categoricalColumnNames.includes(pointColorBy)) {
@@ -422,10 +426,11 @@ const DtourInner = ({
       .filter((l): l is string => l !== undefined);
 
     onSelectionChange(selectedLabels.length > 0 ? selectedLabels : []);
-  }, [legendSelection, pointColorBy, metadata, onSelectionChange]);
+  }, [store, legendSelection, pointColorBy, metadata, onSelectionChange]);
 
   // Track scatter instance for programmatic select API
   const [scatterInstance, setScatterInstance] = useState<ScatterInstance | null>(null);
+  useLink(scatterInstance);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -434,6 +439,7 @@ const DtourInner = ({
 
     const handle: DtourHandle = {
       select: (indicesOrMask, opts) => {
+        store.set(legendSelectionAtom, null);
         if (indicesOrMask.length === 0) {
           scatterInstance.clearSelection();
           return;
@@ -461,6 +467,7 @@ const DtourInner = ({
       },
       clearSelection: () => {
         scatterInstance.clearSelection();
+        store.set(legendSelectionAtom, null);
       },
     };
 
@@ -472,8 +479,14 @@ const DtourInner = ({
   onPointSelectionRef.current = onPointSelectionChange;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const scatterRef = useRef(scatterInstance);
+  scatterRef.current = scatterInstance;
   const handleStatus = useCallback((status: ScatterStatus) => {
-    if (status.type === 'selectionResult') {
+    // A result of a replaced selection request doesn't describe the selection
+    if (
+      status.type === 'selectionResult' &&
+      status.id === scatterRef.current?.latestSelectionId()
+    ) {
       onPointSelectionRef.current?.(status.mask);
     }
     onStatusRef.current?.(status);
@@ -489,9 +502,11 @@ const DtourInner = ({
   const tourFamily = useAtomValue(tourFamilyAtom);
   const isSequential = tourFamily === 'sequential';
   const betweenKeyframes = useAtomValue(betweenKeyframesAtom);
+  const isStatic = useAtomValue(staticAxesAtom) !== null;
   const descriptionVisible =
     (showTourDescriptionPref ?? tourDescription !== null) &&
     tourTraversal === 'guided' &&
+    !isStatic &&
     tourDescription !== null;
   // Show a tooltip with the full text only when the description bar clips it.
   const [descriptionRef, descriptionTruncated] = useIsTruncated<HTMLSpanElement>(tourDescription);
