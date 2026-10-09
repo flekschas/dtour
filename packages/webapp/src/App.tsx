@@ -26,6 +26,8 @@ const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
 
 type ExampleDataset = {
   label: string;
+  /** Name for loading the example with `?dataset=<slug>`. */
+  slug?: string;
   fileName: string;
   numPoints: string;
   numDims: string;
@@ -49,6 +51,7 @@ const EXAMPLES: ExampleDataset[] = [
     worker: 'gaussian-blobs',
     label: 'Gaussian Blobs',
     preview: 'gaussian-blobs',
+    slug: 'gaussian-blobs',
     fileName: 'gaussian-blobs-5d.arrow',
     numPoints: '500K',
     numDims: '5',
@@ -61,6 +64,7 @@ const EXAMPLES: ExampleDataset[] = [
     worker: 'linked-rings',
     label: 'Linked Rings',
     preview: 'linked-rings',
+    slug: 'linked-rings',
     fileName: 'linked-rings-4d.arrow',
     numPoints: '500K',
     numDims: '4',
@@ -73,6 +77,7 @@ const EXAMPLES: ExampleDataset[] = [
     worker: 'lorenz',
     label: 'Lorenz Attractor',
     preview: 'lorenz-attractor',
+    slug: 'lorenz',
     fileName: 'lorenz-stenflo-1m.arrow',
     numPoints: '1M',
     numDims: '4',
@@ -83,6 +88,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'remote',
     label: 'Fashion MNIST',
     preview: 'fashion-mnist',
+    slug: 'fashion-mnist',
     fileName: 'fashion-mnist-attraction-repulsion-tour.pq',
     url: `${REMOTE}/fashion-mnist-attraction-repulsion-tour.pq`,
     numPoints: '70K',
@@ -95,6 +101,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'remote',
     label: 'News Headlines',
     preview: 'news-headlines',
+    slug: 'news-headlines',
     fileName: 'huffpost-news-embeddings-umap-dense-supervised-4d.pq',
     url: `${REMOTE}/huffpost-news-embeddings-umap-dense-supervised-4d.pq`,
     numPoints: '204K',
@@ -107,6 +114,7 @@ const EXAMPLES: ExampleDataset[] = [
     type: 'remote',
     label: 'Single Cell Proteomics',
     preview: 'single-cell-proteomics',
+    slug: 'single-cell',
     fileName: 'mair-2022-tumor-le-fisher-tour-markers.pq',
     url: `${REMOTE}/mair-2022-tumor-le-fisher-tour-markers.pq`,
     numPoints: '345K',
@@ -152,15 +160,6 @@ const EXAMPLES: ExampleDataset[] = [
       '3M [arXiv](https://arxiv.org/) papers. Four 2D UMAP embeddings of the titles and abstracts from [SPECTER2](https://huggingface.co/allenai/specter2), [BGE-M3](https://huggingface.co/BAAI/bge-m3), [Nomic v2](https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe), and [F2LLM-v2 8B](https://huggingface.co/codefuse-ai/F2LLM-v2-8B) embeddingsreveal how different models organize the scientific research landscape.',
   },
 ];
-
-const DATASET_SLUGS: Record<string, number> = {
-  'fashion-mnist': 0,
-  'news-headlines': 1,
-  'single-cell': 2,
-  lorenz: 3,
-  'gaussian-blobs': 4,
-  'linked-rings': 5,
-};
 
 // Example buttons play their preview video while hovered or focused
 function playPreview(event: SyntheticEvent<HTMLElement>) {
@@ -301,8 +300,10 @@ const App = () => {
   const plyrRef = useRef<InstanceType<typeof import('plyr').default> | null>(null);
 
   const prefersReducedMotion = useReducedMotion();
+  // Deep links skip the intro: the logo only leaves 'drawing' once data has
+  // rendered, but auto-loading waits for the logo to leave 'drawing'.
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(
-    prefersReducedMotion || benchmarkMode ? 'done' : 'drawing',
+    prefersReducedMotion || benchmarkMode || urlParam || datasetSlug ? 'done' : 'drawing',
   );
   const drawCompleteRef = useRef(false);
   const gpuReadyRef = useRef(false);
@@ -511,14 +512,13 @@ const App = () => {
       return;
     }
     if (!datasetSlug) return;
-    const index = DATASET_SLUGS[datasetSlug];
-    if (index === undefined) {
-      console.warn(
-        `Unknown dataset slug: "${datasetSlug}". Valid: ${Object.keys(DATASET_SLUGS).join(', ')}`,
-      );
+    const example = EXAMPLES.find((e) => e.slug === datasetSlug);
+    if (!example) {
+      const slugs = EXAMPLES.flatMap((e) => (e.slug ? [e.slug] : []));
+      console.warn(`Unknown dataset slug: "${datasetSlug}". Valid: ${slugs.join(', ')}`);
       return;
     }
-    loadExampleRef.current(EXAMPLES[index]!);
+    loadExampleRef.current(example);
   }, [logoPhase]);
 
   // Expose readiness signal for Playwright.

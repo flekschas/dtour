@@ -31,6 +31,7 @@ import "@dtour/viewer/dist/viewer.css";
 <Dtour
   data={arrowBuffer}          // Arrow IPC or Parquet ArrayBuffer (ownership transferred)
   keyframes={keyframes}       // Float32Array[] of p×2 column-major bases
+  tourDimensions={names}      // column names the keyframes project (default: first p numeric columns)
   metrics={metricsBuffer}     // Arrow IPC ArrayBuffer with per-view quality metrics
   metricTracks={tracks}       // RadialTrackConfig[] for radial bar chart customization
   metricBarWidth="full"       // "full" | number — global bar width for radial charts

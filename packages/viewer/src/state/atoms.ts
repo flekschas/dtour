@@ -303,6 +303,9 @@ export const predefinedTourAtom = atom<{
   keyframeCount: number;
 } | null>(null);
 
+/** Whether the supplied tour doesn't fit the data, so the viewer shows an auto-generated tour. */
+export const tourRejectedAtom = atom(false);
+
 /** Number of tour keyframes: from the predefined tour, otherwise {@link previewCountAtom}. */
 export const keyframeCountAtom = atom(
   (get) => get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom),

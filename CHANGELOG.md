@@ -14,6 +14,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - **Python widget**: `show_keyframe_loadings` → `preview_label_content`, `theme` → `theme_mode` (matching the spec's `themeMode`); `preview_size` now also accepts `"auto"`, which is the new default
 - **Python `build_dtour_metadata` / `add_spec_to_parquet`**: `preview_scale` → `preview_size`, `show_keyframe_numbers` → `preview_keyframe_numbers`, `show_keyframe_loadings` → `preview_label_content`
 - **Python `compute_metrics`**: `views` → `keyframes`
+- **Python `build_dtour_metadata`**: tours with an `embedding` (all but `little_tour`) need `tour_dimensions`, the names of the embedding columns. It used to record the input features instead
 - **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`, except in the `TourResult` constructor. Saved tours (`.npz` and Parquet) keep their format.
 
 ### python
@@ -22,10 +23,18 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add `preview_keyframe_numbers` and `preview_label_content` traitlets, so every preview setting is available from Python
 - feat: add a `preview_label_visibility` traitlet and raise the `preview_count` limit from 16 to 32. `set_tour()` accepts tours of any length; longer tours preview a sample of their keyframes
 - feat: add `tour_slider_spacing`, `tour_slider_visibility`, `min_point_size`, and `show_axes` traitlets, and the matching `build_dtour_metadata` arguments where missing
+- feat: `Widget(data, tour)` takes the data the tour was computed from for every tour, and accepts both as positional arguments. For tours with an `embedding`, the widget adds the embedding columns itself, so `Widget(df, dtour.le_tour(df[features]))` just works; data that already starts with the embedding still works but warns. `Widget(tour=tour)` alone shows the embedding
+- feat: tours find their columns by name, so the tour columns no longer need to come first. `little_tour` records the DataFrame's column names as `feature_names`, and tours with an embedding name its columns in the new `TourResult.embedding_names` (e.g., `LE1`, `UMAP1`, `frame1_x`; `embedding_0` for tours saved without names). The widget raises a `ValueError` when the data lacks the tour's columns or has a different number of rows, and keeps its previous data and tour
+- feat: the `tour_dimensions` traitlet reaches the viewer. Without a tour, it sets the columns checked in the toolbar's column menu
+- feat: `Widget.set_data(data, tour)` replaces the data and tour together, for when the rows or columns change
+- feat: `Widget.save_spec_to_parquet()` saves the widget's data as shown, including the embedding columns, when called without a table. It raises a `ValueError` when a given table lacks the tour's columns
+- fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
 - fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
+- fix: Parquet exports of embedding tours (`le_tour`, `umap_little_tour`, sequential tours) record the embedding columns as the tour dimensions instead of the input features, which broke files with extra numeric columns. `add_spec_to_parquet()` and `Widget.save_spec_to_parquet()` infer them from the table; `build_dtour_metadata()` requires `tour_dimensions` for these tours
+- docs: document all tour generators in the README
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
 - chore: rename the private widget frontend package from `@dtour/python-build` to `@dtour/python-widget`
@@ -41,6 +50,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: show up to 32 previews. Layouts for up to 16 previews are unchanged; larger counts use a wide perimeter grid with 4–6 rows
 - feat: `CircularSlider` and `RadialChart` accept a `startAngle`, so both line up with the gallery that is actually shown
 - feat: add `previewLabelVisibility: 'auto' | 'visible' | 'interactive' | 'hidden'` and a matching "Labels" toolbar control. `'interactive'` shows the label inside the preview on hover and for the current keyframe, so labels no longer take space from the previews. `'auto'` uses `'visible'` up to 16 previews and `'interactive'` above
+- feat: add a `tourDimensions` prop to `Dtour` and `DtourViewer` naming the columns the `keyframes` project (default: the first p numeric columns). If they don't name one existing column per keyframe dimension, the viewer logs an error and shows an auto-generated tour instead, with its own keyframe count and without the rejected tour's labels. Without `keyframes`, `Dtour` uses the names as the columns checked in the toolbar's column menu
 - fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the 32 keyframes most evenly spaced along the tour (by normalized geodesic distance), always including the first and last, and the slider keeps a tick for every keyframe
 - fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
 - fix: show fewer previews instead of unusably small ones in narrow or short containers, such as phones. Each preview stays at least 24px, the shown keyframes are sampled like for long tours, and the gallery hides when not even two previews fit
@@ -53,6 +63,12 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: example buttons show a preview video of their dataset that loops while the button is hovered or focused. In light mode the video is inverted with its hues kept
 - feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
 - fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
+- fix: `?url=` and `?dataset=` links load their data without also needing `&benchmark`
+- fix: `?dataset=` slugs load the example they name. Since the examples were reordered, they had loaded other examples (e.g., `lorenz` loaded Fashion MNIST), including in benchmark runs
+
+### agents
+
+- ai: add a dtour agent skill (`npx skills add flekschas/dtour`) with usage guidance, API references, and the paper
 
 ## v0.4.4
 

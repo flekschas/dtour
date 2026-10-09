@@ -46,6 +46,9 @@ dev = [
   "umap-learn>=0.5",
   "numba>=0.61",
   "pymde>=0.1.0",
+  # Listed so [tool.uv.sources] can pick their CPU-only build on Linux
+  "torch",
+  "torchvision",
   "openTSNE>=1.0",
   "jupyter-scatter>=0.22.3",
   "matplotlib>=3.9",
@@ -61,6 +64,18 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/dtour"]
 artifacts = ["src/dtour/static/*"]
+
+# Development installs on Linux, including CI, use the CPU-only PyTorch build
+# (for pymde) instead of the default CUDA build, which adds ~3 GB of downloads.
+# Published packages are unaffected.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 100

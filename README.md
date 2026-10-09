@@ -19,6 +19,14 @@
 
 A single 2D projection can only capture a fraction of high-dimensional structure. That's not a flaw of the embedding, it's a constraint of two axes. dtour lets you fly through multiple projections so you can build a sense for the full space.
 
+dtour comes in three flavors:
+
+1. **[Web](#web)**: drop a file into [dtour.dev](https://dtour.dev) for a quick look
+2. **[Python](#python)**: a widget for Marimo and Jupyter notebooks to help during data analysis
+3. **[JavaScript](#javascript)**: a React component to build your own app around high-dimensional data
+
+If you're unsure which tastes best, add the [dtour skill](#ai-agents) to your AI coding agent with `npx skills add flekschas/dtour` and ask it.
+
 ## Web
 
 Go to https://dtour.dev and drop a Parquet or Arrow file into the app. That's it 🚀
@@ -114,6 +122,14 @@ import "@dtour/viewer/dist/viewer.css";
 ```
 
 Need just the renderer without React? Use [`@dtour/scatter`](packages/scatter) directly. See each package's README for the full API: [`@dtour/scatter`](packages/scatter), [`@dtour/viewer`](packages/viewer), and [`webapp`](packages/webapp).
+
+## AI Agents
+
+Teach your coding agent (Claude Code, Codex, Cursor, …) how to pick a tour and use dtour with the [dtour skill](skills/dtour):
+
+```sh
+npx skills add flekschas/dtour
+```
 
 ## Why Take a _Tour de Vis_ Through High-Dimensional Data?
 

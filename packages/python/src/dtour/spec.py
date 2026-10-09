@@ -12,6 +12,8 @@ import json
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from .data import _is_numeric_field
+
 if TYPE_CHECKING:
     from .tours import TourResult
 
@@ -60,18 +62,21 @@ def _encode_tour(
     raw_bytes = tour.keyframes_raw
     b64 = base64.b64encode(raw_bytes).decode("ascii")
 
-    dims = tour_dimensions or tour.feature_names
-    if dims is None:
+    # Dimensions name the columns the keyframes project. Feature names only do
+    # so when the keyframes project the input features, not tour.embedding.
+    dims = tour_dimensions
+    if not dims and tour.embedding is None:
+        dims = tour.feature_names
+    if not dims:
         raise ValueError(
-            "Cannot encode tour: dimensions are required. "
-            "Provide tour_dimensions or set feature_names on the TourResult."
+            "Cannot encode tour: dimensions are required. Provide tour_dimensions, "
+            f"the names of the {tour.n_dims} columns the tour projects."
         )
 
     family = tour.tour_family or "hyperdimensional"
 
     # nViews/nDims are only needed by the parser to decode the base64 blob.
     # nDims must match the basis matrix row count (tour.n_dims), NOT len(dims).
-    # For sequential tours, n_dims = 2 * n_frames while dims lists the original features.
     # The basis payload is stored as `nViews`, `nDims`, and `views`.
     result: dict[str, Any] = {
         "nViews": tour.n_keyframes,
@@ -208,9 +213,10 @@ def build_dtour_metadata(
         Label → hex color string mapping.
     tour_dimensions : list[str], optional
         Numeric column names that participate in the tour. Written as
-        ``tour.dimensions`` in the JSON metadata. When omitted and a
-        *tour* with ``feature_names`` is provided, those names are used
-        automatically.
+        ``tour.dimensions`` in the JSON metadata. When omitted, a *tour*
+        that projects its input features uses its ``feature_names``. Tours
+        with an ``embedding`` project the embedding columns, so pass their
+        names here (:func:`add_spec_to_parquet` infers them from the table).
     tour : TourResult, optional
         Tour result to embed (keyframes are base64-encoded).
     **legacy_kwargs
@@ -308,7 +314,24 @@ def add_spec_to_parquet(
         )
 
     tbl = ac.Table.from_arrow(table)
-    dtour_json = build_dtour_metadata(**_rename_legacy_kwargs(kwargs, stacklevel=2))
+    kwargs = _rename_legacy_kwargs(kwargs, stacklevel=2)
+
+    tour = kwargs.get("tour")
+    if tour is not None and tour.embedding is not None and not kwargs.get("tour_dimensions"):
+        names = tour.embedding_names or []
+        if names and set(names) <= set(tbl.column_names):
+            dims = names
+        else:
+            # Without its names, the viewer projects the first n_dims numeric columns
+            dims = [f.name for f in tbl.schema if _is_numeric_field(f)][: tour.n_dims]
+            if len(dims) < tour.n_dims:
+                raise ValueError(
+                    f"The tour projects {tour.n_dims} columns but the table has only "
+                    f"{len(dims)} numeric columns. Add the tour.embedding columns first."
+                )
+        kwargs["tour_dimensions"] = dims
+
+    dtour_json = build_dtour_metadata(**kwargs)
 
     # Merge with existing metadata (preserving other keys like pandas schema)
     existing = dict(tbl.schema.metadata_str) if tbl.schema.metadata else {}

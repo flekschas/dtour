@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import re
+import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 if TYPE_CHECKING:
+    import arro3.core as ac
     import pandas as pd
 
 
@@ -85,7 +88,7 @@ def _to_ipc_bytes(data: object) -> bytes:
 
     Accepts:
     - ``bytes`` — assumed to be Arrow IPC already, returned as-is
-    - ``str`` or ``Path`` — read file contents
+    - ``str`` or ``Path`` — read file contents (Arrow or Parquet, kept as-is)
     - ``np.ndarray`` — 2-D array, converted via :func:`from_numpy`
     - Anything with ``__arrow_c_stream__`` — serialized via arro3
     """
@@ -122,3 +125,104 @@ def _write_ipc(table: object) -> bytes:
     buf = BytesIO()
     arro3.io.write_ipc_stream(table, buf, compression=None)
     return buf.getvalue()
+
+
+def _reader(buf: bytes) -> Any:
+    """Open Parquet, Arrow IPC file, or Arrow IPC stream bytes."""
+    import arro3.io
+
+    if buf[:4] == b"PAR1":
+        return arro3.io.read_parquet(BytesIO(buf))
+    if buf[:6] == b"ARROW1":
+        return arro3.io.read_ipc(BytesIO(buf))
+    return arro3.io.read_ipc_stream(BytesIO(buf))
+
+
+def _read_table(buf: bytes) -> ac.Table:
+    import arro3.core as ac
+
+    return ac.Table.from_arrow(_reader(buf))
+
+
+def _numeric_columns(buf: bytes) -> list[str]:
+    """Names of the columns the viewer reads as numeric dimensions, in order."""
+    return [f.name for f in _reader(buf).schema if _is_numeric_field(f)]
+
+
+def _is_numeric_field(field: Any) -> bool:
+    """Whether the viewer reads this column as a numeric dimension."""
+    import arro3.core as ac
+
+    if re.fullmatch(r"__index_level_\d+__", field.name):
+        return False
+    t = field.type
+    return ac.DataType.is_floating(t) or ac.DataType.is_integer(t) or ac.DataType.is_boolean(t)
+
+
+def _add_embedding(
+    table: ac.Table | None, embedding: np.ndarray, names: list[str] | None
+) -> tuple[ac.Table, list[str]]:
+    """Put the embedding columns first, ahead of the columns of *table*.
+
+    Rows are matched by position. Returns the table and the names of its
+    embedding columns. If the first numeric columns of *table* equal the
+    embedding, reuses those columns and warns. Without *names*, generates
+    names that don't clash with the columns of *table*.
+    """
+    import arro3.core as ac
+
+    n, p = embedding.shape
+    columns = [] if table is None else table.column_names
+    if names is None:
+        names = []
+        for i in range(p):
+            name = f"embedding_{i}"
+            while name in columns:
+                name = f"_{name}"
+            names.append(name)
+    elif len(names) != p or len(set(names)) != p:
+        raise ValueError(
+            f"tour.embedding_names must be {p} unique names, one per embedding column; got {names}"
+        )
+
+    if table is not None:
+        if table.num_rows != n:
+            raise ValueError(
+                f"The data has {table.num_rows} rows but the tour's embedding has {n}. "
+                "Pass the data the tour was computed from, with one row per point in "
+                "the same order."
+            )
+
+        leading = [f.name for f in table.schema if _is_numeric_field(f)][:p]
+        if len(leading) == p and all(
+            _equals(table.column(name), embedding[:, i]) for i, name in enumerate(leading)
+        ):
+            warnings.warn(
+                "The data already starts with the tour's embedding. Pass the data the tour "
+                "was computed from instead; the widget adds the embedding columns itself.",
+                FutureWarning,
+                stacklevel=2,
+            )
+            return table, leading
+
+        clashes = [name for name in names if name in columns]
+        if clashes:
+            raise ValueError(
+                f"The data already has columns named {clashes}, which the tour's embedding "
+                "uses. Rename them or set tour.embedding_names."
+            )
+
+    arrays = {
+        name: ac.Array.from_numpy(np.ascontiguousarray(embedding[:, i], dtype=np.float32))
+        for i, name in enumerate(names)
+    }
+    for name in columns:
+        arrays[name] = table.column(name)
+    return ac.Table.from_pydict(arrays), names
+
+
+def _equals(column: Any, values: np.ndarray) -> bool:
+    try:
+        return np.array_equal(column.to_numpy(), values)
+    except Exception:  # e.g., nulls or non-numeric types
+        return False

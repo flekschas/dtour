@@ -37,9 +37,14 @@ class TourResult:
         n_dims: Number of retained dimensions (p).
         explained_variance_ratio: Fraction of variance explained by each PCA
             component (when applicable).
+        embedding: The ``(n, p)`` coordinates the keyframes project, for tours
+            that compute their own embedding. ``None`` when the keyframes
+            project the input features.
+        embedding_names: Column names for ``embedding``.
         feature_loadings: Pearson correlations between each embedding
             dimension and each original feature, shape ``(n_components, n_features)``.
-        feature_names: Original feature column names for labeling loadings.
+        feature_names: Input feature names. They label loadings and, when
+            ``embedding`` is ``None``, name the columns the keyframes project.
         feature_r2: Per-dimension R-squared from the OLS regression.
         tour_family: Tour family: ``"hyperdimensional"`` (one high-D space)
             or ``"sequential"`` (multiple 2D embeddings).
@@ -56,6 +61,7 @@ class TourResult:
     n_dims: int
     explained_variance_ratio: list[float] = field(default_factory=list)
     embedding: np.ndarray | None = None
+    embedding_names: list[str] | None = None
     feature_loadings: np.ndarray | None = None
     feature_names: list[str] | None = None
     feature_r2: list[float] | None = None
@@ -117,6 +123,8 @@ class TourResult:
             arrays[f"view_{i}"] = keyframe
         if self.embedding is not None:
             arrays["embedding"] = self.embedding
+        if self.embedding_names is not None:
+            arrays["embedding_names_json"] = np.array([json.dumps(self.embedding_names)])
         if self.feature_loadings is not None:
             arrays["feature_loadings"] = self.feature_loadings
         if self.feature_names is not None:
@@ -198,6 +206,11 @@ class TourResult:
         evr_key = "explained_variance_ratio"
         evr = data[evr_key].tolist() if evr_key in data else []
         embedding = data["embedding"] if "embedding" in data else None
+        embedding_names = (
+            json.loads(str(data["embedding_names_json"][0]))
+            if "embedding_names_json" in data
+            else None
+        )
         feature_loadings = data["feature_loadings"] if "feature_loadings" in data else None
         feature_names = (
             json.loads(str(data["feature_names_json"][0])) if "feature_names_json" in data else None
@@ -218,6 +231,7 @@ class TourResult:
             n_dims=n_dims,
             explained_variance_ratio=evr,
             embedding=embedding,
+            embedding_names=embedding_names,
             feature_loadings=feature_loadings,
             feature_names=feature_names,
             feature_r2=feature_r2,
@@ -415,10 +429,12 @@ def little_tour(
         basis = np.stack([a, b], axis=1).astype(np.float32)  # (p, 2)
         keyframes.append(basis)
 
+    names = _extract_feature_names(X)
     return TourResult(
         keyframes=keyframes,
         n_dims=n_features,
         explained_variance_ratio=pca.explained_variance_ratio_.tolist(),
+        feature_names=[str(name) for name in names] if names is not None else None,
     )
 
 
@@ -443,6 +459,7 @@ def umap_little_tour(
 
     result = little_tour(embedding, n_components=n_components)
     result.embedding = embedding
+    result.embedding_names = [f"UMAP{i + 1}" for i in range(embedding.shape[1])]
     return result
 
 
@@ -1215,6 +1232,7 @@ def le_tour(
             n_dims=n_components,
         )
         result.embedding = emb_for_tour
+        result.embedding_names = [f"LE{i + 1}" for i in range(emb_for_tour.shape[1])]
         result.feature_loadings = loadings
         result.feature_names = feature_names
         result.feature_r2 = r2
@@ -1302,6 +1320,7 @@ def le_tour(
         n_dims=n_components,
     )
     result.embedding = emb_for_tour
+    result.embedding_names = [f"LE{i + 1}" for i in range(emb_for_tour.shape[1])]
     result.feature_loadings = loadings
     result.feature_names = feature_names
     result.feature_r2 = r2
@@ -1473,6 +1492,7 @@ def _pack_embedding_frames(
         n_dims=n_dims,
     )
     result.embedding = stacked
+    result.embedding_names = [f"frame{i + 1}_{axis}" for i in range(n_frames) for axis in "xy"]
     result.feature_names = feature_names
     result.keyframe_descriptions = keyframe_descriptions
     result.tour_family = "sequential"

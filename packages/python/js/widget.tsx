@@ -297,6 +297,9 @@ function Widget() {
   const [tourFamily, setTourFamily] = useState<TourFamily | undefined>(
     () => model.get('_tour_family') ?? undefined,
   );
+  const [tourDimensions, setTourDimensions] = useState<string[]>(
+    () => model.get('tour_dimensions') ?? [],
+  );
   const [colorMap, setColorMap] = useState<
     Record<string, string | { light: string; dark: string }> | undefined
   >(() => {
@@ -314,6 +317,9 @@ function Widget() {
     function onTourFamily() {
       setTourFamily(model.get('_tour_family') ?? undefined);
     }
+    function onTourDimensions() {
+      setTourDimensions(model.get('tour_dimensions') ?? []);
+    }
     function onColorMap() {
       const raw = model.get('color_map');
       setColorMap(raw && Object.keys(raw).length > 0 ? raw : undefined);
@@ -321,11 +327,13 @@ function Widget() {
     model.on('change:metric_bar_width', onBarWidth);
     model.on('change:metric_tracks', onTracks);
     model.on('change:_tour_family', onTourFamily);
+    model.on('change:tour_dimensions', onTourDimensions);
     model.on('change:color_map', onColorMap);
     return () => {
       model.off('change:metric_bar_width', onBarWidth);
       model.off('change:metric_tracks', onTracks);
       model.off('change:_tour_family', onTourFamily);
+      model.off('change:tour_dimensions', onTourDimensions);
       model.off('change:color_map', onColorMap);
     };
   }, [model]);
@@ -339,6 +347,7 @@ function Widget() {
       <Dtour
         data={data}
         keyframes={keyframes}
+        tourDimensions={tourDimensions.length > 0 ? tourDimensions : undefined}
         metrics={metrics}
         metricTracks={metricTracks.length > 0 ? metricTracks : undefined}
         metricBarWidth={metricBarWidth}

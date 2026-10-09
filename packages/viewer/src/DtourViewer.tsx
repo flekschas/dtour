@@ -25,7 +25,7 @@ import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
-import { createDefaultKeyframes, createPCAKeyframes, expandBases } from './keyframes.ts';
+import { createDefaultKeyframes, createPCAKeyframes, fitTour } from './keyframes.ts';
 import { computeStartAngle } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
@@ -80,6 +80,7 @@ import {
   tourFamilyAtom,
   tourPlayingAtom,
   tourPositionAtom,
+  tourRejectedAtom,
   tourSliderSpacingAtom,
   tourTraversalAtom,
 } from './state/atoms.ts';
@@ -89,6 +90,9 @@ export type DtourViewerProps = {
   data?: ArrayBuffer | undefined;
   /** Tour keyframe bases (p×2 column-major). Auto-generated if omitted. */
   keyframes?: Float32Array[] | undefined;
+  /** Names of the numeric columns the `keyframes` project. Defaults to the
+   *  first p numeric columns. */
+  tourDimensions?: string[] | undefined;
   /** Arrow IPC ArrayBuffer with per-keyframe quality metrics. */
   metrics?: ArrayBuffer | undefined;
   /** Track configuration for radial bar charts. */
@@ -117,6 +121,7 @@ const SELECTOR_PADDING = 16;
 export const DtourViewer = ({
   data,
   keyframes,
+  tourDimensions,
   metrics,
   metricTracks,
   metricBarWidth,
@@ -232,19 +237,49 @@ export const DtourViewer = ({
 
   // Track whether the active tour is predefined (externally computed) vs auto-generated.
   // Predefined tours lock down column toggles, preview count, and the Dims/PCA selector.
-  const setPredefinedTour = useSetAtom(predefinedTourAtom);
-  useEffect(() => {
-    const predefinedKeyframes = keyframes ?? embeddedKeyframes;
-    if (predefinedKeyframes && predefinedKeyframes.length > 0 && metadata) {
-      // Resolve dimensions: use tour.dimensions if available, fall back
-      // to the first nDims column names (derived from basis matrix size).
-      const tourNDims = predefinedKeyframes[0]!.length / 2;
-      const dims = embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-      setPredefinedTour({ dimensions: dims, keyframeCount: predefinedKeyframes.length });
-    } else {
-      setPredefinedTour(null);
+  // The supplied tour fitted to the data, or null to generate one. Names passed
+  // with `keyframes` must match the data; an embedded tour falls back to the
+  // first columns.
+  const hasKeyframes = keyframes != null && keyframes.length > 0;
+  const fittedTour = useMemo(() => {
+    if (!metadata) return null;
+    if (hasKeyframes) return fitTour(keyframes, metadata.columnNames, tourDimensions, true);
+    if (embeddedKeyframes) {
+      return fitTour(
+        embeddedKeyframes,
+        metadata.columnNames,
+        embeddedConfig?.tour?.dimensions,
+        false,
+      );
     }
-  }, [keyframes, embeddedKeyframes, metadata, embeddedConfig, setPredefinedTour]);
+    return null;
+  }, [hasKeyframes, keyframes, tourDimensions, embeddedKeyframes, embeddedConfig, metadata]);
+
+  const setPredefinedTour = useSetAtom(predefinedTourAtom);
+  const setTourRejected = useSetAtom(tourRejectedAtom);
+  useEffect(() => {
+    const rejected =
+      metadata != null && fittedTour == null && (hasKeyframes || embeddedKeyframes != null);
+    if (rejected) {
+      console.error(
+        `[dtour] The tour doesn't fit the data's numeric columns (tourDimensions: ${tourDimensions?.join(', ') ?? 'none'}). Showing an auto-generated tour instead.`,
+      );
+    }
+    setTourRejected(rejected);
+    setPredefinedTour(
+      fittedTour
+        ? { dimensions: fittedTour.dimensions, keyframeCount: fittedTour.keyframes.length }
+        : null,
+    );
+  }, [
+    fittedTour,
+    hasKeyframes,
+    embeddedKeyframes,
+    metadata,
+    tourDimensions,
+    setPredefinedTour,
+    setTourRejected,
+  ]);
 
   const resolvedPreviewCount = useAtomValue(resolvedPreviewCountAtom);
   const previewKeyframes = useAtomValue(previewKeyframesAtom);
@@ -256,27 +291,9 @@ export const DtourViewer = ({
     let rb: Float32Array[];
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
       rb = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
-    } else if (keyframes && keyframes.length > 0) {
-      const tourNDims = keyframes[0]!.length / 2;
-      if (tourNDims === dims) {
-        rb = keyframes.map((b) => new Float32Array(b));
-      } else if (tourNDims < dims) {
-        const tourDims = metadata.columnNames.slice(0, tourNDims);
-        rb = expandBases(keyframes, tourDims, metadata.columnNames, dims);
-      } else {
-        rb = createDefaultKeyframes(dims, previewCount, activeIndices);
-      }
-    } else if (embeddedKeyframes) {
-      const tourNDims = embeddedKeyframes[0]!.length / 2;
-      if (tourNDims === dims) {
-        rb = embeddedKeyframes.map((b) => new Float32Array(b));
-      } else if (tourNDims < dims) {
-        const tourDims =
-          embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-        rb = expandBases(embeddedKeyframes, tourDims, metadata.columnNames, dims);
-      } else {
-        rb = createDefaultKeyframes(dims, previewCount, activeIndices);
-      }
+    } else if (fittedTour) {
+      // Copies, since the renderer takes ownership of the buffers
+      rb = fittedTour.keyframes.map((keyframe) => new Float32Array(keyframe));
     } else {
       rb = createDefaultKeyframes(dims, previewCount, activeIndices);
     }
@@ -284,17 +301,7 @@ export const DtourViewer = ({
       resolvedKeyframes: rb,
       arcLengths: computeArcLengths(rb, dims, tourFamily !== 'sequential'),
     };
-  }, [
-    keyframes,
-    embeddedKeyframes,
-    embeddedConfig,
-    metadata,
-    previewCount,
-    activeIndices,
-    tourBy,
-    tourFamily,
-    pcaResult,
-  ]);
+  }, [fittedTour, metadata, previewCount, activeIndices, tourBy, tourFamily, pcaResult]);
 
   // Sync arcLengths atom so Gallery and other components can access it
   useEffect(() => {
@@ -732,27 +739,9 @@ export const DtourViewer = ({
     let bases: Float32Array[];
     if (tourBy === 'pca' && pcaResult && pcaResult.eigenvectors.length >= 2) {
       bases = createPCAKeyframes(pcaResult.eigenvectors, dims, pcaResult.numDims, previewCount);
-    } else if (keyframes && keyframes.length > 0) {
-      const tourNDims = keyframes[0]!.length / 2;
-      if (tourNDims === dims) {
-        bases = keyframes.map((b) => new Float32Array(b));
-      } else if (tourNDims < dims) {
-        const tourDims = metadata.columnNames.slice(0, tourNDims);
-        bases = expandBases(keyframes, tourDims, metadata.columnNames, dims);
-      } else {
-        bases = createDefaultKeyframes(dims, previewCount, activeIndices);
-      }
-    } else if (embeddedKeyframes) {
-      const tourNDims = embeddedKeyframes[0]!.length / 2;
-      if (tourNDims === dims) {
-        bases = embeddedKeyframes.map((b) => new Float32Array(b));
-      } else if (tourNDims < dims) {
-        const tourDims =
-          embeddedConfig?.tour?.dimensions ?? metadata.columnNames.slice(0, tourNDims);
-        bases = expandBases(embeddedKeyframes, tourDims, metadata.columnNames, dims);
-      } else {
-        bases = createDefaultKeyframes(dims, previewCount, activeIndices);
-      }
+    } else if (fittedTour) {
+      // Copies, since the renderer takes ownership of the buffers
+      bases = fittedTour.keyframes.map((keyframe) => new Float32Array(keyframe));
     } else {
       bases = createDefaultKeyframes(dims, previewCount, activeIndices);
     }
@@ -762,18 +751,7 @@ export const DtourViewer = ({
     // matches the slider instead of snapping back to the first keyframe.
     scatter.setTourPosition(positionRef.current);
     scatter.render();
-  }, [
-    scatter,
-    keyframes,
-    embeddedKeyframes,
-    embeddedConfig,
-    metadata,
-    previewCount,
-    activeIndices,
-    tourBy,
-    tourFamily,
-    pcaResult,
-  ]);
+  }, [scatter, fittedTour, metadata, previewCount, activeIndices, tourBy, tourFamily, pcaResult]);
 
   const { animateTo, cancelAnimation } = useAnimatePosition();
   const { resumeWithTransition, cancelTransition, isTransitioning } = useGuidedResume(
@@ -1086,7 +1064,7 @@ export const DtourViewer = ({
     }
   }, [tourTraversal, setIs3dRotated]);
 
-  const tickCount = keyframes?.length ?? embeddedKeyframes?.length ?? previewCount;
+  const tickCount = fittedTour?.keyframes.length ?? previewCount;
   // Keyframe 0 points at the first preview of the gallery layout actually shown
   const startAngle = computeStartAngle(resolvedPreviewCount);
   const hasData = !!data && !!metadata;

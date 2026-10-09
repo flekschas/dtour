@@ -33,12 +33,55 @@ export const createDefaultKeyframes = (
 };
 
 /**
+ * Names of the numeric columns a predefined tour of `nDims` dimensions
+ * projects. Without names, the first `nDims` columns. With names, those names
+ * when there are `nDims` unique names that all exist in the data. Otherwise,
+ * null when `strict`, or the first `nDims` columns when not.
+ */
+export const resolveTourDimensions = (
+  nDims: number,
+  columnNames: string[],
+  tourDimensions: string[] | null | undefined,
+  strict: boolean,
+): string[] | null => {
+  const positional = columnNames.slice(0, nDims);
+  if (!tourDimensions?.length) return positional;
+  const valid =
+    tourDimensions.length === nDims &&
+    new Set(tourDimensions).size === nDims &&
+    tourDimensions.every((name) => columnNames.includes(name));
+  if (valid) return tourDimensions;
+  return strict ? null : positional;
+};
+
+/**
+ * Map a predefined tour onto the dataset's numeric columns (see
+ * `resolveTourDimensions`). Returns the expanded keyframes and the columns
+ * they project, or null when the tour doesn't fit the data.
+ */
+export const fitTour = (
+  keyframes: Float32Array[],
+  columnNames: string[],
+  tourDimensions: string[] | null | undefined,
+  strict: boolean,
+): { keyframes: Float32Array[]; dimensions: string[] } | null => {
+  const nDims = keyframes[0]!.length / 2;
+  if (nDims > columnNames.length) return null;
+  const dimensions = resolveTourDimensions(nDims, columnNames, tourDimensions, strict);
+  if (!dimensions) return null;
+  return {
+    keyframes: expandBases(keyframes, dimensions, columnNames, columnNames.length),
+    dimensions,
+  };
+};
+
+/**
  * Expand basis matrices from a tour's dimension space to the full dataset
  * column space. Each input basis is `nDims × 2` (the tour's dim count);
  * each output basis is `totalDims × 2` with weights placed at the column
  * indices that correspond to `tourDimNames` in `allColumnNames`.
  *
- * No-op when the bases already span the full dataset (nDims === totalDims).
+ * Always returns new arrays.
  */
 export const expandBases = (
   bases: Float32Array[],
@@ -47,7 +90,9 @@ export const expandBases = (
   totalDims: number,
 ): Float32Array[] => {
   const nDims = tourDimNames.length;
-  if (nDims === totalDims) return bases;
+  if (nDims === totalDims && tourDimNames.every((name, i) => name === allColumnNames[i])) {
+    return bases.map((basis) => new Float32Array(basis));
+  }
 
   // Map tour dim index → dataset column index
   const indexMap: number[] = [];

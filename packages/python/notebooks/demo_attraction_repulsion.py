@@ -263,6 +263,7 @@ def _(cache_dir, color_map, dtour, sp_df, tour):
     _pa_table = sp_df.to_arrow()
     _meta_json = dtour.build_dtour_metadata(
         tour=tour,
+        tour_dimensions=sp_df.columns[: tour.n_dims],
         point_color_by="label",
         point_color_map=color_map,
         camera_zoom=0.5,
