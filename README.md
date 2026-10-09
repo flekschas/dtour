@@ -131,6 +131,14 @@ Teach your coding agent (Claude Code, Codex, Cursor, …) how to pick a tour and
 npx skills add flekschas/dtour
 ```
 
+To let Claude show tours right in the chat, add dtour's MCP server and ask, e.g., _"Show me a UMAP tour of ~/data/cells.csv colored by cell_type"_. In Claude Desktop, download [`dtour.mcpb`](https://github.com/flekschas/dtour/releases/latest/download/dtour.mcpb) and open it. In Claude Code, install the plugin, which bundles the skill and the server and needs [uv](https://docs.astral.sh/uv/):
+
+```
+/plugin install dtour --marketplace flekschas/dtour
+```
+
+See [the Python README](packages/python#mcp-server) for details.
+
 ## Why Take a _Tour de Vis_ Through High-Dimensional Data?
 
 Making sense of high-dimensional data is hard. Non-linear embedding tools like

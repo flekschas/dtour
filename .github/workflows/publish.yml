@@ -150,3 +150,55 @@ jobs:
           ver="${VERSION#v}"
           uv run --python 3.12 --refresh-package dtour \
             --with "dtour==${ver}" "${{ matrix.notebook }}.py"
+
+  # Attach the Claude Desktop extension to the GitHub release, as `dtour.mcpb`
+  # so that releases/latest/download/dtour.mcpb always links the newest one.
+  # The extension installs this release from PyPI, so check that its
+  # dependencies resolve first.
+  publish-mcpb:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Wait for dtour ${{ github.ref_name }} on PyPI
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          ver="${VERSION#v}"
+          for attempt in $(seq 1 20); do
+            if curl -sf "https://pypi.org/pypi/dtour/${ver}/json" >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for dtour ${ver} on PyPI (attempt ${attempt}/20)…"
+            sleep 15
+          done
+          echo "dtour ${ver} did not appear on PyPI in time"
+          exit 1
+
+      - name: Build the extension
+        run: bash scripts/build-mcpb.sh
+
+      # What Claude Desktop runs when installing the extension
+      - name: Install the extension's dependencies
+        run: |
+          unzip -q packages/python/mcpb/dist/dtour.mcpb -d "$RUNNER_TEMP/mcpb"
+          uv sync --directory "$RUNNER_TEMP/mcpb" --refresh-package dtour
+
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Without a release for the tag, create a draft to review and publish
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --draft --generate-notes
+          gh release upload "$TAG" packages/python/mcpb/dist/dtour.mcpb --clobber

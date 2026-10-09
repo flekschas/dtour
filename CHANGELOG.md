@@ -15,10 +15,12 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - **Python `build_dtour_metadata` / `add_spec_to_parquet`**: `preview_scale` → `preview_size`, `show_keyframe_numbers` → `preview_keyframe_numbers`, `show_keyframe_loadings` → `preview_label_content`
 - **Python `compute_metrics`**: `views` → `keyframes`
 - **Python `build_dtour_metadata`**: tours with an `embedding` (all but `little_tour`) need `tour_dimensions`, the names of the embedding columns. It used to record the input features instead
+- **DtourSpec**: `pointColorBy` can be an `[x, y]` column pair, so code reading it from `onSpecChange` must handle arrays
 - **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`, except in the `TourResult` constructor. Saved tours (`.npz` and Parquet) keep their format.
 
 ### python
 
+- feat: `point_color_by` accepts an `[x, y]` pair of numeric columns for a 2D colormap, and the new `point_color_map_2d` traitlet and `build_dtour_metadata` argument pick the colormap
 - feat: add a read-only `Widget.tour_family` property
 - feat: add `preview_keyframe_numbers` and `preview_label_content` traitlets, so every preview setting is available from Python
 - feat: add a `preview_label_visibility` traitlet and raise the `preview_count` limit from 16 to 32. `set_tour()` accepts tours of any length; longer tours preview a sample of their keyframes
@@ -28,6 +30,9 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: the `tour_dimensions` traitlet reaches the viewer. Without a tour, it sets the columns checked in the toolbar's column menu
 - feat: `Widget.set_data(data, tour)` replaces the data and tour together, for when the rows or columns change
 - feat: `Widget.save_spec_to_parquet()` saves the widget's data as shown, including the embedding columns, when called without a table. It raises a `ValueError` when a given table lacks the tour's columns
+- feat: add `dtour-mcp`, an MCP server that shows tours inline in chat apps like Claude Desktop (`pip install "dtour[mcp]"`). Its `visualize` tool reads a CSV, Parquet, or Arrow file, computes a PCA, Laplacian Eigenmaps, or UMAP tour, and opens the viewer as an MCP App. Apps without MCP Apps support get a link to the viewer in the browser. The viewer tells the model what the user sees: the traversal mode and color column, the legend selection, and how selected points differ from the other rows
+- feat: add a Claude Code plugin with the dtour skill and the MCP server (`/plugin install dtour --marketplace flekschas/dtour`)
+- feat: add a Claude Desktop extension for the MCP server, attached to each GitHub release as `dtour.mcpb`. Opening it installs the server; Claude Desktop sets up Python and the dependencies itself. Build it with `pnpm build:mcpb`
 - fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
@@ -46,6 +51,10 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 ### viewer
 
+- feat: `DtourSpec` covers 2D coloring and the tour columns: `pointColorBy` accepts an `[x, y]` column pair, `pointColorMap2d` picks the 2D colormap, and `tourDimensions` sets the columns of an auto-generated tour
+- fix: `spec.pointColorMap` applies; it used to be ignored unless embedded in a Parquet file
+- fix: `onSelectionChange` reports an empty selection when the color column changes to one without a legend (none, numeric, or a 2D colormap), instead of leaving the last selection in place
+- fix: a `null` spec field (e.g. `pointColorBy: null`) overrides the Parquet file's embedded setting instead of counting as unset
 - feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)
 - feat: show up to 32 previews. Layouts for up to 16 previews are unchanged; larger counts use a wide perimeter grid with 4–6 rows
 - feat: `CircularSlider` and `RadialChart` accept a `startAngle`, so both line up with the gallery that is actually shown
@@ -60,6 +69,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 ### webapp
 
+- feat: settings work as URL parameters named like the `DtourSpec` fields, e.g. `?url=…&pointColorBy=label&tourTraversal=manual`, and the URL follows settings changes, so the address bar always holds a link to the current settings (not manually dragged or grand tour projections). Picking an example sets `?dataset=`; loading a local file clears the link
 - feat: example buttons show a preview video of their dataset that loops while the button is hovered or focused. In light mode the video is inverted with its hues kept
 - feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
 - fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
@@ -69,6 +79,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 ### agents
 
 - ai: add a dtour agent skill (`npx skills add flekschas/dtour`) with usage guidance, API references, and the paper
+- ai: the skill explains how to build a dtour.dev link that opens data with given settings
 
 ## v0.4.4
 

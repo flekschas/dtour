@@ -4,12 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build"
+    "build": "vite build && vite build -c vite.mcp.config.ts"
   },
   "devDependencies": {
     "@anywidget/react": "^0.2.0",
     "@dtour/scatter": "workspace:*",
     "@dtour/viewer": "workspace:*",
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

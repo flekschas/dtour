@@ -81,7 +81,7 @@ export type DtourProps = {
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
   /** Called when the user clicks the toolbar logo. */
   onLogoClick?: () => void;
-  /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
+  /** Fires when legend selection changes for a categorical color column. Reports selected label names, or an empty array when cleared or when the color column has no legend. */
   onSelectionChange?: (labels: string[]) => void;
   /** Fires when lasso selection completes. Reports the bit-packed selection mask (1 bit per point, Uint32Array). */
   onPointSelectionChange?: (mask: Uint32Array) => void;
@@ -403,10 +403,13 @@ const DtourInner = ({
   }, [metadata, tourDimsKey, tourDimensionsRequest, setActiveColumns]);
 
   useEffect(() => {
-    if (!onSelectionChange) return;
+    if (!onSelectionChange || !metadata) return;
 
-    if (!pointColorBy || !metadata) return;
-    if (!metadata.categoricalColumnNames.includes(pointColorBy)) return;
+    // Without a categorical color column, there is no legend to select from
+    if (!pointColorBy || !metadata.categoricalColumnNames.includes(pointColorBy)) {
+      onSelectionChange([]);
+      return;
+    }
 
     if (!legendSelection || legendSelection.size === 0) {
       onSelectionChange([]);

@@ -29,8 +29,12 @@ done
 sed -i '' "s/^version = \".*\"/version = \"$next\"/" packages/python/pyproject.toml
 uv lock --project packages/python
 
+# Bump the Claude Desktop extension, which installs the same dtour release
+sed -i '' "s/\"version\": \".*\"/\"version\": \"$next\"/" packages/python/mcpb/manifest.json
+sed -i '' -e "s/^version = \".*\"/version = \"$next\"/" -e "s/dtour\[mcp,umap\]==[^\"]*/dtour[mcp,umap]==$next/" packages/python/mcpb/pyproject.toml
+
 # Commit and tag
-git add packages/scatter/package.json packages/viewer/package.json packages/python/pyproject.toml packages/python/uv.lock
+git add packages/scatter/package.json packages/viewer/package.json packages/python/pyproject.toml packages/python/uv.lock packages/python/mcpb/manifest.json packages/python/mcpb/pyproject.toml
 git commit -m "chore: release v${next}"
 git tag -m "v${next}" "v${next}"
 

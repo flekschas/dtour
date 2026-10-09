@@ -15,6 +15,7 @@ pip install "dtour[umap]"   # umap_little_tour() + UMAP-based tours (umap-learn,
 pip install "dtour[tsne]"   # attraction–repulsion tours (openTSNE)
 pip install "dtour[pymde]"  # PyMDE-based tours
 pip install "dtour[cev]"    # confusion metric (cev-metrics)
+pip install "dtour[mcp]"    # the MCP server (see below)
 ```
 
 ## Quick start
@@ -53,7 +54,8 @@ dtour.Widget(
     point_opacity="auto",  # point alpha or "auto"
     min_point_size=2.0,  # smallest automatic point size in px: 1–20
     point_color=[0.25, 0.5, 0.9],  # default RGB color
-    point_color_by=None,  # column name for categorical coloring
+    point_color_by=None,  # column name, or [x, y] numeric columns for a 2D colormap
+    point_color_map_2d="schumann",  # 2D colormap for a column pair
     color_map={},  # label → color mapping (see build_color_map())
     # tour playback
     tour_by="dimensions",  # "dimensions" | "pca" | "parameter"
@@ -171,6 +173,59 @@ cmap = dtour.build_color_map(
 dtour.Widget(data=df, point_color_by="cluster", color_map=cmap)
 ```
 
+## MCP server
+
+`dtour-mcp` is an [MCP](https://modelcontextprotocol.io) server that lets an AI assistant
+show tours right in the chat. Ask, e.g., _"Show me a UMAP tour of ~/data/cells.csv
+colored by cell_type"_. The server reads the file, computes the tour, and the viewer
+appears inline as an [MCP App](https://github.com/modelcontextprotocol/ext-apps).
+
+It has one tool, `visualize`, which takes:
+
+- `path`: a CSV, TSV, Parquet, or Arrow file, or an http(s) URL to one
+- `tour`: `"pca"` (default), `"le"` (Laplacian Eigenmaps), or `"umap"`
+- `columns`: the numeric columns to tour (default: all)
+- `sample`: a number of rows to sample, for large data
+- `settings`: viewer settings, as in `build_dtour_metadata`, e.g. `{"point_color_by": "cell_type"}`
+
+Rows with missing values in the tour columns are dropped, and the columns are scaled to
+the same range. In apps without MCP Apps support, like Claude Code, the tool returns a
+link that opens the viewer in the browser. The viewer follows the app's light or dark
+theme unless `settings` sets `theme_mode`.
+
+As you explore, the viewer tells the assistant what you see: the traversal mode, the
+color column, selected legend labels, and for selected points, how their column means
+and categories differ from the other rows. So you can ask, e.g., _"What's special about
+the points I selected?"_
+
+What leaves your computer: the server reads files and computes tours locally, and the
+viewer loads the data from a server on `127.0.0.1`. If the app blocks that, the viewer
+receives the file through the app instead. The assistant sees the tool's arguments and
+results, like file paths and column names, and the summaries above. A summary of a few
+selected points shows their values; for a single point, it shows that row's values.
+
+In Claude Desktop, download
+[`dtour.mcpb`](https://github.com/flekschas/dtour/releases/latest/download/dtour.mcpb)
+and open it to install the extension. Claude Desktop sets up Python and the dependencies
+itself.
+
+In Claude Code, install the plugin, which also includes the dtour skill:
+`/plugin install dtour --marketplace flekschas/dtour`. It needs
+[uv](https://docs.astral.sh/uv/).
+
+Other MCP clients can run the server with uv, e.g.:
+
+```json
+{
+  "mcpServers": {
+    "dtour": {
+      "command": "uvx",
+      "args": ["--from", "dtour[mcp,umap]", "dtour-mcp"]
+    }
+  }
+}
+```
+
 ## Example notebooks
 
 The [`notebooks/`](notebooks) directory has self-contained [marimo](https://marimo.io)
@@ -205,6 +260,18 @@ Edit a notebook against the local source with all dev extras:
 ```sh
 uv run --extra dev marimo edit notebooks/demo_immune_cell_markers.py
 ```
+
+Run the MCP server from the local source, e.g., in Claude Desktop's config with
+`"command": "uv"` and `"args": ["run", "--directory", "<repo>/packages/python",
+"--extra", "mcp", "--extra", "umap", "dtour-mcp"]`. To try it in a browser, run
+`uv run --extra mcp dtour-mcp --http 3001` and connect ext-apps'
+[basic-host](https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-host)
+to `http://localhost:3001/mcp`.
+
+Build the Claude Desktop extension with `pnpm build:mcpb` from the repo root. It installs
+the dtour release named in `mcpb/pyproject.toml` from PyPI; with `pnpm build:mcpb --local`,
+it includes a wheel of your checkout instead. Open
+`mcpb/dist/dtour.mcpb` to install it.
 
 Run the tests:
 
