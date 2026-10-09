@@ -47,12 +47,15 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 ### scatter
 
+- feat: report a `lost` status when the WebGPU device or WebGL context is lost. Device loss used to be reported as an `error` status, and only when a frame failed
 - fix: treat string columns whose first value is null as categorical
 
 ### viewer
 
 - feat: `DtourSpec` covers 2D coloring and the tour columns: `pointColorBy` accepts an `[x, y]` column pair, `pointColorMap2d` picks the 2D colormap, and `tourDimensions` sets the columns of an auto-generated tour
 - fix: `spec.pointColorMap` applies; it used to be ignored unless embedded in a Parquet file
+- fix: with `backend: 'auto'`, fall back to WebGL when WebGPU fails to start (e.g., Chrome's `Failed to create WebGPU Context Provider`), instead of showing a blank canvas. The viewer now sends data to the renderer only once it is ready, and `onScatterReady` is called at that point
+- fix: when rendering fails anyway or the GPU is lost later, show a message over the canvas with a button that reloads the page
 - fix: `onSelectionChange` reports an empty selection when the color column changes to one without a legend (none, numeric, or a 2D colormap), instead of leaving the last selection in place
 - fix: a `null` spec field (e.g. `pointColorBy: null`) overrides the Parquet file's embedded setting instead of counting as unset
 - feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)

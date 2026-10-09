@@ -634,7 +634,7 @@ const App = () => {
           writeSpecToUrl(specRef.current, load.fileName, embeddedSpecRef.current);
         }
       }
-      if (status.type === 'error') {
+      if (status.type === 'error' || status.type === 'lost') {
         setParsing(false);
       }
       if (status.type === 'rendered' && metadataReceivedRef.current) {
