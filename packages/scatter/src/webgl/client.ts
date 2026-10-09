@@ -2,6 +2,7 @@ import type { DataToMain, MainToData } from '../data/messages.ts';
 import DataWorkerFactory from '../data/worker.ts?worker&inline';
 import type { ScatterInstance, ScatterOptions, ScatterStatus } from '../gpu/client.ts';
 import type { GpuToMain, MainToGpu } from '../gpu/messages.ts';
+import { createSelectionRequests } from '../selection-requests.ts';
 import WebGLWorkerFactory from './worker.ts?worker&inline';
 
 const sendToGpu = (worker: Worker, msg: MainToGpu, transfers?: Transferable[]): void => {
@@ -107,6 +108,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
   };
 
   const loadData = (buffer: ArrayBuffer): void => {
+    selection.reset();
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
   };
 
@@ -200,31 +202,10 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToGpu(gpuWorker, { type: 'clearColors' });
   };
 
-  const selectByColumn = (
-    column: string,
-    opts: { labelIndices?: number[]; valueRanges?: Float32Array },
-  ): void => {
-    const ranges = opts.valueRanges ? new Float32Array(opts.valueRanges) : undefined;
-    const transfers: Transferable[] = [];
-    if (ranges) transfers.push(ranges.buffer);
-    sendToData(
-      dataWorker,
-      { type: 'selectByColumn', column, labelIndices: opts.labelIndices, valueRanges: ranges },
-      transfers,
-    );
-  };
-
-  const setSelectionMask = (mask: Uint32Array): void => {
-    sendToGpu(gpuWorker, { type: 'setSelectionMask', mask }, [mask.buffer]);
-  };
-
-  const lassoSelect = (polygon: Float32Array): void => {
-    sendToGpu(gpuWorker, { type: 'lassoSelect', polygon }, [polygon.buffer]);
-  };
-
-  const clearSelection = (): void => {
-    sendToGpu(gpuWorker, { type: 'clearSelectionMask' });
-  };
+  const selection = createSelectionRequests(
+    (msg, transfers) => sendToData(dataWorker, msg, transfers),
+    (msg, transfers) => sendToGpu(gpuWorker, msg, transfers),
+  );
 
   const computePCA = (): void => {
     sendToGpu(gpuWorker, { type: 'computePCA' });
@@ -361,10 +342,11 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     encodeColor2D,
     setBackgroundColor,
     clearColor,
-    selectByColumn,
-    setSelectionMask,
-    lassoSelect,
-    clearSelection,
+    selectByColumn: selection.selectByColumn,
+    setSelectionMask: selection.setSelectionMask,
+    lassoSelect: selection.lassoSelect,
+    clearSelection: selection.clearSelection,
+    latestSelectionId: selection.latestSelectionId,
     getProjectedPositions,
     getPointData,
     computePCA,

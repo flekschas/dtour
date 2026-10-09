@@ -90,7 +90,8 @@ type DtourSpec = {
   showAxes?: boolean;                 // default false
   showTourDescription?: boolean | null; // default null
   themeMode?: "light" | "dark" | "system"; // default "dark"
-  tourDimensions?: string[] | null;   // columns of an auto-generated tour, default null (all)
+  tourDimensions?: string[] | null;   // columns of an auto-generated tour, default null (all); two show a static scatter, the first on x
+  link?: string | null;               // views in the same browser with the same id share their selection, default null
 };
 ```
 

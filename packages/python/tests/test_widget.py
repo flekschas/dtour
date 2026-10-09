@@ -449,3 +449,31 @@ def test_widget_replaces_data_and_tour_together():
     assert w._tour is tour
     assert w._data_buf is data_buf
     assert w.tour_dimensions == ["x", "y"]
+
+
+def test_link_shares_a_link_until_unlinked():
+    a, b, c = Widget(), Widget(), Widget()
+    unlink = dtour.link(a, b)
+    other_unlink = dtour.link(c)
+    assert a.link
+    assert b.link == a.link
+    assert c.link != a.link
+
+    unlink()
+    assert a.link is None
+    assert b.link is None
+    other_unlink()
+    assert c.link is None
+
+
+def test_label_and_index_selections_replace_each_other():
+    w = Widget()
+    w.selected_indices = [1, 2]
+    w.select_by_labels(["B cell"])
+    assert w.selected_indices == []
+    w.selected_indices = [3]
+    assert w.selected_labels == []
+    w.select_by_labels(["B cell"])
+    w.select_by_labels([])
+    assert w.selected_labels == []
+    assert w.selected_indices == []

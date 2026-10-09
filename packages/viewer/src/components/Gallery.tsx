@@ -110,14 +110,18 @@ export const Gallery = ({
     [gridWidth, gridHeight, previewCount, previewScale, showBarSpace],
   );
 
-  // Adopt each canvas into its wrapper div (once, on mount)
+  // Keep only the current preview canvas in each wrapper. React runs all effect
+  // cleanups before any effect setup, so a canvas that was already replaced
+  // can still have been adopted.
   useEffect(() => {
     for (let i = 0; i < previewCanvases.length; i++) {
       const wrapper = wrapperRefs.current[i];
       const canvas = previewCanvases[i];
-      if (wrapper && canvas && canvas.parentElement !== wrapper) {
-        wrapper.appendChild(canvas);
+      if (!wrapper || !canvas) continue;
+      for (const child of wrapper.querySelectorAll(':scope > canvas')) {
+        if (child !== canvas) child.remove();
       }
+      if (canvas.parentElement !== wrapper) wrapper.appendChild(canvas);
     }
   }, [previewCanvases]);
 

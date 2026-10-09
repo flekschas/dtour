@@ -3,6 +3,7 @@ import { useAtomValue } from 'jotai';
 import { useEffect } from 'react';
 import {
   basisTransitioningAtom,
+  staticAxesAtom,
   tourDirectionAtom,
   tourPlayingAtom,
   tourSpeedAtom,
@@ -18,20 +19,22 @@ import {
  *
  * Defers startPlayback while a basis-blend transition is active so the
  * worker's playback ticks don't clear directBasis and race the handoff.
+ * A static scatter never plays.
  */
 export const usePlayback = (scatter: ScatterInstance | null) => {
   const playing = useAtomValue(tourPlayingAtom);
   const basisTransitioning = useAtomValue(basisTransitioningAtom);
   const speed = useAtomValue(tourSpeedAtom);
   const direction = useAtomValue(tourDirectionAtom);
+  const isStatic = useAtomValue(staticAxesAtom) !== null;
 
   useEffect(() => {
     if (!scatter) return;
-    if (playing && !basisTransitioning) {
+    if (playing && !basisTransitioning && !isStatic) {
       scatter.startPlayback(speed, direction);
     } else {
       scatter.stopPlayback();
     }
     return () => scatter.stopPlayback();
-  }, [scatter, playing, basisTransitioning, speed, direction]);
+  }, [scatter, playing, basisTransitioning, isStatic, speed, direction]);
 };

@@ -1,6 +1,7 @@
 import type { Colormap2DName, Metadata } from '@dtour/scatter';
 import { atom } from 'jotai';
 import { selectAtom } from 'jotai/utils';
+import { fitTour, MIN_RANGE } from '../keyframes.ts';
 import {
   fitPreviewCount,
   MAX_PREVIEW_COUNT,
@@ -11,7 +12,7 @@ import {
   resolvePreviewSize,
 } from '../layout/gallery-positions.ts';
 import { selectPreviewKeyframes } from '../layout/preview-keyframes.ts';
-import type { EmbeddedConfig, KeyframeLoading } from '../spec.ts';
+import { DTOUR_DEFAULTS, type EmbeddedConfig, type KeyframeLoading } from '../spec.ts';
 
 // ---------------------------------------------------------------------------
 // Tour state — controls position and playback along the tour path
@@ -154,6 +155,9 @@ export const backgroundColorAtom = atom<[number, number, number]>([0, 0, 0]);
 /** Centering mode: 'midrange' (default, (min+max)/2) or 'mean' (center of mass). */
 export const centeringAtom = atom<'midrange' | 'mean'>('midrange');
 
+/** Id that links this view's selection with other views of the same rows, or null. */
+export const linkAtom = atom<string | null>(null);
+
 // ---------------------------------------------------------------------------
 // Camera state — 2D pan and zoom
 // ---------------------------------------------------------------------------
@@ -161,6 +165,10 @@ export const centeringAtom = atom<'midrange' | 'mean'>('midrange');
 export const cameraPanXAtom = atom(0);
 export const cameraPanYAtom = atom(0);
 export const cameraZoomAtom = atom(1 / 1.5);
+
+/** Camera zoom limits of the wheel and the zoom slider. */
+export const MIN_ZOOM = 0.25;
+export const MAX_ZOOM = 4;
 
 /** When true, scroll = zoom and Shift+scroll = tour scrub (inverted from default). */
 export const panZoomModeAtom = atom(false);
@@ -253,8 +261,9 @@ export const activeColumnsAtom = atom<Set<number> | null>(null);
 export const requestedTourDimensionsAtom = atom<{ names: string[] | null }>({ names: null });
 
 /**
- * Names of the columns an auto-generated tour uses, or null for all. Reads the
- * requested columns until metadata loads and while a predefined tour is active.
+ * Names of the columns an auto-generated tour uses, or null for all, in the
+ * order they were requested. Reads the requested columns until metadata loads
+ * and while a predefined tour is active.
  */
 export const tourDimensionsAtom = atom(
   (get): string[] | null => {
@@ -262,7 +271,7 @@ export const tourDimensionsAtom = atom(
     if (!meta || get(predefinedTourAtom)) return get(requestedTourDimensionsAtom).names;
     const active = get(activeColumnsAtom);
     if (active === null) return null;
-    return [...active].sort((a, b) => a - b).map((i) => meta.columnNames[i]!);
+    return [...active].map((i) => meta.columnNames[i]!);
   },
   (_get, set, value: string[] | null) => set(requestedTourDimensionsAtom, { names: value }),
 );
@@ -278,6 +287,43 @@ export const activeIndicesAtom = atom<number[]>((get) => {
   if (!meta) return [];
   if (active === null) return Array.from({ length: meta.dimCount }, (_, i) => i);
   return Array.from(active).sort((a, b) => a - b);
+});
+
+/**
+ * The [x, y] column indices of the static scatter shown in place of an
+ * auto-generated tour that projects two columns, which has nothing to tour.
+ * The order of the tour dimensions decides which column is x. A PCA tour
+ * projects all numeric columns. null while touring.
+ */
+export const staticAxesAtom = atom<[number, number] | null>((get) => {
+  const meta = get(metadataAtom);
+  if (!meta || get(fittedTourAtom)) return null;
+  const active = get(tourByAtom) === 'pca' ? null : get(activeColumnsAtom);
+  const indices =
+    active === null ? Array.from({ length: meta.dimCount }, (_, i) => i) : [...active];
+  return indices.length === 2 ? [indices[0]!, indices[1]!] : null;
+});
+
+/**
+ * Zoom of an untouched camera. Tours zoom out to leave room for rotating
+ * projections. A static scatter zooms to fit its points around the centering
+ * origin into the canvas, within the zoom limits.
+ */
+export const defaultCameraZoomAtom = atom((get) => {
+  const axes = get(staticAxesAtom);
+  const meta = get(metadataAtom);
+  if (!axes || !meta) return DTOUR_DEFAULTS.cameraZoom;
+  const centering = get(centeringAtom);
+  // Coordinates as createStaticKeyframe and the renderer compute them
+  const scale = Math.max(...axes.map((d) => Math.max(meta.ranges[d]!, MIN_RANGE)));
+  const extent = (d: number) => {
+    const center = centering === 'mean' ? meta.means[d]! : meta.mins[d]! + meta.ranges[d]! / 2;
+    return (2 * Math.max(meta.maxes[d]! - center, center - meta.mins[d]!)) / scale;
+  };
+  const { width, height } = get(canvasSizeAtom);
+  const aspect = height > 0 ? width / height : 1;
+  const zoom = Math.min(aspect / extent(axes[0]), 1 / extent(axes[1]));
+  return Number.isFinite(zoom) ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) : 1;
 });
 
 // ---------------------------------------------------------------------------
@@ -329,32 +375,75 @@ export const keyframeLoadingsAtom = atom<KeyframeLoading[] | null>(null);
 /** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
 export const tourFamilyAtom = atom<'hyperdimensional' | 'sequential'>('hyperdimensional');
 
+/**
+ * Whether tour interpolation keeps the bases orthonormal. Sequential tours and
+ * static scatters blend their keyframes directly instead.
+ */
+export const orthonormalizeAtom = atom(
+  (get) => get(tourFamilyAtom) !== 'sequential' && !get(staticAxesAtom),
+);
+
 // ---------------------------------------------------------------------------
 // Predefined tour — locks column selection, preview count, and Dims/PCA toggle
 // ---------------------------------------------------------------------------
 
-/** Info about the active predefined tour, or null for auto-generated tours.
- *  When non-null, column toggles, preview count slider, and Dims/PCA toggle are disabled. */
-export const predefinedTourAtom = atom<{
-  /** Numeric column names that participate in the tour. */
-  dimensions: string[];
-  /** Number of keyframes in the tour. */
-  keyframeCount: number;
+/**
+ * Tour keyframes passed to the viewer and the names of the numeric columns
+ * they project (default: the first p numeric columns). null without keyframes.
+ */
+export const suppliedTourAtom = atom<{
+  keyframes: Float32Array[];
+  dimensions: string[] | undefined;
 } | null>(null);
 
-/** Whether the supplied tour doesn't fit the data, so the viewer shows an auto-generated tour. */
-export const tourRejectedAtom = atom(false);
+/**
+ * The supplied tour, or else the tour embedded in the data, fitted to the
+ * data's numeric columns. null to generate a tour. Names supplied with the
+ * keyframes must match the data; an embedded tour falls back to the first columns.
+ */
+export const fittedTourAtom = atom((get) => {
+  const meta = get(metadataAtom);
+  if (!meta) return null;
+  const supplied = get(suppliedTourAtom);
+  if (supplied) return fitTour(supplied.keyframes, meta.columnNames, supplied.dimensions, true);
+  const embedded = get(embeddedConfigAtom)?.tour;
+  if (embedded && embedded.keyframes.length > 0) {
+    return fitTour(embedded.keyframes, meta.columnNames, embedded.dimensions, false);
+  }
+  return null;
+});
 
-/** Number of tour keyframes: from the predefined tour, otherwise {@link previewCountAtom}. */
-export const keyframeCountAtom = atom(
-  (get) => get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom),
-);
+/** Info about the active predefined tour, or null for auto-generated tours.
+ *  When non-null, column toggles, preview count slider, and Dims/PCA toggle are disabled. */
+export const predefinedTourAtom = atom((get) => {
+  const fitted = get(fittedTourAtom);
+  return fitted ? { dimensions: fitted.dimensions, keyframeCount: fitted.keyframes.length } : null;
+});
+
+/** Whether the supplied tour doesn't fit the data, so the viewer shows an auto-generated tour. */
+export const tourRejectedAtom = atom((get) => {
+  if (!get(metadataAtom) || get(fittedTourAtom)) return false;
+  return (
+    get(suppliedTourAtom) !== null || (get(embeddedConfigAtom)?.tour?.keyframes.length ?? 0) > 0
+  );
+});
+
+/**
+ * Number of tour keyframes: from the predefined tour, 1 for a static scatter,
+ * otherwise {@link previewCountAtom}.
+ */
+export const keyframeCountAtom = atom((get) => {
+  if (get(staticAxesAtom)) return 1;
+  return get(predefinedTourAtom)?.keyframeCount ?? get(previewCountAtom);
+});
 
 /**
  * Number of previews shown: one per keyframe, up to {@link MAX_PREVIEW_COUNT}
- * and as many as fit the gallery at a readable size. 0 when not even two fit.
+ * and as many as fit the gallery at a readable size. 0 when not even two fit
+ * and for a static scatter.
  */
 export const resolvedPreviewCountAtom = atom((get) => {
+  if (get(staticAxesAtom)) return 0;
   const maxCount = Math.min(get(keyframeCountAtom), MAX_PREVIEW_COUNT);
   const area = get(galleryAreaAtom);
   // Before measuring, assume everything fits so canvases are not rebuilt on startup

@@ -55,13 +55,15 @@ export type MainToGpu =
     }
   | { type: 'clearColors' }
   | { type: 'setBackgroundColor'; color: [number, number, number] }
-  | { type: 'setSelectionMask'; mask: Uint32Array }
-  | { type: 'clearSelectionMask' }
+  // Selection requests carry an id that their selectionResult repeats
+  | { type: 'setSelectionMask'; mask: Uint32Array; id: number }
+  | { type: 'clearSelectionMask'; id: number }
   | {
       // NDC polygon for lasso selection (flat [x0,y0, x1,y1, ...]).
       // GPU worker runs point-in-polygon against projected positions.
       type: 'lassoSelect';
       polygon: Float32Array;
+      id: number;
     }
   | {
       // Trigger GPU-accelerated PCA computation on the loaded data.
@@ -136,7 +138,15 @@ export type GpuToMain =
       workerJsHeapBytes: number | null;
     }
   | { type: 'residualPC'; residualPC: Float32Array }
-  | { type: 'selectionResult'; mask: Uint32Array }
+  | { type: 'selectionResult'; mask: Uint32Array; id: number }
+  // Rows a column's labels or value ranges select (selectByColumn), with the request
+  | {
+      type: 'columnSelectionResult';
+      mask: Uint32Array;
+      id: number;
+      column: string;
+      labelIndices?: number[];
+    }
   | {
       // Projected 2D positions for spatial indexing.
       // Interleaved Float32Array: [x0, y0, x1, y1, ...], length = numPoints * 2.

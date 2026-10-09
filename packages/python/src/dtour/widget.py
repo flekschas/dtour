@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -196,8 +197,12 @@ class Widget(anywidget.AnyWidget):
     _tour_family = t.Unicode(None, allow_none=True).tag(sync=True)
 
     # ── Selection state (bidirectional) ───────────────────────────────────
+    # A legend selection (labels) and a point selection (indices) replace each
+    # other, so at most one of the two is non-empty.
     selected_labels = t.List(t.Unicode(), default_value=[]).tag(sync=True)
     selected_indices = t.List(t.Int(), default_value=[]).tag(sync=True)
+    # Widgets in the same browser with the same id share their selection
+    link = t.Unicode(None, allow_none=True).tag(sync=True)
 
     # ── Color map ────────────────────────────────────────────────────────
     color_map = t.Dict(default_value={}).tag(sync=True)
@@ -207,6 +212,17 @@ class Widget(anywidget.AnyWidget):
 
     # ── Layout ───────────────────────────────────────────────────────────
     height = t.Int(720).tag(sync=True)
+
+    # ── Observers ────────────────────────────────────────────────────────
+    @t.observe("selected_labels")
+    def _on_selected_labels(self, change: t.Bunch) -> None:
+        if change["new"]:
+            self.selected_indices = []
+
+    @t.observe("selected_indices")
+    def _on_selected_indices(self, change: t.Bunch) -> None:
+        if change["new"]:
+            self.selected_labels = []
 
     # ── Validators ───────────────────────────────────────────────────────
     @t.validate("tour_position")
@@ -626,3 +642,31 @@ def _viewer_data(
                 "projects. Pass the data the tour was computed from."
             )
     return source, names
+
+
+def link(*widgets: Widget) -> Callable[[], None]:
+    """Keep the selections of *widgets* in sync.
+
+    The widgets must show the same points in the same row order, e.g., a tour
+    and a 2D embedding of the same data. Selections link by row. A legend
+    selection shows in the legend of widgets colored by the same column. A
+    widget without a selection adopts the selection of the widgets it joins.
+    The widgets get the same ``link`` id and link in the browser, without a
+    round trip through Python. Returns a function that unlinks the widgets.
+
+    Example
+    -------
+    >>> tour = dtour.Widget(df, dtour.little_tour(df[pc_cols]))
+    >>> umap = dtour.Widget(df, tour_dimensions=["umap_x", "umap_y"])
+    >>> unlink = dtour.link(tour, umap)
+    """
+    link_id = uuid.uuid4().hex
+    for widget in widgets:
+        widget.link = link_id
+
+    def unlink() -> None:
+        for widget in widgets:
+            if widget.link == link_id:
+                widget.link = None
+
+    return unlink

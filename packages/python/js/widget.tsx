@@ -54,6 +54,7 @@ const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
   'show_tour_description',
   'theme_mode',
   'centering',
+  'link',
 ];
 
 const toSpecKey = (trait: string) =>
@@ -249,25 +250,29 @@ function Widget() {
     (labels: string[]) => {
       if (arraysEqual(labels, lastSyncedLabels.current)) return;
       lastSyncedLabels.current = labels;
-      // Clear index selection when label selection changes from UI
-      lastSyncedIndices.current = [];
       model.set('selected_labels', labels);
-      model.set('selected_indices', []);
+      // A label selection replaces the index selection
+      if (labels.length > 0) {
+        lastSyncedIndices.current = [];
+        model.set('selected_indices', []);
+      }
       model.save_changes();
     },
     [model],
   );
 
-  // Python → JS: traitlet changed from Python side (or linked widget)
+  // Python → JS: selection traits changed in Python. Setting one selection
+  // trait empties the other, so emptying a trait only clears the selection when
+  // the other trait is empty too.
   useEffect(() => {
     function onLabelsChange() {
       const labels: string[] = model.get('selected_labels') ?? [];
       if (arraysEqual(labels, lastSyncedLabels.current)) return;
       lastSyncedLabels.current = labels;
-      if (labels.length === 0) {
-        dtourApiRef.current?.clearSelection();
-      } else {
+      if (labels.length > 0) {
         dtourApiRef.current?.selectByLabels(labels);
+      } else if ((model.get('selected_indices') ?? []).length === 0) {
+        dtourApiRef.current?.clearSelection();
       }
     }
     function onIndicesChange() {
@@ -275,7 +280,9 @@ function Widget() {
       if (arraysEqual(indices, lastSyncedIndices.current)) return;
       lastSyncedIndices.current = indices;
       if (indices.length === 0) {
-        dtourApiRef.current?.clearSelection();
+        if ((model.get('selected_labels') ?? []).length === 0) {
+          dtourApiRef.current?.clearSelection();
+        }
       } else {
         dtourApiRef.current?.select(indices);
       }

@@ -1,5 +1,5 @@
 import type { ScatterInstance, ScatterStatus } from '@dtour/scatter';
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useEffect, useRef } from 'react';
 import { hexToRgb255 } from '../lib/color-utils.ts';
 import { parseEmbeddedConfig } from '../spec.ts';
@@ -38,6 +38,7 @@ import {
  * writes metadata back into Jotai.
  */
 export const useScatter = (scatter: ScatterInstance | null) => {
+  const store = useStore();
   const position = useAtomValue(tourPositionAtom);
   const pointSize = useAtomValue(pointSizeAtom);
   const opacity = useAtomValue(pointOpacityAtom);
@@ -61,7 +62,6 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   const metadata = useAtomValue(metadataAtom);
   const setMetadata = useSetAtom(metadataAtom);
   const legendSelection = useAtomValue(legendSelectionAtom);
-  const legendClearGen = useAtomValue(legendClearGenAtom);
   const setLegendSelection = useSetAtom(legendSelectionAtom);
 
   // Forward background color
@@ -146,9 +146,11 @@ export const useScatter = (scatter: ScatterInstance | null) => {
     scatter.encodeColor2D(color2dColumns[0], color2dColumns[1], color2dMap);
   }, [scatter, metadata, color2dEnabled, color2dColumns, color2dMap]);
 
-  // Forward legend selection → scatter.selectByColumn
+  // Forward legend selection → scatter.selectByColumn. Skip a legend selection
+  // that changed again before this effect ran, e.g., a clear, which the next run applies.
   useEffect(() => {
     if (!scatter || !metadata || legendSelection === null || legendSelection.size === 0) return;
+    if (store.get(legendSelectionAtom) !== legendSelection) return;
 
     // Determine the active color column
     if (!colorBy) return;
@@ -178,13 +180,14 @@ export const useScatter = (scatter: ScatterInstance | null) => {
 
       scatter.selectByColumn(column, { valueRanges: new Float32Array(ranges) });
     }
-  }, [scatter, legendSelection, colorBy, metadata]);
+  }, [scatter, store, legendSelection, colorBy, metadata]);
 
-  // Clear scatter selection when legend explicitly deselects (gen bumped by ColorLegend)
+  // Clear the selection as soon as the legend deselects (gen bumped by ColorLegend), so a
+  // selection made after the deselection, even in the same event, replaces the clear
   useEffect(() => {
-    if (!scatter || legendClearGen === 0) return;
-    scatter.clearSelection();
-  }, [scatter, legendClearGen]);
+    if (!scatter) return;
+    return store.sub(legendClearGenAtom, () => scatter.clearSelection());
+  }, [scatter, store]);
 
   // Reset legend selection and clear GPU selection mask when color column changes
   const prevColorByRef = useRef(colorBy);

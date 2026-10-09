@@ -65,7 +65,8 @@ dtour.Widget(
     tour_direction="forward",  # "forward" | "backward"
     tour_slider_spacing="equal",  # "equal" | "geodesic"
     tour_slider_visibility="visible",  # "visible" | "subtle" | "hidden"
-    tour_dimensions=[],  # columns in the tour (set by the tour; without one, the columns checked in the toolbar)
+    tour_dimensions=[],  # columns in the tour (set by the tour; without one, the columns checked in the toolbar; two columns show a static scatter)
+    link=None,  # widgets in the same browser with the same id share their selection (see dtour.link())
     # camera
     camera_pan_x=0.0,
     camera_pan_y=0.0,
@@ -92,6 +93,18 @@ w.set_tour(tour)  # set tour keyframes
 w.set_metrics(metrics)  # display radial quality charts
 w.select([0, 1, 2])  # select points by index
 w.clear_selection()  # clear selection
+dtour.link(w, other)  # keep the selections of widgets showing the same points in sync
+```
+
+Without a tour, data with two numeric columns, or `tour_dimensions` naming two columns,
+shows a static scatter of them, with the first column on the x-axis. Both axes share one
+scale, so a 2D embedding keeps its shape. Next to a tour, this compares, e.g., a UMAP
+with the PCA space it was computed from:
+
+```py
+tour = dtour.Widget(df, dtour.little_tour(df[pc_cols]), point_color_by="cell_type")
+umap = dtour.Widget(df, tour_dimensions=["umap_x", "umap_y"], point_color_by="cell_type")
+dtour.link(tour, umap)
 ```
 
 ## Tour computation

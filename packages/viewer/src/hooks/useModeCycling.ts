@@ -1,8 +1,9 @@
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom, useStore } from 'jotai';
 import { useEffect, useRef } from 'react';
 import {
   grandExitTargetAtom,
   guidedSuspendedAtom,
+  staticAxesAtom,
   tourPlayingAtom,
   tourTraversalAtom,
 } from '../state/atoms.ts';
@@ -10,7 +11,8 @@ import {
 const MODES = ['guided', 'manual', 'grand'] as const;
 
 /**
- * Cycles view modes on Shift+Tab (guided → manual → grand → guided).
+ * Cycles view modes on Shift+Tab (guided → manual → grand → guided). A static
+ * scatter has no modes to cycle.
  *
  * Also manages guided suspension: pauses playback when leaving guided mode,
  * and sets `guidedSuspended` when returning to guided so the current
@@ -25,6 +27,7 @@ export const useModeCycling = () => {
   const setPlaying = useSetAtom(tourPlayingAtom);
   const setGuidedSuspended = useSetAtom(guidedSuspendedAtom);
   const setGrandExitTarget = useSetAtom(grandExitTargetAtom);
+  const store = useStore();
 
   // Use ref so the keydown handler always sees the latest tourTraversal
   // without needing to re-register the listener on every mode change.
@@ -34,6 +37,7 @@ export const useModeCycling = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !e.shiftKey || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (store.get(staticAxesAtom)) return;
       e.preventDefault();
 
       const current = tourTraversalRef.current;
@@ -60,5 +64,5 @@ export const useModeCycling = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setTourTraversal, setPlaying, setGuidedSuspended, setGrandExitTarget]);
+  }, [store, setTourTraversal, setPlaying, setGuidedSuspended, setGrandExitTarget]);
 };

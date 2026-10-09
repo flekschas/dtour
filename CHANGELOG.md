@@ -8,6 +8,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 - **DtourSpec**: `previewScale: 1 | 0.75 | 0.5` → `previewSize: 'auto' | 'small' | 'medium' | 'large'`, `showKeyframeNumbers: boolean` → `previewKeyframeNumbers: 'auto' | 'visible' | 'hidden'`, `showKeyframeLoadings: boolean` → `previewLabelContent: 'auto' | 'description' | 'loadings'`
 - **Atoms**: `showKeyframeNumbersAtom` → `previewKeyframeNumbersAtom`, `showKeyframeLoadingsAtom` → `previewLabelContentAtom`; `previewSizeAtom` is now exported; `selectedKeyframeAtom` is removed because the active preview now always follows the slider (`currentKeyframeAtom`)
+- **Atoms**: `predefinedTourAtom` and `tourRejectedAtom` are now derived from the supplied tour and the data, so they are read-only
 - **Component props**: `Dtour` and `DtourViewer` `views` → `keyframes`
 - **Viewer functions**: `createDefaultViews` → `createDefaultKeyframes`
 - **Python `TourResult`**: `views` → `keyframes`, `n_views` → `n_keyframes` (now a property), `views_raw` → `keyframes_raw`. The constructor takes `keyframes` as its only positional argument and no longer accepts `views` or `n_views`, e.g. `TourResult(keyframes, n_dims=5)`
@@ -33,12 +34,14 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add `dtour-mcp`, an MCP server that shows tours inline in chat apps like Claude Desktop (`pip install "dtour[mcp]"`). Its `visualize` tool reads a CSV, Parquet, or Arrow file, computes a PCA, Laplacian Eigenmaps, or UMAP tour, and opens the viewer as an MCP App. Apps without MCP Apps support get a link to the viewer in the browser. The viewer tells the model what the user sees: the traversal mode and color column, the legend selection, and how selected points differ from the other rows
 - feat: add a Claude Code plugin with the dtour skill and the MCP server (`/plugin install dtour --marketplace flekschas/dtour`)
 - feat: add a Claude Desktop extension for the MCP server, attached to each GitHub release as `dtour.mcpb`. Opening it installs the server; Claude Desktop sets up Python and the dependencies itself. Build it with `pnpm build:mcpb`
+- feat: add `dtour.link(*widgets)`, which keeps the lasso and legend selections of widgets showing the same points in sync and returns a function that unlinks them. It sets the new `link` traitlet, so the widgets link in the browser without a round trip through Python. With the static scatter (e.g., `Widget(df, tour_dimensions=["umap_x", "umap_y"])`), this compares a 2D embedding with a tour without another package
 - fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
 - fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
 - fix: Parquet exports of embedding tours (`le_tour`, `umap_little_tour`, sequential tours) record the embedding columns as the tour dimensions instead of the input features, which broke files with extra numeric columns. `add_spec_to_parquet()` and `Widget.save_spec_to_parquet()` infer them from the table; `build_dtour_metadata()` requires `tour_dimensions` for these tours
+- fix: `selected_labels` and `selected_indices` replace each other also when set from Python, and emptying one only clears the viewer's selection when the other is empty too
 - docs: document all tour generators in the README
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
 - chore: add `pnpm build:widget` to build the widget bundle together with the `@dtour/scatter` and `@dtour/viewer` packages it bundles
@@ -47,6 +50,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 ### scatter
 
+- feat: selection requests (`setSelectionMask`, `lassoSelect`, `clearSelection`, `selectByColumn`) return an id that their result repeats, and `latestSelectionId()` tells whether a result belongs to a selection a newer request replaced. `selectByColumn` reports its rows, column, and labels in a new `columnSelectionResult` status, and repeating the latest column selection changes nothing
 - feat: report a `lost` status when the WebGPU device or WebGL context is lost. Device loss used to be reported as an `error` status, and only when a frame failed
 - fix: treat string columns whose first value is null as categorical
 - fix: category colors no longer shift when zooming in (e.g., orange turning yellow). Auto opacity still grows with zoom but now stops at 1
@@ -65,10 +69,16 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: `CircularSlider` and `RadialChart` accept a `startAngle`, so both line up with the gallery that is actually shown
 - feat: add `previewLabelVisibility: 'auto' | 'visible' | 'interactive' | 'hidden'` and a matching "Labels" toolbar control. `'interactive'` shows the label inside the preview on hover and for the current keyframe, so labels no longer take space from the previews. `'auto'` uses `'visible'` up to 16 previews and `'interactive'` above
 - feat: add a `tourDimensions` prop to `Dtour` and `DtourViewer` naming the columns the `keyframes` project (default: the first p numeric columns). If they don't name one existing column per keyframe dimension, the viewer logs an error and shows an auto-generated tour instead, with its own keyframe count and without the rejected tour's labels. Without `keyframes`, `Dtour` uses the names as the columns checked in the toolbar's column menu
+- feat: an auto-generated tour that projects two columns shows a static scatter of them: no gallery, slider, playback, axes, or traversal modes, and a "Tour: None" badge whose tooltip explains why. The order of `tourDimensions` decides which column is on the x-axis, both axes share one scale, so 2D embeddings keep their shape, and an untouched camera zooms to fit the points around the centering origin into the canvas, within the zoom limits. A PCA tour projects all numeric columns, so it stays a tour
+- feat: add `link` to `DtourSpec`. Views in the same browser with the same id share their selections over a `BroadcastChannel`, also across tabs. Selections link by row: a legend selection shows in the legend of views colored by the same column, and as a point selection in the others. A view without a selection adopts the selection of the views it joins. Views must show the same rows in the same order; views with a different number of rows ignore each other
 - fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the 32 keyframes most evenly spaced along the tour (by normalized geodesic distance), always including the first and last, and the slider keeps a tick for every keyframe
 - fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
 - fix: show fewer previews instead of unusably small ones in narrow or short containers, such as phones. Each preview stays at least 24px, the shown keyframes are sampled like for long tours, and the gallery hides when not even two previews fit
 - fix: the active preview always follows the slider. Clicking a preview moves the slider to it but no longer keeps it highlighted after scrubbing elsewhere
+- fix: `DtourHandle.select()` and `clearSelection()` also clear the legend selection, so the legend no longer shows labels as selected after they were replaced or cleared
+- fix: `onPointSelectionChange` no longer reports a selection that a newer one already replaced, e.g., a slow WebGPU lasso followed by a click
+- fix: a legend selection that is cleared or replaced right away, e.g., from Python, no longer comes back after the clear, and `onSelectionChange` no longer briefly reports it again. Deselecting in the legend no longer erases a selection made right after it
+- fix: gallery previews no longer show a blank, washed-out canvas in front of the real preview when the previews are rebuilt twice in quick succession
 - chore: remove the dev-only warning about `views.length` differing from `previewCount`, which predefined tours no longer need
 - chore: add a preview-fit regression check (`pnpm --filter @dtour/viewer check:preview-fit`) and run it in CI
 
@@ -77,6 +87,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: settings work as URL parameters named like the `DtourSpec` fields, e.g. `?url=…&pointColorBy=label&tourTraversal=manual`, and the URL follows settings changes, so the address bar always holds a link to the current settings (not manually dragged or grand tour projections). Picking an example sets `?dataset=`; loading a local file clears the link
 - feat: example buttons show a preview video of their dataset that loops while the button is hovered or focused. In light mode the video is inverted with its hues kept
 - feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
+- feat: `?link=<id>` links the selections of tabs that show the same rows. The link isn't saved with a file's other settings
 - fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
 - fix: `?url=` and `?dataset=` links load their data without also needing `&benchmark`
 - fix: `?dataset=` slugs load the example they name. Since the examples were reordered, they had loaded other examples (e.g., `lorenz` loaded Fashion MNIST), including in benchmark runs
@@ -85,6 +96,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 - ai: add a dtour agent skill (`npx skills add flekschas/dtour`) with usage guidance, API references, and the paper
 - ai: the skill explains how to build a dtour.dev link that opens data with given settings
+- ai: the skill compares a UMAP with a PCA tour using two linked dtour widgets instead of jupyter-scatter
 
 ## v0.4.4
 

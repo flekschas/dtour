@@ -9,6 +9,7 @@ import {
   centeringAtom,
   color2dMapAtom,
   colorEncodingAtom,
+  linkAtom,
   minPointSizeAtom,
   pointColorAtom,
   pointOpacityAtom,
@@ -87,6 +88,7 @@ const SPEC_ATOM_MAP = {
   tourSliderSpacing: entry(tourSliderSpacingAtom),
   themeMode: entry(themeModeAtom),
   centering: entry(centeringAtom),
+  link: entry(linkAtom),
   tourDimensions: { ...entry(tourDimensionsAtom), isRequest: true },
 } as const;
 

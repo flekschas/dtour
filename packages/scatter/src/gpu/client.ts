@@ -1,6 +1,7 @@
 import type { DataToMain, MainToData } from '../data/messages.ts';
 import type { Metadata } from '../data/types.ts';
 import DataWorkerFactory from '../data/worker.ts?worker&inline';
+import { createSelectionRequests } from '../selection-requests.ts';
 import type { GpuToMain, MainToGpu } from './messages.ts';
 // ?worker&inline tells Vite to bundle each worker + all its imports and embed the
 // result as a base64 data URL in the library output. Consumers of @dtour/scatter
@@ -53,7 +54,16 @@ export type ScatterStatus =
       workerJsHeapBytes: number | null;
     }
   | { type: 'residualPC'; residualPC: Float32Array }
-  | { type: 'selectionResult'; mask: Uint32Array }
+  /** Selected rows (1 bit per point) and the id of the selection request. */
+  | { type: 'selectionResult'; mask: Uint32Array; id: number }
+  /** Rows that `selectByColumn` selects, with the id, column, and labels of its request. */
+  | {
+      type: 'columnSelectionResult';
+      mask: Uint32Array;
+      id: number;
+      column: string;
+      labelIndices?: number[];
+    }
   | { type: 'projectedPositions'; positions: Float32Array }
   | {
       type: 'pointData';
@@ -116,17 +126,30 @@ export type ScatterInstance = {
   setBackgroundColor: (color: [number, number, number]) => void;
   /** Clear per-point colors and revert to uniform color. */
   clearColor: () => void;
-  /** Select points by column value. Mask is built in the data worker. */
+  /**
+   * Select points by column value. Returns the request id, which
+   * `columnSelectionResult` repeats. Selecting the same
+   * values again without another selection request in between changes nothing
+   * and returns the earlier id.
+   */
   selectByColumn: (
     column: string,
     opts: { labelIndices?: number[]; valueRanges?: Float32Array },
-  ) => void;
-  /** Set a bit-packed selection mask (1 bit per point, 32 per u32). Length: ceil(numPoints / 32). */
-  setSelectionMask: (mask: Uint32Array) => void;
+  ) => number;
+  /**
+   * Set a bit-packed selection mask (1 bit per point, 32 per u32). Length: ceil(numPoints / 32).
+   * Returns the request id, which `selectionResult` repeats, as for lasso and clear.
+   */
+  setSelectionMask: (mask: Uint32Array) => number;
   /** Lasso select: send NDC polygon, GPU does point-in-polygon test. */
-  lassoSelect: (polygon: Float32Array) => void;
+  lassoSelect: (polygon: Float32Array) => number;
   /** Clear selection mask — all points visible. */
-  clearSelection: () => void;
+  clearSelection: () => number;
+  /**
+   * Id of the latest selection request. A result with a lower id belongs to a
+   * replaced selection. Loading data replaces any selection.
+   */
+  latestSelectionId: () => number;
   /** Request GPU-accelerated PCA computation. Results arrive via subscribe as 'pcaResult'. */
   computePCA: () => void;
   /** Start worker-driven playback. Worker runs its own rAF loop and posts position updates. */
@@ -303,6 +326,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
   };
 
   const loadData = (buffer: ArrayBuffer): void => {
+    selection.reset();
     sendToData(dataWorker, { type: 'load', buffer }, [buffer]);
   };
 
@@ -397,32 +421,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'clearColors' });
   };
 
-  const selectByColumn = (
-    column: string,
-    opts: { labelIndices?: number[]; valueRanges?: Float32Array },
-  ): void => {
-    // Clone valueRanges before transferring so the caller's buffer isn't detached
-    const ranges = opts.valueRanges ? new Float32Array(opts.valueRanges) : undefined;
-    const transfers: Transferable[] = [];
-    if (ranges) transfers.push(ranges.buffer);
-    sendToData(
-      dataWorker,
-      { type: 'selectByColumn', column, labelIndices: opts.labelIndices, valueRanges: ranges },
-      transfers,
-    );
-  };
-
-  const setSelectionMask = (mask: Uint32Array): void => {
-    sendToGpu(gpuWorker, { type: 'setSelectionMask', mask }, [mask.buffer]);
-  };
-
-  const lassoSelect = (polygon: Float32Array): void => {
-    sendToGpu(gpuWorker, { type: 'lassoSelect', polygon }, [polygon.buffer]);
-  };
-
-  const clearSelection = (): void => {
-    sendToGpu(gpuWorker, { type: 'clearSelectionMask' });
-  };
+  const selection = createSelectionRequests(
+    (msg, transfers) => sendToData(dataWorker, msg, transfers),
+    (msg, transfers) => sendToGpu(gpuWorker, msg, transfers),
+  );
 
   const computePCA = (): void => {
     sendToGpu(gpuWorker, { type: 'computePCA' });
@@ -571,10 +573,11 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     encodeColor2D,
     setBackgroundColor,
     clearColor,
-    selectByColumn,
-    setSelectionMask,
-    lassoSelect,
-    clearSelection,
+    selectByColumn: selection.selectByColumn,
+    setSelectionMask: selection.setSelectionMask,
+    lassoSelect: selection.lassoSelect,
+    clearSelection: selection.clearSelection,
+    latestSelectionId: selection.latestSelectionId,
     getProjectedPositions,
     getPointData,
     computePCA,

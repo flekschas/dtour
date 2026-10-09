@@ -43,6 +43,8 @@ export const dtourSpecSchema = z.object({
   centering: z.enum(['midrange', 'mean']).optional(),
   /** Numeric columns an auto-generated tour uses. `null` uses all. A precomputed tour ignores it. */
   tourDimensions: z.array(z.string()).nullable().optional(),
+  /** Views in the same browser with the same id share their selection. `null` doesn't link. */
+  link: z.string().min(1).nullable().optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
@@ -260,4 +262,5 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   themeMode: 'dark',
   centering: 'midrange',
   tourDimensions: null,
+  link: null,
 };

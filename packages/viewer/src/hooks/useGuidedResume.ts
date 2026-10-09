@@ -7,7 +7,7 @@ import {
   basisTransitioningAtom,
   currentBasisAtom,
   guidedSuspendedAtom,
-  tourFamilyAtom,
+  orthonormalizeAtom,
   tourPositionAtom,
   tourTraversalAtom,
 } from '../state/atoms.ts';
@@ -85,7 +85,7 @@ export const useGuidedResume = (
       // interpolation while the blend is still active.
 
       const readPos = getPosition ?? (() => store.get(tourPositionAtom));
-      const ortho = store.get(tourFamilyAtom) !== 'sequential';
+      const ortho = store.get(orthonormalizeAtom);
       const startTime = performance.now();
       const scratch = new Float32Array(dims * 2);
 
