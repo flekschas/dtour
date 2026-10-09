@@ -1325,7 +1325,7 @@ def test_from_parquet_no_tour_raises():
 
 
 def test_little_tour_records_dataframe_feature_names():
-    import polars as pl
+    pl = pytest.importorskip("polars")
 
     df = pl.DataFrame(make_data(n=50, p=3), schema=["a", "b", "c"]).with_columns(
         pl.lit("x").alias("label")

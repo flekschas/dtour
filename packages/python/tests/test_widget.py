@@ -241,7 +241,7 @@ def _embedding_tour(n: int = 30) -> TourResult:
 
 
 def _labeled_data(n: int = 30):
-    import polars as pl
+    pl = pytest.importorskip("polars")
 
     rng = np.random.default_rng(1)
     return pl.DataFrame(
@@ -261,7 +261,7 @@ def test_widget_tour_without_data_sends_embedding():
 
 
 def test_widget_keeps_data_that_starts_with_embedding():
-    import polars as pl
+    pl = pytest.importorskip("polars")
 
     tour = _embedding_tour()
     data = pl.DataFrame({f"e{i}": tour.embedding[:, i] for i in range(3)}).with_columns(
@@ -329,13 +329,11 @@ def test_widget_keeps_state_when_update_fails():
 
 
 def test_widget_snapshots_data():
-    import pyarrow as pa
+    import arro3.core as ac
 
     X = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
-    reader = pa.RecordBatchReader.from_batches(
-        pa.schema([("a", pa.float32()), ("b", pa.float32()), ("c", pa.float32())]),
-        [pa.record_batch([pa.array(X[:, i]) for i in range(3)], names=["a", "b", "c"])],
-    )
+    reader = ac.Table.from_pydict({name: X[:, i].copy() for i, name in enumerate("abc")})
+    reader = reader.to_reader()  # can be read only once
     assert Widget(reader, little_tour(X)).save_spec_to_parquet().num_rows == 30
 
     w = Widget(X, little_tour(X))
@@ -364,13 +362,12 @@ def test_widget_unnamed_embedding_and_numpy_data():
 def test_widget_reads_ipc_file_bytes():
     import io
 
-    import pyarrow as pa
-    import pyarrow.ipc
+    import arro3.core as ac
+    import arro3.io
 
-    table = _labeled_data().to_arrow()
     buf = io.BytesIO()
-    with pa.ipc.new_file(buf, table.schema) as writer:
-        writer.write_table(table)
+    arro3.io.write_ipc(ac.Table.from_arrow(_labeled_data()), buf)
+    assert buf.getvalue()[:6] == b"ARROW1"
     w = Widget(buf.getvalue(), _embedding_tour())
     assert _sent_columns(w) == ["E1", "E2", "E3", "f1", "f2", "label"]
 

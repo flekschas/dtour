@@ -7,7 +7,6 @@ from pathlib import Path
 import arro3.core as ac
 import arro3.io
 import numpy as np
-import polars as pl
 import pytest
 from dtour.spec import (
     add_spec_to_parquet,
@@ -306,7 +305,9 @@ def test_widget_save_spec_with_tour():
     tour = little_tour(X)
     tour.feature_names = ["a", "b", "c", "d"]
     w = Widget(tour=tour)
-    table = w.save_spec_to_parquet(pl.DataFrame(X, schema=["a", "b", "c", "d"]))
+    table = w.save_spec_to_parquet(
+        ac.Table.from_pydict({name: X[:, i].copy() for i, name in enumerate("abcd")})
+    )
     meta = json.loads(table.schema.metadata_str["dtour"])
     assert "tour" in meta
     assert meta["tour"]["nDims"] == 4
@@ -338,7 +339,12 @@ def test_widget_save_spec_embedding_tour_dimensions():
     from dtour.widget import Widget
 
     tour = _embedding_tour()
-    data = pl.DataFrame({"extra": np.arange(50, dtype=np.float32), "label": ["x"] * 50})
+    data = ac.Table.from_pydict(
+        {
+            "extra": np.arange(50, dtype=np.float32),
+            "label": ac.Array(["x"] * 50, type=ac.DataType.string()),
+        }
+    )
     w = Widget(data, tour)
     table = w.save_spec_to_parquet()
     names = ["embedding_0", "embedding_1", "embedding_2"]
@@ -353,4 +359,6 @@ def test_widget_save_spec_rejects_table_without_tour_columns():
     tour = _embedding_tour()
     w = Widget(tour=tour)
     with pytest.raises(ValueError, match="lacks the columns"):
-        w.save_spec_to_parquet(pl.DataFrame({"label": ["x"] * 50}))
+        w.save_spec_to_parquet(
+            ac.Table.from_pydict({"label": ac.Array(["x"] * 50, type=ac.DataType.string())})
+        )
