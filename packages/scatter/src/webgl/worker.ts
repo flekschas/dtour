@@ -1732,6 +1732,9 @@ self.onmessage = (event: MessageEvent<MainToGpu>): void => {
         preserveDrawingBuffer: false,
       });
       if (!mainGl) throw new Error('WebGL2 not supported');
+      mainCanvas.addEventListener('webglcontextlost', () => {
+        postMain({ type: 'lost', message: 'WebGL context lost' });
+      });
 
       const floatExt = mainGl.getExtension('EXT_color_buffer_float');
       if (!floatExt) {

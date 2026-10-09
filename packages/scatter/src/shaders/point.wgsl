@@ -253,9 +253,11 @@ fn vs_main(
 
   // Scale opacity by zoom² to keep constant visual fill density (Reusser).
   // Only applied for auto-computed opacity; manual values are used as-is.
+  // Capped at 1 so a lone point never exceeds its own color; above 1, channels
+  // clip unevenly and shift the hue (e.g., orange turns yellow).
   let z = camera.zoom * camera.inset_zoom;
   let zoom_scale = select(1.0, z * z, uni.scale_opacity_by_zoom > 0.5);
-  let eff_opacity = uni.opacity * zoom_scale;
+  let eff_opacity = min(uni.opacity * zoom_scale, 1.0);
 
   // Resolve per-point color from LUT
   var col: vec4f;

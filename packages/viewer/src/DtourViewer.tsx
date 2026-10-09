@@ -19,6 +19,7 @@ import { Gallery } from './components/Gallery.tsx';
 import { GrandTourExitButtons } from './components/GrandTourExitButtons.tsx';
 import { LassoOverlay } from './components/LassoOverlay.tsx';
 import { RevertCameraButton } from './components/RevertCameraButton.tsx';
+import { Button } from './components/ui/button.tsx';
 import { useAnimatePosition } from './hooks/useAnimatePosition.ts';
 import { useGrandTour } from './hooks/useGrandTour.ts';
 import { useGuidedResume } from './hooks/useGuidedResume.ts';
@@ -110,11 +111,12 @@ export type DtourViewerProps = {
    *  and scales content to center it in the visible area below the toolbar.
    *  Animates smoothly to 0 in zen mode. Default 0. */
   toolbarHeight?: number | undefined;
-  /** Called when the scatter instance is created (or null on destroy). */
+  /** Called when the scatter instance is ready to render (or null on destroy). */
   onScatterReady?: ((scatter: ScatterInstance | null) => void) | undefined;
   /** Rendering backend. Resolved once on mount — changing after mount has no
    *  effect. 'auto' (the default) probes for WebGPU support (incl. the
-   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise. */
+   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise,
+   *  or when WebGPU fails to start. */
   backend?: 'webgpu' | 'webgl' | 'auto' | undefined;
 };
 
@@ -156,6 +158,7 @@ export const DtourViewer = ({
   const onScatterReadyRef = useRef(onScatterReady);
   onScatterReadyRef.current = onScatterReady;
   const [scatter, setScatter] = useState<ScatterInstance | null>(null);
+  const [renderFailed, setRenderFailed] = useState(false);
   const scatterRef = useRef<ScatterInstance | null>(null);
   const [previewCanvases, setPreviewCanvases] = useState<HTMLCanvasElement[]>([]);
   const [position, setPosition] = useAtom(tourPositionAtom);
@@ -535,9 +538,11 @@ export const DtourViewer = ({
   );
 
   // Effect A — Scatter lifecycle: create main canvas + scatter instance.
-  // Runs once, after backend detection resolves (resolvedBackend goes
-  // null→concrete exactly once and never changes after, so this fires a single
-  // time). store and setCanvasSize are stable singletons.
+  // Runs after backend detection resolves, and once more if an auto-detected
+  // WebGPU renderer fails to start and falls back to WebGL. The instance is
+  // only shared (setScatter) once it's ready, so data isn't transferred to a
+  // renderer that is about to be replaced. store and setCanvasSize are stable
+  // singletons.
   // NOTE: This effect is NOT StrictMode-safe. transferControlToOffscreen()
   // and ArrayBuffer transfers are one-shot ownership operations that cannot
   // survive StrictMode's mount→cleanup→remount cycle. Consumers must either
@@ -565,16 +570,28 @@ export const DtourViewer = ({
       canvas: mainCanvas,
       zoom: store.get(cameraZoomAtom),
     });
-    scatterRef.current = instance;
-    setScatter(instance);
-    onScatterReadyRef.current?.(instance);
-    // Expose scatter instance for dev tools and benchmark automation
-    if (import.meta.env.DEV || (globalThis as Record<string, unknown>).__dtourBenchmarkMode) {
-      (globalThis as Record<string, unknown>).scatter = instance;
-    }
 
+    let ready = false;
     instance.subscribe((s: ScatterStatus) => {
+      if (s.type === 'error' && !ready && backend === 'auto' && resolvedBackend === 'webgpu') {
+        console.warn(`WebGPU failed to start, falling back to WebGL: ${s.message}`);
+        setResolvedBackend('webgl');
+        return;
+      }
       onStatusRef.current?.(s);
+      if (s.type === 'ready') {
+        ready = true;
+        scatterRef.current = instance;
+        setScatter(instance);
+        onScatterReadyRef.current?.(instance);
+        // Expose scatter instance for dev tools and benchmark automation
+        if (import.meta.env.DEV || (globalThis as Record<string, unknown>).__dtourBenchmarkMode) {
+          (globalThis as Record<string, unknown>).scatter = instance;
+        }
+      }
+      if ((s.type === 'error' && !ready) || s.type === 'lost') {
+        setRenderFailed(true);
+      }
       if (s.type === 'pcaResult') {
         setPcaResult({ eigenvectors: s.eigenvectors, numDims: s.numDims });
       }
@@ -1186,6 +1203,18 @@ export const DtourViewer = ({
                 visibility={sliderVisibility}
               />
             </div>
+          </div>
+        )}
+
+        {renderFailed && (
+          <div
+            role="alert"
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-dtour-bg p-4 text-center text-sm text-dtour-text"
+          >
+            <p>Rendering failed. Reloading the page usually fixes this.</p>
+            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+              Reload page
+            </Button>
           </div>
         )}
       </div>

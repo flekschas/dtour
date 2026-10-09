@@ -348,7 +348,7 @@ export const Gallery = ({
                 onClick={visible ? () => handleClick(keyframe) : undefined}
                 onKeyDown={undefined}
                 className={cn(
-                  'overflow-hidden border-2 border-dtour-border transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
+                  'overflow-hidden border-2 border-dtour-border bg-dtour-bg transition-[border-color,box-shadow] duration-200 ease-in-out z-20 relative group',
                   hasLabelBelow ? (isBottomEdge ? 'rounded-b' : 'rounded-t') : 'rounded',
                   visible ? 'block cursor-pointer' : 'hidden',
                 )}

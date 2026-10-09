@@ -209,9 +209,11 @@ void main() {
 
   // Scale opacity by zoom^2 for constant visual fill density (Reusser).
   // Only applied for auto-computed opacity; manual values are used as-is.
+  // Capped at 1 so a lone point never exceeds its own color; above 1, channels
+  // clip unevenly and shift the hue (e.g., orange turns yellow).
   float z = u_zoom * u_insetZoom;
   float zoomScale = u_scaleOpacityByZoom > 0.5 ? z * z : 1.0;
-  v_effOpacity = u_opacity * zoomScale;
+  v_effOpacity = min(u_opacity * zoomScale, 1.0);
 
   // Resolve per-point color from LUT
   if (u_colorMode == 1) {

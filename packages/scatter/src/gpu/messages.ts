@@ -112,6 +112,8 @@ export type GpuToMain =
   | { type: 'ready' }
   | { type: 'rendered'; viewIndex: number }
   | { type: 'error'; message: string }
+  // The GPU device or WebGL context is gone; the renderer can't draw anymore.
+  | { type: 'lost'; message: string }
   | {
       type: 'pcaResult';
       eigenvectors: Float32Array[];

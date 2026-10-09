@@ -94,7 +94,8 @@ export type DtourProps = {
   /** Called when the viewer is ready with an API handle for programmatic control. */
   onReady?: (api: DtourHandle) => void;
   /** Rendering backend. Default 'auto' — probes for WebGPU (incl. the
-   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise. */
+   *  float32-blendable feature) and falls back to the WebGL2 backend otherwise,
+   *  or when WebGPU fails to start. */
   backend?: 'webgpu' | 'webgl' | 'auto';
   /** Tour family: hyperdimensional (one high-D space) or sequential (multiple 2D embeddings). */
   tourFamily?: 'hyperdimensional' | 'sequential';

@@ -477,7 +477,7 @@ const throttledRenderMainView = (): boolean => {
       // Device lost — unblock the backpressure gate so future attempts
       // can detect the lost device rather than silently dropping frames.
       gpuReady = true;
-      postMain({ type: 'error', message: 'WebGPU device lost during rendering' });
+      postMain({ type: 'lost', message: 'WebGPU device lost during rendering' });
     },
   );
   return true;
@@ -2020,6 +2020,9 @@ self.onmessage = async (event: MessageEvent<MainToGpu>): Promise<void> => {
   if (msg.type === 'init') {
     try {
       const { device } = await initDevice();
+      device.lost.then((info) => {
+        if (info.reason !== 'destroyed') postMain({ type: 'lost', message: info.message });
+      });
 
       const mainView = configureCanvas(msg.canvas, device);
       const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
