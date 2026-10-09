@@ -48,6 +48,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 ### scatter
 
 - fix: treat string columns whose first value is null as categorical
+- fix: category colors no longer shift when zooming in (e.g., orange turning yellow). Auto opacity still grows with zoom but now stops at 1
 
 ### viewer
 
