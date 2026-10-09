@@ -3,7 +3,8 @@
 // Same logic as tonemap.wgsl.
 //
 // Mode 0 (additive): per-channel exponential compression 1-exp(-x).
-//   Preserves hue ratios, dense regions desaturate toward white.
+//   Dense regions desaturate toward white, which also shifts the hue
+//   (weaker channels catch up with the strongest).
 // Mode 1 (normal / subtractive): simple clamp to [0,1].
 
 precision highp float;

@@ -83,7 +83,7 @@ fn vs_main(
   let offset = vec2f(q.x / camera.aspect, q.y) * (point_size * 0.5);
 
   let z = camera.zoom * camera.inset_zoom;
-  let eff_opacity = uni.opacity * z * z;
+  let eff_opacity = min(uni.opacity * z * z, 1.0);
 
   var col: vec4f;
   if uni.usePerPointColor > 0.5 {
