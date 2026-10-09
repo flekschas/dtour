@@ -19,9 +19,9 @@ import preflightCss from './preflight.css?inline';
 // Traitlets (snake_case) ↔ DtourSpec (camelCase)
 // ---------------------------------------------------------------------------
 
-/** snake_case form of a camelCase string type, e.g. 'cameraPanX' → 'camera_pan_x'. */
+/** snake_case form of a camelCase string type, e.g. 'pointColorMap2d' → 'point_color_map_2d'. */
 type SnakeCase<S extends string> = S extends `${infer Head}${infer Tail}`
-  ? `${Head extends Lowercase<Head> ? Head : `_${Lowercase<Head>}`}${SnakeCase<Tail>}`
+  ? `${Head extends Lowercase<Head> ? (Head extends `${number}` ? `_${Head}` : Head) : `_${Lowercase<Head>}`}${SnakeCase<Tail>}`
   : S;
 
 /** Traitlets that mirror DtourSpec fields. Each trait name is its spec key in snake_case. */
@@ -44,6 +44,7 @@ const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
   'min_point_size',
   'point_color',
   'point_color_by',
+  'point_color_map_2d',
   'camera_pan_x',
   'camera_pan_y',
   'camera_zoom',
@@ -56,7 +57,7 @@ const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
 ];
 
 const toSpecKey = (trait: string) =>
-  trait.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()) as keyof DtourSpec;
+  trait.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase()) as keyof DtourSpec;
 
 // ---------------------------------------------------------------------------
 // Helpers

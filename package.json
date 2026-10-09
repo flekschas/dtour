@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:widget": "pnpm --filter @dtour/python-widget... build",
+    "build:mcpb": "bash scripts/build-mcpb.sh",
     "predev": "pnpm --filter @dtour/viewer build",
     "dev": "pnpm --parallel --filter @dtour/viewer --filter webapp dev",
     "lint:js": "biome check .",

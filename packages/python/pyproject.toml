@@ -21,7 +21,15 @@ dependencies = [
   "scikit-learn>=1.7",
 ]
 
+[project.scripts]
+dtour-mcp = "dtour.mcp_server:main"
+
 [project.optional-dependencies]
+# The MCP server (`dtour-mcp`)
+mcp = [
+  "mcp>=2.3",
+  "polars>=1.0",
+]
 umap = [
   "umap-learn>=0.5",
   "numba>=0.61",
@@ -43,6 +51,7 @@ demo = [
   "matplotlib>=3.10.8",
 ]
 dev = [
+  "mcp>=2.3",
   "umap-learn>=0.5",
   "numba>=0.61",
   "pymde>=0.1.0",

@@ -1,5 +1,5 @@
 import type { DtourSpec } from '@dtour/viewer';
-import { Dtour } from '@dtour/viewer';
+import { DTOUR_DEFAULTS, Dtour, parseEmbeddedConfig } from '@dtour/viewer';
 import {
   GithubLogoIcon,
   PlayCircleIcon,
@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 import { CONTENT_TOP_VH } from './constants.ts';
+import { readUrlSpec, URL_SPEC_KEYS, writeUrlSpec } from './url-spec.ts';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'done';
@@ -27,7 +28,7 @@ const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
 type ExampleDataset = {
   label: string;
   /** Name for loading the example with `?dataset=<slug>`. */
-  slug?: string;
+  slug: string;
   fileName: string;
   numPoints: string;
   numDims: string;
@@ -126,6 +127,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Single Cell RNA-seq',
+    slug: 'single-cell-rna-seq',
     preview: 'single-cell-rna-seq',
     fileName: 'lamanno2021-pca-tour.pq',
     url: `${REMOTE}/lamanno2021-pca-tour.pq`,
@@ -138,6 +140,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'Image Caption CLIP',
+    slug: 'image-caption-clip',
     preview: 'image-caption-clip',
     fileName: 'sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq',
     url: `${REMOTE}/sharegpt4v-coco-clip-joint-embeddings-umap-dense-2d-all-alphas-tour.pq`,
@@ -150,6 +153,7 @@ const EXAMPLES: ExampleDataset[] = [
   {
     type: 'remote',
     label: 'arXiv papers',
+    slug: 'arxiv-papers',
     preview: 'arxiv-papers',
     fileName: 'arxiv-sequential-embedding-model-tour.pq',
     url: `${REMOTE}/arxiv-sequential-embedding-model-tour.pq`,
@@ -253,6 +257,38 @@ function savePersistedSpec(fileName: string, spec: Required<DtourSpec>): void {
   } catch {}
 }
 
+function replaceUrl(params: URLSearchParams): void {
+  const query = params.toString();
+  history.replaceState(
+    history.state,
+    '',
+    `${location.pathname}${query ? `?${query}` : ''}${location.hash}`,
+  );
+}
+
+/** Write the settings that differ from the defaults and the file's own settings to the page URL. */
+function writeSpecToUrl(spec: DtourSpec, fileName: string, embeddedSpec: DtourSpec): void {
+  const params = new URLSearchParams(location.search);
+  // dtour.dev never applies a file's theme, so the theme's baseline is the default
+  writeUrlSpec(params, spec, {
+    ...DTOUR_DEFAULTS,
+    ...exampleDefaultSpec(fileName),
+    ...embeddedSpec,
+    themeMode: DTOUR_DEFAULTS.themeMode,
+  });
+  replaceUrl(params);
+}
+
+/** Point the page URL at an example dataset, or at no data, without settings. */
+function setUrlData(datasetSlug: string | null): void {
+  const params = new URLSearchParams(location.search);
+  params.delete('url');
+  params.delete('dataset');
+  for (const key of URL_SPEC_KEYS) params.delete(key);
+  if (datasetSlug) params.set('dataset', datasetSlug);
+  replaceUrl(params);
+}
+
 function csvToArrow(csvBuffer: ArrayBuffer): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const worker = new CsvWorkerFactory();
@@ -272,7 +308,16 @@ function csvToArrow(csvBuffer: ArrayBuffer): Promise<ArrayBuffer> {
   });
 }
 
-// URL parameters for benchmark automation
+/**
+ * Where shown data came from. `link`: the page URL named it on page load.
+ * `example`: picked from the examples. `local`: a file from the user's computer.
+ */
+type DataSource = 'link' | 'example' | 'local';
+
+/** One load of data. `id` changes on every load, even of the same file. */
+type DataLoad = { id: number; fileName: string; source: DataSource };
+
+// URL parameters for linked data, settings, and benchmark automation
 const urlParams = new URLSearchParams(globalThis.location?.search ?? '');
 const benchmarkMode = urlParams.has('benchmark');
 const datasetSlug = urlParams.get('dataset');
@@ -289,7 +334,7 @@ if (benchmarkMode) {
 
 const App = () => {
   const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
-  const [fileName, setFileName] = useState<string | undefined>(undefined);
+  const [dataLoad, setDataLoad] = useState<DataLoad | null>(null);
   const [tourDescription, setTourDescription] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -310,20 +355,48 @@ const App = () => {
   const logoPhaseRef = useRef(logoPhase);
   logoPhaseRef.current = logoPhase;
   const loadIdRef = useRef(0);
+  // The latest load, set before React renders it
+  const dataLoadRef = useRef<DataLoad | null>(null);
+  // Settings the loaded file implies. Like defaults, they stay out of the URL.
+  const embeddedSpecRef = useRef<DtourSpec>({});
+  // Theme the viewer last reported. Only theme changes in the viewer become the saved preference.
+  const shownThemeRef = useRef<ThemeMode | null>(null);
 
-  // Theme: persisted globally in localStorage, synced from Dtour via onSpecChange
+  // Theme: the saved preference, a link's theme, or the viewer's, synced via onSpecChange
   const [themeMode, setThemeMode] = useState<ThemeMode>(readPersistedTheme);
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() =>
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   );
 
-  // Derive spec from fileName — recomputed synchronously when fileName changes.
-  // Combined with key={fileName} on <Dtour>, this guarantees initStoreFromSpec
-  // runs with the persisted spec before the first render (no flash of defaults).
+  // Derive spec from each load — recomputed synchronously for every load.
+  // Combined with key={dataLoad.id} on <Dtour>, this guarantees initStoreFromSpec
+  // runs with the spec before the first render (no flash of defaults).
+  // A link shows exactly its view: settings it omits use the defaults, not saved ones.
   const spec = useMemo<DtourSpec>(() => {
-    const persisted = fileName ? loadPersistedSpec(fileName) : {};
-    return { ...exampleDefaultSpec(fileName), ...persisted, themeMode: readPersistedTheme() };
-  }, [fileName]);
+    if (!dataLoad) return { themeMode: readPersistedTheme() };
+    const { fileName, source } = dataLoad;
+    if (source === 'link') {
+      return {
+        ...exampleDefaultSpec(fileName),
+        themeMode: DTOUR_DEFAULTS.themeMode,
+        ...readUrlSpec(new URLSearchParams(location.search)),
+      };
+    }
+    return {
+      ...exampleDefaultSpec(fileName),
+      ...loadPersistedSpec(fileName),
+      themeMode: readPersistedTheme(),
+    };
+  }, [dataLoad]);
+
+  const specRef = useRef(spec);
+  specRef.current = spec;
+
+  // The page takes each load's theme right away; the URL waits for the file's metadata
+  useEffect(() => {
+    shownThemeRef.current = spec.themeMode ?? null;
+    if (spec.themeMode) setThemeMode(spec.themeMode);
+  }, [spec]);
 
   useEffect(() => {
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -350,79 +423,105 @@ const App = () => {
 
   const handleSpecChange = useCallback(
     (newSpec: Required<DtourSpec>) => {
+      // A viewer that a newer load replaces may still report its settings
+      if (!dataLoad || dataLoad !== dataLoadRef.current) return;
       setThemeMode(newSpec.themeMode);
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, newSpec.themeMode);
-      } catch {}
-      if (fileName) {
-        savePersistedSpec(fileName, newSpec);
+      // A link's theme doesn't replace the saved preference, but a change in the viewer does
+      if (newSpec.themeMode !== shownThemeRef.current) {
+        shownThemeRef.current = newSpec.themeMode;
+        try {
+          localStorage.setItem(THEME_STORAGE_KEY, newSpec.themeMode);
+        } catch {}
+      }
+      savePersistedSpec(dataLoad.fileName, newSpec);
+      // Until the file's own settings are known, the URL can't tell overrides from them
+      if (dataLoad.source !== 'local' && metadataReceivedRef.current) {
+        writeSpecToUrl(newSpec, dataLoad.fileName, embeddedSpecRef.current);
       }
     },
-    [fileName],
+    [dataLoad],
   );
 
-  const loadFile = useCallback(async (file: File) => {
-    setHomeOpen(false);
-    const id = ++loadIdRef.current;
-    const isCsv = file.name.toLowerCase().endsWith('.csv');
-    if (isCsv) setLoading(true);
-
-    try {
-      let buffer = await file.arrayBuffer();
-      if (id !== loadIdRef.current) return;
-
-      if (isCsv) {
-        buffer = await csvToArrow(buffer);
-        if (id !== loadIdRef.current) return;
-      }
-
+  const showData = useCallback(
+    (buffer: ArrayBuffer, fileName: string, source: DataSource, description?: string) => {
+      dataLoadRef.current = { id: (dataLoadRef.current?.id ?? 0) + 1, fileName, source };
+      embeddedSpecRef.current = {};
       metadataReceivedRef.current = false;
       gpuReadyRef.current = false;
-      setTourDescription(undefined);
-      setFileName(file.name);
+      setTourDescription(description);
+      setDataLoad(dataLoadRef.current);
       setData(buffer);
       setParsing(true);
-    } catch (err) {
-      if (id !== loadIdRef.current) return;
-      console.error('Failed to load file:', err);
-    } finally {
-      if (isCsv && id === loadIdRef.current) setLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const handleLoadData = useCallback((buffer: ArrayBuffer, name: string) => {
-    const applyData = (b: ArrayBuffer) => {
-      metadataReceivedRef.current = false;
-      gpuReadyRef.current = false;
-      setTourDescription(undefined);
-      setFileName(name);
-      setData(b);
-      setParsing(true);
-    };
-
-    if (name.toLowerCase().endsWith('.csv')) {
-      setLoading(true);
+  const loadFile = useCallback(
+    async (file: File) => {
+      setHomeOpen(false);
       const id = ++loadIdRef.current;
-      csvToArrow(buffer)
-        .then((arrowBuffer) => {
-          if (id !== loadIdRef.current) return;
-          applyData(arrowBuffer);
-        })
-        .catch((err) => {
-          if (id !== loadIdRef.current) return;
-          console.error('Failed to parse CSV:', err);
-        })
-        .finally(() => {
-          if (id === loadIdRef.current) setLoading(false);
-        });
-      return;
-    }
+      const isCsv = file.name.toLowerCase().endsWith('.csv');
+      if (isCsv) setLoading(true);
 
-    applyData(buffer);
-  }, []);
+      try {
+        let buffer = await file.arrayBuffer();
+        if (id !== loadIdRef.current) return;
+
+        if (isCsv) {
+          buffer = await csvToArrow(buffer);
+          if (id !== loadIdRef.current) return;
+        }
+
+        setUrlData(null);
+        showData(buffer, file.name, 'local');
+      } catch (err) {
+        if (id !== loadIdRef.current) return;
+        console.error('Failed to load file:', err);
+      } finally {
+        if (isCsv && id === loadIdRef.current) setLoading(false);
+      }
+    },
+    [showData],
+  );
+
+  const loadBuffer = useCallback(
+    (buffer: ArrayBuffer, name: string, source: 'link' | 'local') => {
+      const applyData = (b: ArrayBuffer) => {
+        if (source === 'local') setUrlData(null);
+        showData(b, name, source);
+      };
+
+      if (name.toLowerCase().endsWith('.csv')) {
+        setLoading(true);
+        const id = ++loadIdRef.current;
+        csvToArrow(buffer)
+          .then((arrowBuffer) => {
+            if (id !== loadIdRef.current) return;
+            applyData(arrowBuffer);
+          })
+          .catch((err) => {
+            if (id !== loadIdRef.current) return;
+            console.error('Failed to parse CSV:', err);
+          })
+          .finally(() => {
+            if (id === loadIdRef.current) setLoading(false);
+          });
+        return;
+      }
+
+      applyData(buffer);
+    },
+    [showData],
+  );
+
+  const handleLoadData = useCallback(
+    (buffer: ArrayBuffer, name: string) => loadBuffer(buffer, name, 'local'),
+    [loadBuffer],
+  );
 
   const loadExample = useCallback(
-    async (example: ExampleDataset) => {
+    // `fromLink`: the page URL already names this example
+    async (example: ExampleDataset, fromLink = false) => {
       if (loading) return;
       setLoading(true);
       const id = ++loadIdRef.current;
@@ -465,12 +564,8 @@ const App = () => {
             ? `${example.worker}-${pointsParam}.arrow`
             : example.fileName;
 
-        metadataReceivedRef.current = false;
-        gpuReadyRef.current = false;
-        setTourDescription(example.tourDescription);
-        setFileName(effectiveName);
-        setData(buffer);
-        setParsing(true);
+        if (!fromLink) setUrlData(example.slug);
+        showData(buffer, effectiveName, fromLink ? 'link' : 'example', example.tourDescription);
       } catch (err) {
         if (id !== loadIdRef.current) return;
         console.error('Failed to load example:', err);
@@ -480,16 +575,16 @@ const App = () => {
         }
       }
     },
-    [loading],
+    [loading, showData],
   );
 
-  // Auto-load dataset from URL parameter (for benchmark automation).
+  // Load the data the page URL names with `?url=` or `?dataset=`.
   // Deferred until the logo draw completes so the worker doesn't compete
   // with the animation for main-thread resources.
   const loadExampleRef = useRef(loadExample);
   loadExampleRef.current = loadExample;
-  const handleLoadDataRef = useRef(handleLoadData);
-  handleLoadDataRef.current = handleLoadData;
+  const loadBufferRef = useRef(loadBuffer);
+  loadBufferRef.current = loadBuffer;
   const pendingAutoLoad = useRef(true);
   useEffect(() => {
     if (!pendingAutoLoad.current) return;
@@ -505,7 +600,7 @@ const App = () => {
         })
         .then((buffer) => {
           const name = urlParam.split('/').pop() || 'data.pq';
-          handleLoadDataRef.current(buffer, name);
+          loadBufferRef.current(buffer, name, 'link');
         })
         .catch((err) => console.error('Failed to load URL:', err))
         .finally(() => setLoading(false));
@@ -514,36 +609,48 @@ const App = () => {
     if (!datasetSlug) return;
     const example = EXAMPLES.find((e) => e.slug === datasetSlug);
     if (!example) {
-      const slugs = EXAMPLES.flatMap((e) => (e.slug ? [e.slug] : []));
+      const slugs = EXAMPLES.map((e) => e.slug);
       console.warn(`Unknown dataset slug: "${datasetSlug}". Valid: ${slugs.join(', ')}`);
       return;
     }
-    loadExampleRef.current(example);
+    loadExampleRef.current(example, true);
   }, [logoPhase]);
 
   // Expose readiness signal for Playwright.
   // We wait for the first 'rendered' event (not just 'metadata'), because bases
   // are installed in a later React effect and benchmark() requires state.tour.
   const metadataReceivedRef = useRef(false);
-  const handleStatus = useCallback((status: { type: string }) => {
-    if (status.type === 'metadata') {
-      metadataReceivedRef.current = true;
-    }
-    if (status.type === 'error') {
-      setParsing(false);
-    }
-    if (status.type === 'rendered' && metadataReceivedRef.current) {
-      (globalThis as Record<string, unknown>).__dtourReady = true;
-      gpuReadyRef.current = true;
-      // If logo is still animating, trigger move once draw is also complete.
-      // If logo is already done (subsequent loads), just clear parsing.
-      if (logoPhaseRef.current === 'done') {
-        setParsing(false);
-      } else if (drawCompleteRef.current) {
-        setLogoPhase('moving');
+  const handleStatus = useCallback(
+    (status: { type: string; metadata?: { embeddedConfig?: string } }) => {
+      if (status.type === 'metadata') {
+        metadataReceivedRef.current = true;
+        const config = parseEmbeddedConfig(status.metadata?.embeddedConfig);
+        embeddedSpecRef.current = { ...config?.spec };
+        // The viewer always traverses a sequential tour by parameter
+        if (config?.tour?.family === 'sequential') embeddedSpecRef.current.tourBy = 'parameter';
+        // Start the load with a URL that describes it, e.g. with the saved settings of a picked example
+        const load = dataLoadRef.current;
+        if (load && load.source !== 'local') {
+          writeSpecToUrl(specRef.current, load.fileName, embeddedSpecRef.current);
+        }
       }
-    }
-  }, []);
+      if (status.type === 'error') {
+        setParsing(false);
+      }
+      if (status.type === 'rendered' && metadataReceivedRef.current) {
+        (globalThis as Record<string, unknown>).__dtourReady = true;
+        gpuReadyRef.current = true;
+        // If logo is still animating, trigger move once draw is also complete.
+        // If logo is already done (subsequent loads), just clear parsing.
+        if (logoPhaseRef.current === 'done') {
+          setParsing(false);
+        } else if (drawCompleteRef.current) {
+          setLogoPhase('moving');
+        }
+      }
+    },
+    [],
+  );
 
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
@@ -597,7 +704,7 @@ const App = () => {
         onChange={handleFileSelect}
       />
       <Dtour
-        key={fileName}
+        key={dataLoad?.id}
         data={data}
         spec={spec}
         tourDescription={tourDescription}

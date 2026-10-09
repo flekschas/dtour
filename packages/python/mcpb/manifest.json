@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.4",
+  "name": "dtour",
+  "display_name": "dtour",
+  "version": "0.4.4",
+  "description": "Visually explore high-dimensional data through interactive tours of 2D projections",
+  "long_description": "Ask Claude to show a CSV, Parquet, or Arrow file as a dtour: an interactive tour through 2D projections (PCA, Laplacian Eigenmaps, or UMAP) that appears right in the chat. Files are read and tours computed on your computer. Claude sees column names and summaries of the points you select, which for a single point are its values.",
+  "author": {
+    "name": "Fritz Lekschas"
+  },
+  "homepage": "https://dtour.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flekschas/dtour"
+  },
+  "license": "MIT",
+  "icon": "icon.png",
+  "keywords": ["visualization", "high-dimensional data", "embeddings", "umap", "pca"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "src/server.py"]
+    }
+  },
+  "tools": [
+    {
+      "name": "visualize",
+      "description": "Show a CSV, Parquet, or Arrow file as an interactive dtour"
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}

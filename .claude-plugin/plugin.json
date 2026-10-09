@@ -1,0 +1,18 @@
+{
+  "name": "dtour",
+  "description": "Visually explore high-dimensional data through interactive tours of 2D projections: a skill for picking and building tours, and an MCP server that shows them inline in chat apps",
+  "author": {
+    "name": "Fritz Lekschas"
+  },
+  "homepage": "https://dtour.dev",
+  "repository": "https://github.com/flekschas/dtour",
+  "license": "MIT",
+  "keywords": ["visualization", "high-dimensional data", "embeddings", "umap", "pca"],
+  "agents": [],
+  "mcpServers": {
+    "dtour": {
+      "command": "uvx",
+      "args": ["--from", "dtour[mcp,umap]", "dtour-mcp"]
+    }
+  }
+}

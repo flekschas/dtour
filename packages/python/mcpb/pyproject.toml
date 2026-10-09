@@ -1,0 +1,7 @@
+# The environment Claude Desktop creates for the extension with `uv sync`
+[project]
+name = "dtour-mcpb"
+version = "0.4.4"
+# numba, which UMAP needs, lags behind new Python releases
+requires-python = ">=3.10,<3.14"
+dependencies = ["dtour[mcp,umap]==0.4.4"]

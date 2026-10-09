@@ -108,18 +108,20 @@ the Zod schema.
   pointOpacity: number | "auto",
   minPointSize: number,          // 1–20
   pointColor: [r, g, b],         // 0–1
-  pointColorBy: string | null,   // column name
-  pointColorMap: Record<string, string>,
+  pointColorBy: string | [x, y] | null,  // column name, or two numeric columns for a 2D colormap
+  pointColorMap: Record<string, string>,  // label → color
+  pointColorMap2d: "schumann" | "bremm" | "steiger" | "ziegler" | "teulingfig2" | "cubediagonal" | "oklab_polar",
   cameraPanX: number, cameraPanY: number, cameraZoom: number,
   centering: "midrange" | "mean",
   showLegend, showAxes: boolean,
   showTourDescription: boolean | null,
   themeMode: "light" | "dark" | "system",
+  tourDimensions: string[] | null,  // columns of an auto-generated tour; null: all
 }
 ```
 
 When `spec` changes, its set fields are pushed into the component. Settings embedded in a
-Parquet file apply only to fields that `spec` leaves unset. To fully reset the component
+Parquet file apply only to fields that `spec` leaves undefined; `null` overrides them. To fully reset the component
 for new data, remount it with `key={fileName}` (the dtour.dev webapp does this). Persist
 user changes from `onSpecChange`.
 
@@ -137,4 +139,5 @@ user changes from `onSpecChange`.
 The hosted app (`packages/webapp` in the repo) accepts Parquet, Arrow, and CSV files by
 drag-and-drop or file picker. `https://dtour.dev/?url=<encoded URL>` opens a remote
 file directly, skipping the intro. The file's host has to allow CORS. A failed fetch only
-logs to the browser console and leaves the start page up.
+logs to the browser console and leaves the start page up. Every `DtourSpec` field also
+works as a URL parameter (see the skill's "Link to a configured view").

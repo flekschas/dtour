@@ -1,0 +1,14 @@
+{
+  "name": "dtour",
+  "owner": {
+    "name": "Fritz Lekschas"
+  },
+  "description": "dtour: visually explore high-dimensional data through interactive tours",
+  "plugins": [
+    {
+      "name": "dtour",
+      "source": "./",
+      "description": "Visually explore high-dimensional data through interactive tours of 2D projections"
+    }
+  ]
+}

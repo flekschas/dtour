@@ -1,6 +1,6 @@
 # dtour: Web app
 
-This is the thin web frontend behind [dtour.dev](https://dtour.dev). It's a lightweight single-page [Vite](https://vitejs.dev) + React app that wraps the [`@dtour/viewer`](../viewer) `<Dtour>` component and adds only the shell around it: drag-and-drop / file-picker data loading, a set of curated demo datasets, and per-file spec persistence in `localStorage` (so a dataset reopens with the tour state, theme, and coloring you left it in).
+This is the thin web frontend behind [dtour.dev](https://dtour.dev). It's a lightweight single-page [Vite](https://vitejs.dev) + React app that wraps the [`@dtour/viewer`](../viewer) `<Dtour>` component and adds only the shell around it: drag-and-drop / file-picker data loading, a set of curated demo datasets, and per-file spec persistence in `localStorage` (so a dataset reopens with the tour state, theme, and coloring you left it in). Settings also live in the URL, named like the `DtourSpec` fields (e.g. `?url=…&pointColorBy=label`), so a link opens the data with the same settings. Projections dragged in manual mode or reached in grand mode are not part of the settings.
 
 It is **not published** (`private: true`) and exposes no importable API — all the reusable logic lives in [`@dtour/scatter`](../scatter) and [`@dtour/viewer`](../viewer). This package is just the deployable app that composes them.
 

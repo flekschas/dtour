@@ -97,6 +97,27 @@ def test_widget_tour_direction_validation():
         Widget(tour_direction="sideways")
 
 
+def test_widget_point_color_by_accepts_a_column_pair():
+    w = Widget(point_color_by=["x", "y"], point_color_map_2d="bremm")
+    assert w.point_color_by == ["x", "y"]
+    assert w.point_color_map_2d == "bremm"
+
+    with pytest.raises(Exception):
+        Widget(point_color_by=["x", "y", "z"])
+    with pytest.raises(Exception):
+        Widget(point_color_map_2d="rainbow")
+
+
+def test_widget_saves_2d_color():
+    from dtour.spec import read_spec_from_parquet
+
+    X = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
+    w = Widget(X, little_tour(X), point_color_by=["dim_0", "dim_1"], point_color_map_2d="ziegler")
+    spec = read_spec_from_parquet(w.save_spec_to_parquet())
+    assert spec["pointColorBy"] == ["dim_0", "dim_1"]
+    assert spec["pointColorMap2d"] == "ziegler"
+
+
 def test_widget_set_data_bytes():
     w = Widget()
     # Raw bytes passthrough — no conversion needed

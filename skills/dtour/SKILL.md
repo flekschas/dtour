@@ -1,6 +1,6 @@
 ---
 name: dtour
-description: Explore high-dimensional data and embeddings through steerable tours (guided, manual, and grand) of 2D projections as scatter plots in Jupyter/marimo, React, or dtour.dev. Use when someone wants to look at data with more than two numeric dimensions beyond a single 2D scatter, check whether UMAP/t-SNE structure is real, compare embeddings across models, hyperparameters, or time points, or is working with the `dtour` Python package or `@dtour/viewer`.
+description: Visually explore high-dimensional data and embeddings through interactive tours (guided, manual, and grand) of 2D projections as scatter plots in Jupyter/marimo, React, dtour.dev, or chat apps via the dtour MCP server. Use when someone wants to look at data with more than two numeric dimensions beyond a single 2D scatter, check whether UMAP/t-SNE structure is real, compare embeddings across models, hyperparameters, or time points, or is working with the `dtour` Python package or `@dtour/viewer`.
 ---
 
 # dtour
@@ -34,7 +34,8 @@ For data that is already 2D, use a regular scatter plot (e.g.
 
 | Situation | Surface |
 |---|---|
-| No code, a Parquet/Arrow/CSV file at hand | https://dtour.dev: drop the file in, or open `https://dtour.dev/?url=<encoded public file URL>`. The file's host must allow CORS; if the start page stays up, that is the likely cause |
+| The dtour MCP server's `visualize` tool is available, and a local file or URL at hand | Call `visualize(path, tour, columns, settings)`. The viewer opens in the chat, or the tool returns a browser link. Read the file's columns first, and leave IDs and integer-coded labels out of `columns` |
+| No code, a Parquet/Arrow/CSV file at hand | https://dtour.dev: drop the file in, or open `https://dtour.dev/?url=<encoded public file URL>` with settings as further parameters (see [Link to a configured view](#link-to-a-configured-view)). The file's host must allow CORS; if the start page stays up, that is the likely cause |
 | Python analysis in a Marimo or Jupyter notebook | `pip install dtour` → `dtour.Widget(...)`. See [references/python.md](references/python.md) |
 | A React app | `npm install @dtour/viewer` → `<Dtour data={buffer} />`. See [references/javascript.md](references/javascript.md) |
 
@@ -132,7 +133,9 @@ setting has a traitlet. The most useful ones:
 |---|---|---|
 | `tour_traversal` | `tourTraversal` | `"guided"` \| `"manual"` \| `"grand"` |
 | `tour_position`, `tour_playing`, `tour_speed` | `tourPosition`, `tourPlaying`, `tourSpeed` | 0–1, bool, 0.1–5 |
-| `point_color_by`, `color_map` (export: `point_color_map`) | `pointColorBy`, `pointColorMap` | column name, label → color |
+| `point_color_by`, `color_map` (export: `point_color_map`) | `pointColorBy`, `pointColorMap` | column name or `[x, y]` pair for a 2D colormap, label → color |
+| `point_color_map_2d` | `pointColorMap2d` | `"schumann"` \| `"bremm"` \| `"steiger"` \| `"ziegler"` \| `"teulingfig2"` \| `"cubediagonal"` \| `"oklab_polar"` |
+| `tour_dimensions` | `tourDimensions` | columns of an auto-generated tour |
 | `point_size`, `point_opacity` | `pointSize`, `pointOpacity` | number or `"auto"` |
 | `preview_count` | `previewCount` | 2–32, keyframes of an auto-generated tour |
 | `preview_size` | `previewSize` | `"auto"` \| `"small"` \| `"medium"` \| `"large"` |
@@ -142,8 +145,51 @@ setting has a traitlet. The most useful ones:
 | `camera_zoom`, `camera_pan_x/y` | `cameraZoom`, `cameraPanX/Y` | numbers |
 | `theme_mode` | `themeMode` | `"light"` \| `"dark"` \| `"system"` |
 
-dtour.dev has no way to set these through the link yet. To share a configured view,
-embed the settings in the file (see Sharing a result).
+## Link to a configured view
+
+dtour.dev reads every setting from URL parameters named like the React/Parquet fields, so you can hand someone a link that opens the data the way they
+need it:
+
+```
+https://dtour.dev/?url=<encoded file URL>&pointColorBy=cell_type&tourTraversal=manual
+```
+
+- Load the data with `url=<public file URL>` or `dataset=<example>` (`gaussian-blobs`,
+  `linked-rings`, `lorenz`, `fashion-mnist`, `news-headlines`, `single-cell`,
+  `single-cell-rna-seq`, `image-caption-clip`, `arxiv-papers`).
+- Write strings as plain text and everything else as JSON: `previewCount=8`,
+  `showAxes=true`, `pointColorBy=["x","y"]`, `tourDimensions=["a","b","c"]`,
+  `pointColorMap={"setosa":"#e69f00"}`. Write a string that reads as JSON, e.g. a
+  column named `1`, as a JSON string: `pointColorBy="1"`.
+- Percent-encode each value, e.g. with `encodeURIComponent` or
+  `urllib.parse.urlencode`.
+- Name only columns that exist in the file. Column names are case-sensitive, so read
+  the file's schema first if you don't know them.
+- An invalid value is ignored and logged to the browser console. Unknown parameters are
+  ignored silently, so check the spelling against the settings table above.
+- A link shows exactly its settings: those it sets override the file's embedded
+  settings, including `null` (`pointColorBy=null` turns off coloring the file sets).
+  Settings it omits use the file's embedded settings or the defaults, never what the
+  user last used for that file. Without `themeMode`, the view is dark.
+
+```py
+from urllib.parse import urlencode
+import json
+
+params = {
+    "url": "https://example.org/cells.parquet",
+    "pointColorBy": json.dumps(["UMAP_1", "UMAP_2"]),
+    "pointColorMap2d": "bremm",
+    "tourTraversal": "manual",
+}
+print(f"https://dtour.dev/?{urlencode(params)}")
+```
+
+As the user changes settings, dtour.dev writes them to the URL, leaving out those equal
+to the defaults or the file's embedded settings. Copying the address bar shares these
+settings and the guided tour position, but not a projection the user dragged in manual
+mode, the current grand tour projection, or the viridis/magma choice for numeric
+coloring.
 
 ## Reading a tour
 
@@ -170,7 +216,9 @@ Embed the tour and the widget settings into the Parquet file's metadata with
 `w.save_spec_to_parquet()`, which saves the widget's data, including any embedding
 columns (details in [references/python.md](references/python.md#saving-and-sharing)).
 The file then opens with the same tour and settings on dtour.dev or in React. In
-Python, `dtour.TourResult.from_parquet(path)` recovers the tour.
+Python, `dtour.TourResult.from_parquet(path)` recovers the tour. Once the file is
+public, a [dtour.dev link](#link-to-a-configured-view) can point at it with different
+settings.
 
 ## References
 

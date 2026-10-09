@@ -164,7 +164,16 @@ class Widget(anywidget.AnyWidget):
     ).tag(sync=True)
     min_point_size = t.Float(2.0).tag(sync=True)
     point_color = t.List(t.Float(), default_value=[0.25, 0.5, 0.9]).tag(sync=True)
-    point_color_by = t.Unicode(allow_none=True, default_value=None).tag(sync=True)
+    # A column name, or an [x, y] pair of numeric columns for a 2D colormap
+    point_color_by = t.Union(
+        [t.Unicode(), t.List(t.Unicode(), minlen=2, maxlen=2)],
+        allow_none=True,
+        default_value=None,
+    ).tag(sync=True)
+    point_color_map_2d = t.Enum(
+        ["schumann", "bremm", "steiger", "ziegler", "teulingfig2", "cubediagonal", "oklab_polar"],
+        default_value="schumann",
+    ).tag(sync=True)
     camera_pan_x = t.Float(0.0).tag(sync=True)
     camera_pan_y = t.Float(0.0).tag(sync=True)
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
@@ -521,6 +530,8 @@ class Widget(anywidget.AnyWidget):
             kwargs["point_color"] = self.point_color
         if self.point_color_by:
             kwargs["point_color_by"] = self.point_color_by
+        if self.point_color_map_2d != "schumann":
+            kwargs["point_color_map_2d"] = self.point_color_map_2d
         if self.camera_pan_x != 0.0:
             kwargs["camera_pan_x"] = self.camera_pan_x
         if self.camera_pan_y != 0.0:

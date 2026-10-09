@@ -31,6 +31,7 @@ import {
   metadataAtom,
   pointColorByAtom,
   predefinedTourAtom,
+  requestedTourDimensionsAtom,
   resolvedThemeAtom,
   showTourDescriptionAtom,
   tourByAtom,
@@ -60,7 +61,7 @@ export type DtourProps = {
   keyframes?: Float32Array[];
   /** Names of the numeric columns in the tour. With `keyframes`, the columns they
    *  project (default: the first p numeric columns). Without, the columns that
-   *  start out checked in the toolbar's column menu (default: all). */
+   *  start out checked in the toolbar's column menu (default: `spec.tourDimensions`). */
   tourDimensions?: string[];
   /** Arrow IPC ArrayBuffer with per-keyframe quality metrics (columns = metrics, rows = keyframes). */
   metrics?: ArrayBuffer;
@@ -80,7 +81,7 @@ export type DtourProps = {
   onLoadData?: (data: ArrayBuffer, fileName: string) => void;
   /** Called when the user clicks the toolbar logo. */
   onLogoClick?: () => void;
-  /** Fires when legend selection changes for a categorical color column. Reports selected label names or empty array when cleared. */
+  /** Fires when legend selection changes for a categorical color column. Reports selected label names, or an empty array when cleared or when the color column has no legend. */
   onSelectionChange?: (labels: string[]) => void;
   /** Fires when lasso selection completes. Reports the bit-packed selection mask (1 bit per point, Uint32Array). */
   onPointSelectionChange?: (mask: Uint32Array) => void;
@@ -276,25 +277,26 @@ const DtourInner = ({
     embeddedAppliedRef.current = false;
   }, [data]);
 
-  // Apply embedded spec fields that are NOT overridden by the prop spec
+  // Apply embedded spec fields the prop spec leaves undefined. Null is a value, e.g. no coloring
   useEffect(() => {
     if (!embeddedConfig || embeddedAppliedRef.current) return;
     embeddedAppliedRef.current = true;
 
     const fieldsToApply: DtourSpec = {};
     for (const [key, value] of Object.entries(embeddedConfig.spec)) {
-      if (spec?.[key as keyof DtourSpec] == null) {
+      if (spec?.[key as keyof DtourSpec] === undefined) {
         (fieldsToApply as Record<string, unknown>)[key] = value;
       }
     }
     applySpecToStore(store, fieldsToApply);
   }, [embeddedConfig, spec, store]);
 
-  // Sync colorMap prop → atom (embedded spec colorMap used as fallback)
+  // Sync colorMap → atom: the prop wins over the spec, which wins over the embedded spec
   const setColorMap = useSetAtom(colorMapAtom);
+  const specColorMap = spec?.pointColorMap;
   useEffect(() => {
-    setColorMap(colorMap ?? embeddedConfig?.spec?.pointColorMap ?? null);
-  }, [colorMap, embeddedConfig, setColorMap]);
+    setColorMap(colorMap ?? specColorMap ?? embeddedConfig?.spec?.pointColorMap ?? null);
+  }, [colorMap, specColorMap, embeddedConfig, setColorMap]);
 
   // Sync tour metadata: props take priority over embedded config. A rejected
   // tour's metadata doesn't describe the auto-generated tour shown instead.
@@ -374,11 +376,13 @@ const DtourInner = ({
 
   // Apply the tour dimensions → activeColumnsAtom so the toolbar shows which
   // numeric columns participate in the tour. A predefined tour uses the columns
-  // its keyframes resolved to. Keyed by value so a new array with the same names
-  // doesn't reset the user's column toggles.
+  // its keyframes resolved to; otherwise the prop wins over the spec. Keyed by
+  // value so a new prop array with the same names doesn't reset the user's column
+  // toggles, while every spec request applies, even one that matches what's shown.
   const setActiveColumns = useSetAtom(activeColumnsAtom);
   const predefinedTour = useAtomValue(predefinedTourAtom);
-  const activeDims = predefinedTour?.dimensions ?? tourDimensions;
+  const tourDimensionsRequest = useAtomValue(requestedTourDimensionsAtom);
+  const activeDims = predefinedTour?.dimensions ?? tourDimensions ?? tourDimensionsRequest.names;
   const tourDimsKey = activeDims?.join('\u0000');
   // biome-ignore lint/correctness/useExhaustiveDependencies: tourDimsKey stands in for activeDims
   useEffect(() => {
@@ -396,13 +400,16 @@ const DtourInner = ({
     if (indices.size >= 2) {
       setActiveColumns(indices);
     }
-  }, [metadata, tourDimsKey, setActiveColumns]);
+  }, [metadata, tourDimsKey, tourDimensionsRequest, setActiveColumns]);
 
   useEffect(() => {
-    if (!onSelectionChange) return;
+    if (!onSelectionChange || !metadata) return;
 
-    if (!pointColorBy || !metadata) return;
-    if (!metadata.categoricalColumnNames.includes(pointColorBy)) return;
+    // Without a categorical color column, there is no legend to select from
+    if (!pointColorBy || !metadata.categoricalColumnNames.includes(pointColorBy)) {
+      onSelectionChange([]);
+      return;
+    }
 
     if (!legendSelection || legendSelection.size === 0) {
       onSelectionChange([]);
