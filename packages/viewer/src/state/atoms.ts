@@ -123,6 +123,24 @@ export const color2dColumnsAtom = atom<[string, string] | null>(null);
 /** Which 2D colormap to use. */
 export const color2dMapAtom = atom<Colormap2DName>('schumann');
 
+/**
+ * Color encoding as one value: a column name, an [x, y] column pair for 2D
+ * coloring, or null. Reads null while a 2D pair is incomplete.
+ */
+export const colorEncodingAtom = atom(
+  (get): string | [string, string] | null => {
+    if (!get(color2dEnabledAtom)) return get(pointColorByAtom);
+    const columns = get(color2dColumnsAtom);
+    return columns?.[1] ? columns : null;
+  },
+  (_get, set, value: string | [string, string] | null) => {
+    const is2d = Array.isArray(value);
+    set(color2dEnabledAtom, is2d);
+    set(color2dColumnsAtom, is2d ? value : null);
+    set(pointColorByAtom, is2d ? null : value);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Background color — WebGPU clear color (RGB 0–1)
 // ---------------------------------------------------------------------------
@@ -227,6 +245,27 @@ export const embeddedConfigAtom = atom<EmbeddedConfig | null>(null);
  * (initial state before metadata loads or when all are enabled).
  */
 export const activeColumnsAtom = atom<Set<number> | null>(null);
+
+/**
+ * Tour columns requested through the spec, applied to {@link activeColumnsAtom}
+ * once metadata loads. Each request is a new object, so repeating one applies it again.
+ */
+export const requestedTourDimensionsAtom = atom<{ names: string[] | null }>({ names: null });
+
+/**
+ * Names of the columns an auto-generated tour uses, or null for all. Reads the
+ * requested columns until metadata loads and while a predefined tour is active.
+ */
+export const tourDimensionsAtom = atom(
+  (get): string[] | null => {
+    const meta = get(metadataAtom);
+    if (!meta || get(predefinedTourAtom)) return get(requestedTourDimensionsAtom).names;
+    const active = get(activeColumnsAtom);
+    if (active === null) return null;
+    return [...active].sort((a, b) => a - b).map((i) => meta.columnNames[i]!);
+  },
+  (_get, set, value: string[] | null) => set(requestedTourDimensionsAtom, { names: value }),
+);
 
 /**
  * Resolved active dimension indices — never null after metadata loads.

@@ -1,3 +1,4 @@
+import { COLORMAP_2D_NAMES } from '@dtour/scatter';
 import { z } from 'zod';
 import { MAX_PREVIEW_COUNT } from './layout/gallery-positions.ts';
 
@@ -25,8 +26,13 @@ export const dtourSpecSchema = z.object({
   pointOpacity: z.union([z.number().min(0).max(1), z.literal('auto')]).optional(),
   minPointSize: z.number().min(1).max(20).optional(),
   pointColor: z.tuple([z.number(), z.number(), z.number()]).optional(),
-  pointColorBy: z.string().nullable().optional(),
+  /** A column name, or an [x, y] pair of numeric columns for a 2D colormap. */
+  pointColorBy: z
+    .union([z.string(), z.tuple([z.string(), z.string()])])
+    .nullable()
+    .optional(),
   pointColorMap: z.record(z.string(), z.string()).optional(),
+  pointColorMap2d: z.enum(COLORMAP_2D_NAMES).optional(),
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
   cameraZoom: z.number().positive().optional(),
@@ -35,6 +41,8 @@ export const dtourSpecSchema = z.object({
   showTourDescription: z.boolean().nullable().optional(),
   themeMode: z.enum(['light', 'dark', 'system']).optional(),
   centering: z.enum(['midrange', 'mean']).optional(),
+  /** Numeric columns an auto-generated tour uses. `null` uses all. A precomputed tour ignores it. */
+  tourDimensions: z.array(z.string()).nullable().optional(),
 });
 
 export type DtourSpec = z.infer<typeof dtourSpecSchema>;
@@ -239,6 +247,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   pointColor: [0.25, 0.5, 0.9],
   pointColorBy: null,
   pointColorMap: {},
+  pointColorMap2d: 'schumann',
   cameraPanX: 0,
   cameraPanY: 0,
   cameraZoom: 1 / 1.5,
@@ -250,4 +259,5 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   tourSliderSpacing: 'equal',
   themeMode: 'dark',
   centering: 'midrange',
+  tourDimensions: null,
 };

@@ -130,7 +130,7 @@ def build_dtour_metadata(
     point_opacity: float | str | None = None,
     min_point_size: float | None = None,
     point_color: list[float] | None = None,
-    point_color_by: str | None = None,
+    point_color_by: str | list[str] | None = None,
     camera_pan_x: float | None = None,
     camera_pan_y: float | None = None,
     camera_zoom: float | None = None,
@@ -143,6 +143,7 @@ def build_dtour_metadata(
     theme_mode: str | None = None,
     centering: str | None = None,
     point_color_map: dict[str, str] | None = None,
+    point_color_map_2d: str | None = None,
     tour_dimensions: list[str] | None = None,
     tour: TourResult | None = None,
     **legacy_kwargs: Any,
@@ -185,8 +186,9 @@ def build_dtour_metadata(
         Smallest point size in pixels (1-20) when ``point_size`` is ``"auto"``.
     point_color : list[float], optional
         Uniform point color as ``[r, g, b]`` tuple (0-1).
-    point_color_by : str, optional
-        Column name for per-point color encoding.
+    point_color_by : str or list[str], optional
+        Column name for per-point color encoding, or an ``[x, y]`` pair of
+        numeric columns for a 2D colormap.
     camera_pan_x : float, optional
         Horizontal camera pan.
     camera_pan_y : float, optional
@@ -211,6 +213,10 @@ def build_dtour_metadata(
         ``"midrange"`` (default, ``(min+max)/2``) or ``"mean"`` (center of mass).
     point_color_map : dict, optional
         Label → hex color string mapping.
+    point_color_map_2d : str, optional
+        2D colormap when ``point_color_by`` is a column pair: ``"schumann"``,
+        ``"bremm"``, ``"steiger"``, ``"ziegler"``, ``"teulingfig2"``,
+        ``"cubediagonal"``, or ``"oklab_polar"``.
     tour_dimensions : list[str], optional
         Numeric column names that participate in the tour. Written as
         ``tour.dimensions`` in the JSON metadata. When omitted, a *tour*
@@ -248,6 +254,7 @@ def build_dtour_metadata(
         "point_color": point_color,
         "point_color_by": point_color_by,
         "point_color_map": point_color_map,
+        "point_color_map_2d": point_color_map_2d,
         "camera_pan_x": camera_pan_x,
         "camera_pan_y": camera_pan_y,
         "camera_zoom": camera_zoom,

@@ -39,7 +39,8 @@ w = dtour.Widget(
     point_opacity="auto",     # 0–1 or "auto"
     min_point_size=2.0,       # 1–20
     point_color=[0.25, 0.5, 0.9],
-    point_color_by=None,      # column name: string → categorical, numeric → continuous
+    point_color_by=None,      # column name, or [x, y] numeric columns for a 2D colormap
+    point_color_map_2d="schumann",  # 2D colormap, see Coloring
     color_map={},             # label → color, see build_color_map()
     tour_by="dimensions",     # "dimensions" | "pca" | "parameter"
     tour_traversal="guided",  # "guided" | "manual" | "grand"
@@ -265,9 +266,10 @@ be slow; cache `m.values` and rebuild with
   those labels.
 - **Numeric column**: a continuous colormap.
 - **Two numeric columns**: a 2D colormap, where position in a 2D color square encodes
-  both values. It is currently set in the toolbar's column menu ("2D" toggle, then
-  pick two columns), not from Python. Entering 2D mode preselects the first two numeric
-  columns.
+  both values. Pass a pair, `point_color_by=["x", "y"]`, or use the toolbar's column
+  menu ("2D" toggle, then pick two columns). `point_color_map_2d` picks the colormap:
+  `"schumann"` (default), `"bremm"`, `"steiger"`, `"ziegler"`, `"teulingfig2"`,
+  `"cubediagonal"`, or `"oklab_polar"`.
 
 A 2D colormap on one keyframe's coordinates is a strong tool for **sequential tours**.
 Color by the x/y columns of one frame (e.g. `frame1_x` and `frame1_y`; entering 2D mode

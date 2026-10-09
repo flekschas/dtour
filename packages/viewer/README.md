@@ -79,8 +79,9 @@ type DtourSpec = {
   pointOpacity?: number | "auto";     // 0–1, default "auto"
   minPointSize?: number;              // 1–20, default 2
   pointColor?: [number, number, number]; // default [0.25, 0.5, 0.9]
-  pointColorBy?: string | null;       // column name for categorical coloring
+  pointColorBy?: string | [string, string] | null; // column name, or [x, y] numeric columns for a 2D colormap
   pointColorMap?: Record<string, string>; // label → hex color
+  pointColorMap2d?: "schumann" | "bremm" | "steiger" | "ziegler" | "teulingfig2" | "cubediagonal" | "oklab_polar"; // default "schumann"
   cameraPanX?: number;                // default 0
   cameraPanY?: number;                // default 0
   cameraZoom?: number;                // default 1/1.5
@@ -89,6 +90,7 @@ type DtourSpec = {
   showAxes?: boolean;                 // default false
   showTourDescription?: boolean | null; // default null
   themeMode?: "light" | "dark" | "system"; // default "dark"
+  tourDimensions?: string[] | null;   // columns of an auto-generated tour, default null (all)
 };
 ```
 

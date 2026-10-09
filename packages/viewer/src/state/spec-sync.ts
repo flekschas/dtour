@@ -7,9 +7,10 @@ import {
   cameraPanYAtom,
   cameraZoomAtom,
   centeringAtom,
+  color2dMapAtom,
+  colorEncodingAtom,
   minPointSizeAtom,
   pointColorAtom,
-  pointColorByAtom,
   pointOpacityAtom,
   pointSizeAtom,
   previewCountAtom,
@@ -24,6 +25,7 @@ import {
   sliderVisibilityAtom,
   themeModeAtom,
   tourByAtom,
+  tourDimensionsAtom,
   tourDirectionAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -40,6 +42,8 @@ type SpecEntry<S, A> = {
   atom: WritableAtom<A, [A], void>;
   toAtom: (v: S) => A;
   fromAtom: (v: A) => S;
+  /** The atom stores a request, which must be recorded even when it matches what's shown. */
+  isRequest?: true;
 };
 
 function identity<T>(v: T): T {
@@ -66,7 +70,8 @@ const SPEC_ATOM_MAP = {
   pointSize: entry(pointSizeAtom),
   pointOpacity: entry(pointOpacityAtom),
   pointColor: entry(pointColorAtom),
-  pointColorBy: entry(pointColorByAtom),
+  pointColorBy: entry(colorEncodingAtom),
+  pointColorMap2d: entry(color2dMapAtom),
   minPointSize: entry(minPointSizeAtom),
   cameraPanX: entry(cameraPanXAtom),
   cameraPanY: entry(cameraPanYAtom),
@@ -82,6 +87,7 @@ const SPEC_ATOM_MAP = {
   tourSliderSpacing: entry(tourSliderSpacingAtom),
   themeMode: entry(themeModeAtom),
   centering: entry(centeringAtom),
+  tourDimensions: { ...entry(tourDimensionsAtom), isRequest: true },
 } as const;
 
 type SpecKey = keyof typeof SPEC_ATOM_MAP;
@@ -168,7 +174,7 @@ export function useSpecSync(
       const atomValue = (mapping as any).toAtom(value);
       // biome-ignore lint/suspicious/noExplicitAny: generic atom mapping
       const current = store.get(mapping.atom as any);
-      if (!shallowEqual(atomValue, current)) {
+      if ((mapping as SpecEntry<unknown, unknown>).isRequest || !shallowEqual(atomValue, current)) {
         // biome-ignore lint/suspicious/noExplicitAny: generic atom mapping
         store.set(mapping.atom as any, atomValue);
       }
