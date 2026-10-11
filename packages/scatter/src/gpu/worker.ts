@@ -333,6 +333,8 @@ const postColumnSelection = (
 
 /** Viewport scale applied to projected coordinates (maps [-0.5,0.5] → [-1,1]). */
 const VIEWPORT_SCALE = 2.0;
+/** Multiplies VIEWPORT_SCALE, see `setProjectionScale` */
+let projectionScale = 1;
 
 /** Pre-allocated working buffer for adjusted basis weights (reused across frames). */
 let adjBasisWeights: Float32Array | null = null;
@@ -378,19 +380,20 @@ const computeAdjustedBasis = (
     const range = Math.max(ranges[d]!, 1e-6);
     const bx = basis[d]!;
     const by = basis[dims + d]!;
-    const invRange = VIEWPORT_SCALE / range;
+    const scale = VIEWPORT_SCALE * projectionScale;
+    const invRange = scale / range;
 
     adjBasisWeights[d] = bx * invRange;
     adjBasisWeights[dims + d] = by * invRange;
 
     const normOffset = -centers[d]! / range;
-    biasX += normOffset * bx * VIEWPORT_SCALE;
-    biasY += normOffset * by * VIEWPORT_SCALE;
+    biasX += normOffset * bx * scale;
+    biasY += normOffset * by * scale;
 
     if (cols === 3) {
       const bz = basis[2 * dims + d]!;
       adjBasisWeights[2 * dims + d] = bz * invRange;
-      biasZ += normOffset * bz * VIEWPORT_SCALE;
+      biasZ += normOffset * bz * scale;
     }
   }
 
@@ -1156,7 +1159,13 @@ const onDataMessage = (event: MessageEvent<DataToGpu>): void => {
   }
 
   // Write projection params (used for on-demand lasso compute dispatch)
-  writeProjectionParams(device, projectionPipeline.paramsBuffer, rows, dims, 2.0);
+  writeProjectionParams(
+    device,
+    projectionPipeline.paramsBuffer,
+    rows,
+    dims,
+    VIEWPORT_SCALE * projectionScale,
+  );
 
   // Create adjusted basis buffer for inline vertex projection
   state.adjBasisBuffer = device.createBuffer({
@@ -1309,6 +1318,22 @@ const handleMessage = (msg: MainToGpu): void => {
       rotation: state.camera.rotation,
     };
     throttledRenderMainView();
+    return;
+  }
+
+  if (msg.type === 'setProjectionScale') {
+    projectionScale = msg.scale;
+    if (state.projectionResources) {
+      writeProjectionParams(
+        state.device,
+        state.projectionPipeline.paramsBuffer,
+        state.numPoints,
+        state.numDims,
+        VIEWPORT_SCALE * projectionScale,
+      );
+    }
+    throttledRenderMainView();
+    schedulePreviewRender();
     return;
   }
 

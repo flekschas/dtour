@@ -35,12 +35,14 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add a Claude Code plugin with the dtour skill and the MCP server (`/plugin install dtour --marketplace flekschas/dtour`)
 - feat: add a Claude Desktop extension for the MCP server, attached to each GitHub release as `dtour.mcpb`. Opening it installs the server; Claude Desktop sets up Python and the dependencies itself. Build it with `pnpm build:mcpb`
 - feat: add `dtour.link(*widgets)`, which keeps the lasso and legend selections of widgets showing the same points in sync and returns a function that unlinks them. It sets the new `link` traitlet, so the widgets link in the browser without a round trip through Python. With the static scatter (e.g., `Widget(df, tour_dimensions=["umap_x", "umap_y"])`), this compares a 2D embedding with a tour without another package
+- feat: the MCP server's `visualize` tool takes `views`, up to 4 views of the same rows that the viewer shows side by side with linked selections, e.g., a PCA tour next to a 2D UMAP, or embeddings from two models. Each view can set its own `tour`, `columns`, `dimensions`, and `settings`. `dimensions` sets how many dimensions a tour moves through, and `2` shows a static 2D PCA or UMAP embedding. Two `columns` show as a static scatter. With several views, the legends start hidden. The tool's result lists one Parquet file per view, and `read_data` takes the view's index
 - fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
 - fix: `set_tour()` with a sequential tour now switches `tour_by` to `"parameter"` when the widget previously had a hyperdimensional tour
 - fix: `preview_size` supports `"auto"` and uses it by default, so widgets pick the preview size from the available space like the web viewer
 - fix: Parquet exports of embedding tours (`le_tour`, `umap_little_tour`, sequential tours) record the embedding columns as the tour dimensions instead of the input features, which broke files with extra numeric columns. `add_spec_to_parquet()` and `Widget.save_spec_to_parquet()` infer them from the table; `build_dtour_metadata()` requires `tour_dimensions` for these tours
+- fix: `build_dtour_metadata()` and `add_spec_to_parquet()` record `tour_dimensions` without a tour as the spec's `tourDimensions`, so a Parquet file can name the columns of the viewer's own tour, or two columns for a static scatter. It used to be dropped
 - fix: `selected_labels` and `selected_indices` replace each other also when set from Python, and emptying one only clears the viewer's selection when the other is empty too
 - docs: document all tour generators in the README
 - chore: explain how to build a missing widget bundle, and warn on import in a repo checkout when the bundle is older than its sources or build configuration
@@ -52,6 +54,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 - feat: selection requests (`setSelectionMask`, `lassoSelect`, `clearSelection`, `selectByColumn`) return an id that their result repeats, and `latestSelectionId()` tells whether a result belongs to a selection a newer request replaced. `selectByColumn` reports its rows, column, and labels in a new `columnSelectionResult` status, and repeating the latest column selection changes nothing
 - feat: report a `lost` status when the WebGPU device or WebGL context is lost. Device loss used to be reported as an `error` status, and only when a frame failed
+- feat: `setProjectionScale(scale)` scales the projected coordinates in the main view, the previews, and for selections, and `Metadata.sample` holds up to 1,024 evenly spaced rows, e.g., to estimate how far projections spread
 - fix: treat string columns whose first value is null as categorical
 - fix: category colors no longer shift when zooming in (e.g., orange turning yellow). Auto opacity still grows with zoom but now stops at 1
 
@@ -59,9 +62,11 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 
 - feat: `DtourSpec` covers 2D coloring and the tour columns: `pointColorBy` accepts an `[x, y]` column pair, `pointColorMap2d` picks the 2D colormap, and `tourDimensions` sets the columns of an auto-generated tour
 - fix: `spec.pointColorMap` applies; it used to be ignored unless embedded in a Parquet file
+- fix: tours over many columns fit the canvas and the previews. Their projections spread further than each column's range, e.g., up to 4 times as far for the 64 pixels of the handwritten digits, which put most points outside the view, emptied the previews, and made points faint after zooming out. Tours that spread wider than a typical tour of a few columns now scale their coordinates down, so the default zoom, the previews, and auto opacity work as for other tours
 - fix: with `backend: 'auto'`, fall back to WebGL when WebGPU fails to start (e.g., Chrome's `Failed to create WebGPU Context Provider`), instead of showing a blank canvas. The viewer now sends data to the renderer only once it is ready, and `onScatterReady` is called at that point
 - fix: when rendering fails anyway or the GPU is lost later, show a message over the canvas with a button that reloads the page
 - fix: previews have a background in the viewer's color, so the slider's dashed line no longer shows through a blank preview
+- fix: the viewer has a background in its color, so the page behind it no longer shows through as a 1px line between the canvas and a hidden legend
 - fix: `onSelectionChange` reports an empty selection when the color column changes to one without a legend (none, numeric, or a 2D colormap), instead of leaving the last selection in place
 - fix: a `null` spec field (e.g. `pointColorBy: null`) overrides the Parquet file's embedded setting instead of counting as unset
 - feat: previews show keyframe numbers when some keyframes have no preview (`previewKeyframeNumbers: 'auto'`)

@@ -302,6 +302,8 @@ const resolveStyleForCanvas = (canvasWidth: number, canvasHeight: number): Point
 // ─── Inline projection helpers ────────────────────────────────────────────
 
 const VIEWPORT_SCALE = 2.0;
+/** Multiplies VIEWPORT_SCALE, see `setProjectionScale` */
+let projectionScale = 1;
 let adjBasisWeights: Float32Array | null = null;
 
 const computeAdjustedBasis = (
@@ -321,14 +323,15 @@ const computeAdjustedBasis = (
     const range = Math.max(ranges[d]!, 1e-6);
     const bx = basis[d]!;
     const by = basis[dims + d]!;
-    const invRange = VIEWPORT_SCALE / range;
+    const scale = VIEWPORT_SCALE * projectionScale;
+    const invRange = scale / range;
 
     adjBasisWeights[d] = bx * invRange;
     adjBasisWeights[dims + d] = by * invRange;
 
     const normOffset = -centers[d]! / range;
-    biasX += normOffset * bx * VIEWPORT_SCALE;
-    biasY += normOffset * by * VIEWPORT_SCALE;
+    biasX += normOffset * bx * scale;
+    biasY += normOffset * by * scale;
   }
 
   return { weights: adjBasisWeights, biasX, biasY };
@@ -1481,6 +1484,13 @@ const handleMessage = (msg: MainToGpu): void => {
       insetZoom: msg.insetZoom,
     };
     renderMainView();
+    return;
+  }
+
+  if (msg.type === 'setProjectionScale') {
+    projectionScale = msg.scale;
+    renderMainView();
+    schedulePreviewRender();
     return;
   }
 

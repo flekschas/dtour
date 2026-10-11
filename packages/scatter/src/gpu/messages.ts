@@ -45,6 +45,8 @@ export type MainToGpu =
       insetOffsetY: number;
       insetZoom: number;
     }
+  /** Scale of the projected coordinates, in the main view and the previews */
+  | { type: 'setProjectionScale'; scale: number }
   | { type: 'resize'; viewIndex: number; width: number; height: number; dpr?: number }
   | { type: 'resizePreview'; id: number; width: number; height: number }
   | { type: 'render' }

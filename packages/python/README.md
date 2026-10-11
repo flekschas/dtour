@@ -197,9 +197,20 @@ It has one tool, `visualize`, which takes:
 
 - `path`: a CSV, TSV, Parquet, or Arrow file, or an http(s) URL to one
 - `tour`: `"pca"` (default), `"le"` (Laplacian Eigenmaps), or `"umap"`
-- `columns`: the numeric columns to tour (default: all)
+- `columns`: the numeric columns to tour (default: all). Two columns show as a static scatter
+- `dimensions`: how many dimensions the tour moves through, e.g., `4` for a 4D UMAP. `2`
+  shows a static 2D embedding (`"pca"` or `"umap"`)
 - `sample`: a number of rows to sample, for large data
 - `settings`: viewer settings, as in `build_dtour_metadata`, e.g. `{"point_color_by": "cell_type"}`
+- `views`: up to 4 views of the same rows, shown side by side with linked selections. Each
+  view can set its own `tour`, `columns`, `dimensions`, and `settings`; the rest come from
+  the call
+
+For example, _"Compare a PCA tour of ~/data/cells.csv with a 2D UMAP"_ leads to a call like
+`visualize(path, views=[{"tour": "pca"}, {"tour": "umap", "dimensions": 2}])`. To compare
+two embeddings of the same items, e.g., from a text and a vision model, store both in one
+file and give each view its columns. Side by side, the legends start hidden; the toolbar
+shows them.
 
 Rows with missing values in the tour columns are dropped, and the columns are scaled to
 the same range. In apps without MCP Apps support, like Claude Code, the tool returns a

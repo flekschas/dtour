@@ -5,8 +5,22 @@ import { COLORMAP_2D_INDEX, packColormap2DLut } from './colormaps2d.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
 import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
 import { parseBuffer } from './parse.ts';
+import { type ColumnData, SAMPLE_ROWS } from './types.ts';
 
 /** Pack an RGB palette into Uint32Array of 0xAABBGGRR. */
+/** Evenly spaced rows of *columns*, row-major. */
+const sampleRows = (columns: ColumnData[], rowCount: number): Float32Array => {
+  const n = Math.min(rowCount, SAMPLE_ROWS);
+  const sample = new Float32Array(n * columns.length);
+  for (let r = 0; r < n; r++) {
+    const row = Math.floor((r * rowCount) / n);
+    for (let d = 0; d < columns.length; d++) {
+      sample[r * columns.length + d] = columns[d]!.values[row]!;
+    }
+  }
+  return sample;
+};
+
 const packPalette = (palette: [number, number, number][]): Uint32Array => {
   const packed = new Uint32Array(palette.length);
   for (let i = 0; i < palette.length; i++) {
@@ -85,6 +99,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
           maxes: parsed.columns.map((c) => c.max),
           ranges: parsed.columns.map((c) => c.range),
           means: parsed.columns.map((c) => c.mean),
+          sample: sampleRows(parsed.columns, parsed.rowCount),
           embeddedConfig: parsed.embeddedConfig,
         },
       };

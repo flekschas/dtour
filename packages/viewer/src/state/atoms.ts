@@ -155,6 +155,13 @@ export const backgroundColorAtom = atom<[number, number, number]>([0, 0, 0]);
 /** Centering mode: 'midrange' (default, (min+max)/2) or 'mean' (center of mass). */
 export const centeringAtom = atom<'midrange' | 'mean'>('midrange');
 
+/**
+ * Scale of the projected coordinates. Tours that spread their points wider
+ * than typical tours, e.g., over many columns, scale down to fit the default
+ * zoom and the previews.
+ */
+export const projectionScaleAtom = atom(1);
+
 /** Id that links this view's selection with other views of the same rows, or null. */
 export const linkAtom = atom<string | null>(null);
 

@@ -579,7 +579,7 @@ const DtourInner = ({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full overflow-hidden flex ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
+      className={`relative w-full h-full overflow-hidden flex bg-dtour-bg ${resolvedTheme === 'light' ? 'dtour-light' : ''}`}
     >
       {/* Canvas panel — grows to fill remaining space */}
       <div className="relative flex-1 min-w-0">

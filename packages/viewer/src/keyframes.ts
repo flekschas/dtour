@@ -135,6 +135,49 @@ export const expandBases = (
   });
 };
 
+/** Spread of a typical tour of a few columns, which the default zoom and the previews are tuned for. */
+export const FITTED_SPREAD = 1.35;
+
+/**
+ * How far *keyframes* spread the rows of *sample* (row-major) from the origin:
+ * the largest distance, over all keyframes, that 99% of the rows stay within.
+ * Distances are in the renderer's coordinates, in which each column spans
+ * [-1, 1] around its center.
+ */
+export const projectedSpread = (
+  keyframes: Float32Array[],
+  sample: Float32Array,
+  centers: number[],
+  ranges: number[],
+): number => {
+  const dims = ranges.length;
+  const rows = dims > 0 ? sample.length / dims : 0;
+  if (rows === 0) return 0;
+  const normalized = new Float32Array(sample.length);
+  for (let i = 0; i < sample.length; i++) {
+    const d = i % dims;
+    normalized[i] = (2 * (sample[i]! - centers[d]!)) / Math.max(ranges[d]!, MIN_RANGE);
+  }
+  const distances = new Float32Array(rows);
+  const quantile = Math.min(rows - 1, Math.floor(0.99 * rows));
+  let spread = 0;
+  for (const basis of keyframes) {
+    for (let r = 0; r < rows; r++) {
+      let x = 0;
+      let y = 0;
+      for (let d = 0; d < dims; d++) {
+        const v = normalized[r * dims + d]!;
+        x += v * basis[d]!;
+        y += v * basis[dims + d]!;
+      }
+      distances[r] = Math.hypot(x, y);
+    }
+    distances.sort();
+    spread = Math.max(spread, distances[quantile]!);
+  }
+  return spread;
+};
+
 /**
  * Create tour keyframes from PCA eigenvectors.
  * Cycles through consecutive PC pairs: [PC1,PC2], [PC2,PC3], ..., wrapping.

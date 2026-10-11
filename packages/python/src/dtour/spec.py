@@ -218,11 +218,13 @@ def build_dtour_metadata(
         ``"bremm"``, ``"steiger"``, ``"ziegler"``, ``"teulingfig2"``,
         ``"cubediagonal"``, or ``"oklab_polar"``.
     tour_dimensions : list[str], optional
-        Numeric column names that participate in the tour. Written as
-        ``tour.dimensions`` in the JSON metadata. When omitted, a *tour*
-        that projects its input features uses its ``feature_names``. Tours
-        with an ``embedding`` project the embedding columns, so pass their
-        names here (:func:`add_spec_to_parquet` infers them from the table).
+        Numeric column names that participate in the tour. With a *tour*,
+        written as ``tour.dimensions`` in the JSON metadata. When omitted, a
+        *tour* that projects its input features uses its ``feature_names``.
+        Tours with an ``embedding`` project the embedding columns, so pass
+        their names here (:func:`add_spec_to_parquet` infers them from the
+        table). Without a *tour*, written as ``tourDimensions``: the columns
+        the viewer's own tour uses. Two columns show as a static scatter.
     tour : TourResult, optional
         Tour result to embed (keyframes are base64-encoded).
     **legacy_kwargs
@@ -280,6 +282,8 @@ def build_dtour_metadata(
 
     if tour is not None:
         config["tour"] = _encode_tour(tour, tour_dimensions)
+    elif tour_dimensions is not None:
+        config["tourDimensions"] = list(tour_dimensions)
 
     return json.dumps(config, separators=(",", ":"))
 

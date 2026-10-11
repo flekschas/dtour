@@ -34,7 +34,7 @@ scatter, which is handy next to a tour with linked selections (`dtour.link`).
 
 | Situation | Surface |
 |---|---|
-| The dtour MCP server's `visualize` tool is available, and a local file or URL at hand | Call `visualize(path, tour, columns, settings)`. The viewer opens in the chat, or the tool returns a browser link. Read the file's columns first, and leave IDs and integer-coded labels out of `columns` |
+| The dtour MCP server's `visualize` tool is available, and a local file or URL at hand | Call `visualize(path, tour, columns, settings)`. The viewer opens in the chat, or the tool returns a browser link. Read the file's columns first, and leave IDs and integer-coded labels out of `columns`. To compare, e.g., a tour with a 2D UMAP, pass `views=[{"tour": "pca"}, {"tour": "umap", "dimensions": 2}]`; the views show side by side with linked selections |
 | No code, a Parquet/Arrow/CSV file at hand | https://dtour.dev: drop the file in, or open `https://dtour.dev/?url=<encoded public file URL>` with settings as further parameters (see [Link to a configured view](#link-to-a-configured-view)). The file's host must allow CORS; if the start page stays up, that is the likely cause |
 | Python analysis in a Marimo or Jupyter notebook | `pip install dtour` → `dtour.Widget(...)`. See [references/python.md](references/python.md) |
 | A React app | `npm install @dtour/viewer` → `<Dtour data={buffer} />`. See [references/javascript.md](references/javascript.md) |

@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import {
   currentBasisAtom,
   metadataAtom,
+  projectionScaleAtom,
   tourPlayingAtom,
   tourTraversalAtom,
 } from '../state/atoms.ts';
@@ -123,6 +124,7 @@ export const useSpatialIndex = (
     // from animating → idle also schedules a rebuild, not just a null-out.
     const unsubPlaying = store.sub(tourPlayingAtom, scheduleRebuild);
     const unsubViewMode = store.sub(tourTraversalAtom, scheduleRebuild);
+    const unsubScale = store.sub(projectionScaleAtom, scheduleRebuild);
 
     // Trigger initial build if basis is already set when the hook mounts
     const initialBasis = store.get(currentBasisAtom);
@@ -132,6 +134,7 @@ export const useSpatialIndex = (
       unsubBasis();
       unsubPlaying();
       unsubViewMode();
+      unsubScale();
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;

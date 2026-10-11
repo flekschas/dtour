@@ -25,6 +25,7 @@ import {
   pointColorByAtom,
   pointOpacityAtom,
   pointSizeAtom,
+  projectionScaleAtom,
   resolvedThemeAtom,
   tourPlayingAtom,
   tourPositionAtom,
@@ -80,6 +81,11 @@ export const useScatter = (scatter: ScatterInstance | null) => {
   useEffect(() => {
     scatter?.setCentering(centering);
   }, [scatter, centering]);
+
+  const projectionScale = useAtomValue(projectionScaleAtom);
+  useEffect(() => {
+    scatter?.setProjectionScale(projectionScale);
+  }, [scatter, projectionScale]);
 
   // Forward tour position (skipped during worker-driven playback, when
   // suspended after returning from manual/grand, and while a basis blend is

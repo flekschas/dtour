@@ -1,10 +1,12 @@
 """MCP server that shows dtour tours inline in chat apps like Claude Desktop.
 
-The model calls ``visualize`` with a data file. The server computes the tour and
-stores the data and tour as one Parquet file. The viewer, an MCP App in the
-host's iframe, fetches that file from a localhost HTTP server, or, if the host
-blocks localhost, in chunks through the app-only ``read_data`` tool. Hosts
-without MCP Apps get a link to the same viewer in the browser.
+The model calls ``visualize`` with a data file. The server computes one or more
+views of it, each a tour or a static 2D scatter, and stores each view as a
+Parquet file with the data, tour, and settings. The viewer, an MCP App in the
+host's iframe, shows the views side by side with linked selections. It fetches
+the files from a localhost HTTP server, or, if the host blocks localhost, in
+chunks through the app-only ``read_data`` tool. Hosts without MCP Apps get a
+link to the same viewer in the browser.
 
 Run with ``dtour-mcp`` (stdio). Logs go to stderr because stdout carries the protocol.
 """
@@ -12,6 +14,8 @@ Run with ``dtour-mcp`` (stdio). Logs go to stderr because stdout carries the pro
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 import secrets
 import sys
 import threading
@@ -28,16 +32,16 @@ from mcp.server.apps import Apps, ResourceCsp, client_supports_apps
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
+from pydantic import ConfigDict, with_config
+from typing_extensions import TypedDict
 
-from .data import _is_numeric_field, _read_table, _write_ipc
+from .data import _add_embedding, _is_numeric_field, _read_table, _write_ipc
 from .spec import add_spec_to_parquet
-from .tours import TourResult, le_tour, little_tour, umap_little_tour
+from .tours import TourResult, _import_umap, le_tour, little_tour, umap_little_tour
 from .widget import _viewer_data
 
 if TYPE_CHECKING:
     import polars as pl
-
-VIEWER_URI = "ui://dtour/viewer.html"
 
 # Bytes per `read_data` call. Claude Desktop drops the connection on messages
 # over 32 MiB, and base64 adds a third.
@@ -46,41 +50,68 @@ CHUNK_SIZE = 8 * 1024 * 1024
 # Embedding tours subsample larger data for the spectral step
 LE_SUBSAMPLE = 50_000
 
+# More views don't fit side by side
+MAX_VIEWS = 4
+
 Tour = Literal["pca", "le", "umap"]
 
 # Markers of missing values in CSV files, e.g., `NA` from R
 NULL_VALUES = ["", "NA", "N/A", "NaN", "nan", "null", "NULL"]
 
 
-class _View(NamedTuple):
-    """A visualization: its data with the tour embedded, and the tour's input columns."""
+# A misspelled field fails instead of being ignored
+@with_config(ConfigDict(extra="forbid"))
+class View(TypedDict, total=False):
+    """One view of a ``visualize`` call. Omitted fields take the call's value."""
 
-    parquet: bytes
+    tour: Tour
+    columns: list[str]
+    dimensions: int
+    settings: dict[str, Any]
+
+
+class _Visualization(NamedTuple):
+    """The views of a ``visualize`` call, each its data with the tour and settings
+    embedded as Parquet, with a title for each, and the columns the views use."""
+
+    views: list[bytes]
+    titles: list[str]
     columns: list[str]
 
 
-class _Views:
-    """The most recent views, by token. Older views are forgotten."""
+class _Visualizations:
+    """The most recent visualizations, by token. Older ones are forgotten."""
 
     def __init__(self, capacity: int = 16) -> None:
-        self._views: OrderedDict[str, _View] = OrderedDict()
+        self._items: OrderedDict[str, _Visualization] = OrderedDict()
         self._capacity = capacity
         self._lock = threading.Lock()
 
-    def add(self, view: _View) -> str:
+    def add(self, visualization: _Visualization) -> str:
         token = secrets.token_urlsafe(16)
         with self._lock:
-            self._views[token] = view
-            while len(self._views) > self._capacity:
-                self._views.popitem(last=False)
+            self._items[token] = visualization
+            while len(self._items) > self._capacity:
+                self._items.popitem(last=False)
         return token
 
-    def get(self, token: str) -> _View:
+    def get(self, token: str) -> _Visualization:
         with self._lock:
-            view = self._views.get(token)
-        if view is None:
-            raise ToolError("This view's data is gone. Ask for the visualization again.")
-        return view
+            visualization = self._items.get(token)
+        if visualization is None:
+            raise ToolError("This visualization's data is gone. Ask for it again.")
+        return visualization
+
+
+def _manifest(origin: str, token: str, visualization: _Visualization) -> dict[str, Any]:
+    """What the viewer needs to fetch and describe the views of *token*."""
+    return {
+        "token": token,
+        "views": [
+            {"url": f"{origin}/data/{token}/{i}", "title": title}
+            for i, title in enumerate(visualization.titles)
+        ],
+    }
 
 
 def _viewer_script() -> str:
@@ -98,10 +129,11 @@ def _viewer_html(script: str) -> str:
     )
 
 
-def _start_http_server(views: _Views, html: str) -> int:
+def _start_http_server(visualizations: _Visualizations, html: str) -> int:
     """Serve the data files and a standalone viewer on a free localhost port.
 
-    ``/data/<token>`` is a Parquet file and ``/view/<token>`` the viewer showing it.
+    ``/data/<token>/<i>`` is the Parquet file of view *i*, ``/data/<token>`` the
+    manifest listing them, and ``/view/<token>`` the viewer showing them.
     Returns the port.
     """
 
@@ -126,17 +158,24 @@ def _start_http_server(views: _Views, html: str) -> int:
             self.end_headers()
 
         def do_GET(self) -> None:
-            kind, _, token = self.path.lstrip("/").partition("/")
+            kind, _, rest = self.path.lstrip("/").partition("/")
+            token, _, view = rest.partition("/")
             try:
-                view = views.get(token)
+                visualization = visualizations.get(token)
             except ToolError:
-                view = None
-            if view is None or kind not in ("data", "view"):
+                visualization = None
+            if visualization is None:
                 self._send(404)
-            elif kind == "data":
-                self._send(200, view.parquet, "application/vnd.apache.parquet")
-            else:
+            elif kind == "view" and not view:
                 self._send(200, html.encode(), "text/html; charset=utf-8")
+            elif kind == "data" and not view:
+                origin = f"http://127.0.0.1:{self.server.server_address[1]}"
+                manifest = _manifest(origin, token, visualization)
+                self._send(200, json.dumps(manifest).encode(), "application/json")
+            elif kind == "data" and view.isdigit() and int(view) < len(visualization.views):
+                self._send(200, visualization.views[int(view)], "application/vnd.apache.parquet")
+            else:
+                self._send(404)
 
         def log_message(self, format: str, *args: Any) -> None:
             pass
@@ -166,12 +205,14 @@ def _read(path: str) -> pl.DataFrame:
 
 
 def _prepare(
-    df: pl.DataFrame, columns: list[str] | None, sample: int | None
-) -> tuple[pl.DataFrame, list[str], list[str]]:
-    """The data to show, the columns to tour, and notes about what changed.
+    df: pl.DataFrame, views: list[list[str] | None], sample: int | None
+) -> tuple[pl.DataFrame, list[list[str]], list[str]]:
+    """The data to show, the columns of each view, and notes about what changed.
 
-    Numeric columns with missing values break the projection, so rows missing a
-    tour column are dropped, and other numeric columns with missing values too.
+    A view without columns uses all numeric columns. Numeric columns with missing
+    values break the projection, so rows missing a value in any view's columns
+    are dropped, and other numeric columns with missing values too. All views
+    share the resulting rows, so selections link by row.
     """
     import arro3.core as ac
     import polars as pl
@@ -179,57 +220,108 @@ def _prepare(
     # The viewer reads neither Decimal nor boolean values as numbers
     df = df.with_columns(pl.col(pl.Decimal).cast(pl.Float64), pl.col(pl.Boolean).cast(pl.UInt8))
     numeric = [field.name for field in ac.Table.from_arrow(df).schema if _is_numeric_field(field)]
-    columns = columns or numeric
-    unknown = [name for name in columns if name not in df.columns]
-    if unknown:
-        raise ValueError(f"No columns named {unknown}. The columns are {df.columns}.")
-    not_numeric = [name for name in columns if name not in numeric]
-    if not_numeric:
-        raise ValueError(f"Tour columns must be numeric; {not_numeric} are not.")
-    if len(columns) < 2:
-        raise ValueError(f"A tour needs at least 2 numeric columns; got {columns}.")
+    views = [columns or numeric for columns in views]
+    for columns in views:
+        unknown = [name for name in columns if name not in df.columns]
+        if unknown:
+            raise ValueError(f"No columns named {unknown}. The columns are {df.columns}.")
+        not_numeric = [name for name in columns if name not in numeric]
+        if not_numeric:
+            raise ValueError(f"Tour columns must be numeric; {not_numeric} are not.")
+        if len(columns) < 2:
+            raise ValueError(f"A view needs at least 2 numeric columns; got {columns}.")
+    used = list(dict.fromkeys(name for columns in views for name in columns))
 
     notes = []
     n = df.height
-    df = df.with_columns(pl.col(pl.Float32, pl.Float64).fill_nan(None)).drop_nulls(columns)
+    df = df.with_columns(pl.col(pl.Float32, pl.Float64).fill_nan(None)).drop_nulls(used)
     if df.height < n:
         notes.append(f"Dropped {n - df.height} of {n} rows with missing values.")
-    incomplete = [name for name in numeric if name not in columns and df[name].null_count()]
+    incomplete = [name for name in numeric if name not in used and df[name].null_count()]
     if incomplete:
         df = df.drop(incomplete)
         notes.append(f"Dropped columns with missing values: {incomplete}.")
     if sample is not None and df.height > sample:
         notes.append(f"Sampled {sample} of {df.height} rows.")
         df = df.sample(sample, seed=0)
-    return df, columns, notes
+    return df, views, notes
 
 
-def _compute_tour(X: np.ndarray, tour: Tour, names: list[str]) -> TourResult:
-    # The viewer scales each column by its range, so the tour does too
-    span = X.max(axis=0) - X.min(axis=0)
-    X = X / np.where(span > 0, span, 1)
-    if tour == "le":
-        subsample = LE_SUBSAMPLE if len(X) > 2 * LE_SUBSAMPLE else None
-        return le_tour(X, feature_names=names, random_state=0, subsample=subsample)
-    if tour == "umap":
-        return umap_little_tour(X, n_components=min(8, X.shape[1]))
-    return little_tour(X)
-
-
-def _tour_parquet(
-    df: pl.DataFrame, columns: list[str], tour: Tour, settings: dict[str, Any]
-) -> bytes:
-    """The data with the tour and settings embedded, as Parquet."""
-    import arro3.io
+def _scaled(df: pl.DataFrame, columns: list[str]) -> np.ndarray:
+    """The *columns* of *df*, each divided by its range as the viewer does."""
     import polars as pl
 
     X = df.select(pl.col(columns).cast(pl.Float32)).to_numpy()
-    result = _compute_tour(X, tour, columns)
-    ipc, dims = _viewer_data(_write_ipc(df), result, columns)
-    table = add_spec_to_parquet(_read_table(ipc), tour=result, tour_dimensions=dims, **settings)
+    span = X.max(axis=0) - X.min(axis=0)
+    return X / np.where(span > 0, span, 1)
+
+
+def _compute_tour(
+    X: np.ndarray, tour: Tour, names: list[str], dimensions: int | None
+) -> TourResult:
+    if tour == "le":
+        subsample = LE_SUBSAMPLE if len(X) > 2 * LE_SUBSAMPLE else None
+        kwargs = {} if dimensions is None else {"n_components": dimensions}
+        return le_tour(X, feature_names=names, random_state=0, subsample=subsample, **kwargs)
+    if tour == "umap":
+        return umap_little_tour(X, n_components=dimensions or min(8, X.shape[1]))
+    return little_tour(X, n_components=dimensions)
+
+
+def _embed_2d(X: np.ndarray, tour: Tour) -> tuple[np.ndarray, list[str]]:
+    """A 2D embedding of *X* and names for its columns."""
+    if tour == "umap":
+        return _import_umap().UMAP(n_components=2).fit_transform(X), ["UMAP1", "UMAP2"]
+    if tour == "pca":
+        from sklearn.decomposition import PCA
+
+        return PCA(n_components=2).fit_transform(X), ["PC1", "PC2"]
+    raise ValueError(f'A 2D embedding needs tour "pca" or "umap", not "{tour}".')
+
+
+def _view_parquet(
+    df: pl.DataFrame,
+    columns: list[str],
+    tour: Tour,
+    dimensions: int | None,
+    settings: dict[str, Any],
+) -> tuple[bytes, str]:
+    """The view's data with its tour and settings embedded, as Parquet, and its title."""
+    import arro3.core as ac
+    import arro3.io
+
+    shown = columns if len(columns) <= 8 else [*columns[:6], "…"]
+    listed = f"{len(columns)} columns ({', '.join(shown)})"
+    if dimensions is not None and dimensions < 2:
+        raise ValueError(f"dimensions must be at least 2; got {dimensions}.")
+    if len(columns) != 2 and dimensions != 2:
+        result = _compute_tour(_scaled(df, columns), tour, columns, dimensions)
+        ipc, dims = _viewer_data(_write_ipc(df), result, columns)
+        title = f"a {tour} tour over {listed}"
+        if result.embedding is not None:
+            title = f"a {tour} tour over a {result.n_dims}D embedding of {listed}"
+        table = add_spec_to_parquet(_read_table(ipc), tour=result, tour_dimensions=dims, **settings)
+    else:
+        # The viewer shows exactly two tour dimensions as a static scatter
+        table = ac.Table.from_arrow(df)
+        if len(columns) == 2:
+            names = columns
+            title = f"a static scatter of {columns[0]} (x) and {columns[1]} (y)"
+        else:
+            embedding, names = _embed_2d(_scaled(df, columns), tour)
+            # Unique names, as `_add_embedding` generates them
+            for i, name in enumerate(names):
+                while name in table.column_names:
+                    name = f"_{name}"
+                names[i] = name
+            table, names = _add_embedding(table, embedding.astype(np.float32), names)
+            title = f"a static 2D {tour} embedding of {listed}"
+        # A PCA tour ignores the tour dimensions, which would turn the scatter into a tour
+        settings = {**settings, "tour_by": "dimensions"}
+        table = add_spec_to_parquet(table, tour_dimensions=names, **settings)
     out = BytesIO()
     arro3.io.write_parquet(table, out)
-    return out.getvalue()
+    return out.getvalue(), title
 
 
 def _describe_selection(df: pl.DataFrame, selected: np.ndarray, columns: list[str]) -> str:
@@ -270,20 +362,35 @@ def _describe_selection(df: pl.DataFrame, selected: np.ndarray, columns: list[st
 VISUALIZE_DESCRIPTION = """\
 Show a dataset as an interactive dtour: a tour through 2D projections of its \
 numeric columns, with smooth transitions between keyframes. Use it for data with \
-4+ numeric columns, to see clusters, outliers, and how groups relate.
+4+ numeric columns, to see clusters, outliers, and how groups relate. One call can \
+also show up to 4 views side by side with linked selections, e.g. a tour next to \
+a static 2D UMAP (see views); prefer that over separate calls or a custom chart.
 
 path: a local CSV, TSV, Parquet, or Arrow file, or an http(s) URL to one.
 
 tour:
 - "pca" (default): consecutive pairs of principal components. Fast. Start here.
 - "le": Laplacian Eigenmaps, coarse to fine. Finds nonlinear and cluster structure.
-- "umap": PCA tour over an 8-D UMAP embedding. For many columns.
+- "umap": PCA tour over an 8-D UMAP embedding. For many columns. With \
+`dimensions: 2`, a plain static 2D UMAP.
 "le" and "umap" can take minutes beyond ~100k rows; then pass `sample` (e.g. \
 50000) or warn the user first.
 
 columns: the numeric columns to tour (default: all numeric columns). Exclude IDs \
 and integer-coded labels; they aren't measurements. Columns are scaled to the \
-same range. Rows missing a value in these columns are dropped.
+same range. Rows missing a value in these columns are dropped. Exactly two \
+columns show as a static scatter, the first on x, e.g. precomputed UMAP columns.
+
+dimensions: how many dimensions the tour moves through: principal components \
+for "pca", eigenvectors for "le", embedding dimensions for "umap". 2 shows a \
+static 2D embedding instead of a tour ("pca" or "umap" only).
+
+views: up to 4 views of the same rows side by side, e.g. to compare a tour \
+with a 2D embedding, two tours, or embeddings from two models stored as \
+separate columns. Each view is an object with any of tour, columns, \
+dimensions, and settings; omitted fields take the call's values, and a view's \
+settings add to the call's. Selections link across views. Two views fit best. \
+Their legends start hidden unless settings set "show_legend".
 
 settings: viewer settings (snake_case), e.g. {"point_color_by": "species"} to \
 color by a column (categorical or numeric), {"point_color_by": ["x", "y"]} for \
@@ -299,56 +406,92 @@ Inspect the file's columns first if you don't know them.\
 
 def create_server() -> MCPServer:
     """The dtour MCP server. Starts its localhost HTTP server."""
-    views = _Views()
-    script = _viewer_script()
-    port = _start_http_server(views, _viewer_html(script))
+    visualizations = _Visualizations()
+    html = _viewer_html(_viewer_script())
+    port = _start_http_server(visualizations, html)
     origin = f"http://127.0.0.1:{port}"
     print(f"[dtour-mcp] serving data on {origin}", file=sys.stderr)
 
+    # Hosts cache the viewer by URI, so a new viewer or port, which its CSP
+    # names, gets a new URI
+    digest = hashlib.sha256(f"{origin}\n{html}".encode()).hexdigest()[:16]
+    viewer_uri = f"ui://dtour/viewer-{digest}.html"
     apps = Apps()
     apps.add_html_resource(
-        VIEWER_URI,
-        _viewer_html(script),
+        viewer_uri,
+        html,
         title="dtour viewer",
         csp=ResourceCsp(connect_domains=[origin]),
     )
 
-    @apps.tool(resource_uri=VIEWER_URI, name="visualize", description=VISUALIZE_DESCRIPTION)
+    @apps.tool(resource_uri=viewer_uri, name="visualize", description=VISUALIZE_DESCRIPTION)
     def visualize(
         path: str,
         ctx: Context,
         tour: Tour = "pca",
         columns: list[str] | None = None,
+        dimensions: int | None = None,
         sample: int | None = None,
         settings: dict[str, Any] | None = None,
+        views: list[View] | None = None,
     ) -> CallToolResult:
         t0 = time.perf_counter()
+        views = views or [View()]
         try:
-            df, columns, notes = _prepare(_read(path), columns, sample)
-            parquet = _tour_parquet(df, columns, tour, settings or {})
+            if len(views) > MAX_VIEWS:
+                raise ValueError(f"Show at most {MAX_VIEWS} views; got {len(views)}.")
+            df, view_columns, notes = _prepare(
+                _read(path), [view.get("columns", columns) for view in views], sample
+            )
+            built = [
+                _view_parquet(
+                    df,
+                    view_columns[i],
+                    view.get("tour", tour),
+                    view.get("dimensions", dimensions),
+                    # Views side by side are narrow enough that the legend covers
+                    # their points, so it starts hidden
+                    {
+                        **({"show_legend": False} if len(views) > 1 else {}),
+                        **(settings or {}),
+                        **view.get("settings", {}),
+                    },
+                )
+                for i, view in enumerate(views)
+            ]
         except Exception as error:
             # The SDK hides other exceptions' messages, but the model needs them
             # to fix its call
             raise ToolError(f"{type(error).__name__}: {error}") from error
-        token = views.add(_View(parquet, columns))
+        titles = [title for _, title in built]
+        used = list(dict.fromkeys(name for names in view_columns for name in names))
+        visualization = _Visualization([parquet for parquet, _ in built], titles, used)
+        token = visualizations.add(visualization)
         seconds = time.perf_counter() - t0
 
-        lines = [
-            f"Showing a {tour} tour of {df.height} rows over {len(columns)} columns "
-            f"({', '.join(columns)}), computed in {seconds:.1f}s.",
-            *notes,
-        ]
+        if len(titles) == 1:
+            lines = [f"Showing {titles[0]} for {df.height} rows, computed in {seconds:.1f}s."]
+        else:
+            lines = [
+                f"Showing {len(titles)} views of the same {df.height} rows side by side, "
+                f"computed in {seconds:.1f}s. Selections in one view show in the others.",
+                *(f"- View {i + 1}: {title}" for i, title in enumerate(titles)),
+            ]
+        lines.extend(notes)
         if not client_supports_apps(ctx):
             lines.append(f"Open the viewer in a browser: {origin}/view/{token}")
         return CallToolResult(
             content=[TextContent(type="text", text="\n".join(lines))],
-            structured_content={"url": f"{origin}/data/{token}", "token": token},
+            structured_content=_manifest(origin, token, visualization),
         )
 
-    @apps.tool(resource_uri=VIEWER_URI, visibility=["app"], name="read_data")
-    def read_data(token: str, offset: int = 0) -> CallToolResult:
-        """Read a chunk of the Parquet file for *token*, base64-encoded."""
-        data = views.get(token).parquet
+    @apps.tool(resource_uri=viewer_uri, visibility=["app"], name="read_data")
+    def read_data(token: str, view: int = 0, offset: int = 0) -> CallToolResult:
+        """Read a chunk of the Parquet file of *view* for *token*, base64-encoded."""
+        views = visualizations.get(token).views
+        if not 0 <= view < len(views):
+            raise ToolError(f"There is no view {view}; there are {len(views)}.")
+        data = views[view]
         chunk = data[offset : offset + CHUNK_SIZE]
         return CallToolResult(
             content=[TextContent(type="text", text=f"{len(chunk)} bytes")],
@@ -358,7 +501,7 @@ def create_server() -> MCPServer:
             },
         )
 
-    @apps.tool(resource_uri=VIEWER_URI, visibility=["app"], name="describe_selection")
+    @apps.tool(resource_uri=viewer_uri, visibility=["app"], name="describe_selection")
     def describe_selection(token: str, mask: str) -> str:
         """Compare the selected rows to the others.
 
@@ -366,10 +509,11 @@ def create_server() -> MCPServer:
         """
         import polars as pl
 
-        view = views.get(token)
-        df = pl.read_parquet(BytesIO(view.parquet))
+        visualization = visualizations.get(token)
+        # All views have the same rows
+        df = pl.read_parquet(BytesIO(visualization.views[0]))
         bits = np.unpackbits(np.frombuffer(base64.b64decode(mask), np.uint8), bitorder="little")
-        return _describe_selection(df, bits[: len(df)].astype(bool), view.columns)
+        return _describe_selection(df, bits[: len(df)].astype(bool), visualization.columns)
 
     return MCPServer("dtour", extensions=[apps])
 

@@ -107,6 +107,12 @@ export type ScatterInstance = {
   }) => void;
   /** Set projection centering mode: 'midrange' (default) or 'mean' (center of mass). */
   setCentering: (centering: 'midrange' | 'mean') => void;
+  /**
+   * Scale the projected coordinates (default 1), in which each column spans
+   * [-1, 1] before projection. A scale below 1 fits projections that spread
+   * wider, e.g., of many columns, without zooming the camera out.
+   */
+  setProjectionScale: (scale: number) => void;
   /** Resize a canvas to the given pixel dimensions (use for DPI-aware sizing). */
   resize: (viewIndex: number, width: number, height: number, dpr?: number) => void;
   /** Request a render of all views. */
@@ -381,6 +387,10 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     sendToGpu(gpuWorker, { type: 'setCentering', centering });
   };
 
+  const setProjectionScale = (scale: number): void => {
+    sendToGpu(gpuWorker, { type: 'setProjectionScale', scale });
+  };
+
   const resize = (viewIndex: number, width: number, height: number, dpr?: number): void => {
     sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height, dpr });
   };
@@ -566,6 +576,7 @@ export const createScatter = (options: ScatterOptions): ScatterInstance => {
     setStyle,
     setCamera,
     setCentering,
+    setProjectionScale,
     resize,
     render,
     setDirectBasis,

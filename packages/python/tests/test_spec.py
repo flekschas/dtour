@@ -334,6 +334,12 @@ def test_embedding_tour_requires_dimensions():
         build_dtour_metadata(tour=_embedding_tour())
 
 
+def test_tour_dimensions_without_a_tour_name_the_viewers_columns():
+    # Two columns show as a static scatter
+    result = json.loads(build_dtour_metadata(tour_dimensions=["a", "b"]))
+    assert result == {"tourDimensions": ["a", "b"]}
+
+
 def test_widget_save_spec_embedding_tour_dimensions():
     """Embedding tours record the projected columns, not the input features."""
     from dtour.widget import Widget

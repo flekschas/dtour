@@ -26,7 +26,13 @@ import { useGuidedResume } from './hooks/useGuidedResume.ts';
 import { usePlayback } from './hooks/usePlayback.ts';
 import { useScatter } from './hooks/useScatter.ts';
 import { useSpatialIndex } from './hooks/useSpatialIndex.ts';
-import { createDefaultKeyframes, createPCAKeyframes, createStaticKeyframe } from './keyframes.ts';
+import {
+  createDefaultKeyframes,
+  createPCAKeyframes,
+  createStaticKeyframe,
+  FITTED_SPREAD,
+  projectedSpread,
+} from './keyframes.ts';
 import { computeStartAngle } from './layout/gallery-positions.ts';
 import { computeSelectorSize } from './layout/selector-size.ts';
 import {
@@ -54,6 +60,7 @@ import {
   cameraPanYAtom,
   cameraZoomAtom,
   canvasSizeAtom,
+  centeringAtom,
   colorMapAtom,
   currentBasisAtom,
   currentKeyframeAtom,
@@ -73,6 +80,7 @@ import {
   previewCentersAtom,
   previewCountAtom,
   previewKeyframesAtom,
+  projectionScaleAtom,
   resolvedPreviewCountAtom,
   resolvedPreviewLabelVisibilityAtom,
   resolvedPreviewScaleAtom,
@@ -289,6 +297,22 @@ export const DtourViewer = ({
   useEffect(() => {
     setArcLengthsAtom_(arcLengths);
   }, [arcLengths, setArcLengthsAtom_]);
+
+  // Tours that spread wider than typical tours scale down to fit the default
+  // zoom and the previews. A static scatter fits its zoom instead.
+  const centering = useAtomValue(centeringAtom);
+  const projectionScale = useMemo(() => {
+    if (!metadata || !resolvedKeyframes || staticAxes) return 1;
+    const centers = metadata.ranges.map((range, d) =>
+      centering === 'mean' ? metadata.means[d]! : metadata.mins[d]! + range / 2,
+    );
+    const spread = projectedSpread(resolvedKeyframes, metadata.sample, centers, metadata.ranges);
+    return spread > FITTED_SPREAD ? FITTED_SPREAD / spread : 1;
+  }, [metadata, resolvedKeyframes, staticAxes, centering]);
+  const setProjectionScale = useSetAtom(projectionScaleAtom);
+  useEffect(() => {
+    setProjectionScale(projectionScale);
+  }, [projectionScale, setProjectionScale]);
 
   // Refs for spacing mode and arcLengths so the scatter subscribe callback
   // (created once in the init effect) can access the latest values.

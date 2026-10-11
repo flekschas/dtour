@@ -162,6 +162,10 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     sendToGpu(gpuWorker, { type: 'setCentering', centering });
   };
 
+  const setProjectionScale = (scale: number): void => {
+    sendToGpu(gpuWorker, { type: 'setProjectionScale', scale });
+  };
+
   const resize = (viewIndex: number, width: number, height: number, dpr?: number): void => {
     sendToGpu(gpuWorker, { type: 'resize', viewIndex, width, height, dpr });
   };
@@ -335,6 +339,7 @@ export const createScatterWebGL = (options: ScatterOptions): ScatterInstance => 
     setStyle,
     setCamera,
     setCentering,
+    setProjectionScale,
     resize,
     render,
     setDirectBasis,

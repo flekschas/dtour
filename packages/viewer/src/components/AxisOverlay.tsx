@@ -15,6 +15,7 @@ import {
   cameraZoomAtom,
   currentBasisAtom,
   metadataAtom,
+  projectionScaleAtom,
 } from '../state/atoms.ts';
 
 type AxisOverlayProps = {
@@ -62,6 +63,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
   ({ scatter, width, height, readOnly }, ref) => {
     const metadata = useAtomValue(metadataAtom);
     const zoom = useAtomValue(cameraZoomAtom);
+    const projectionScale = useAtomValue(projectionScaleAtom);
     const activeIndices = useAtomValue(activeIndicesAtom);
     const setCurrentBasis = useSetAtom(currentBasisAtom);
 
@@ -242,7 +244,14 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
         if (d === null || !basisRef.current) return;
         e.preventDefault();
 
-        const [ndcDx, ndcDy] = svgDeltaToNdc(e.movementX, e.movementY, width, height, zoom);
+        // Points move by the basis change times the projection scale
+        const [ndcDx, ndcDy] = svgDeltaToNdc(
+          e.movementX,
+          e.movementY,
+          width,
+          height,
+          zoom * projectionScale,
+        );
         const basis = basisRef.current;
 
         // Update basis row d: column 0 (x projection) and column 1 (y projection)
@@ -255,7 +264,7 @@ export const AxisOverlay = forwardRef<AxisOverlayHandle, AxisOverlayProps>(
         forceRender((n) => n + 1);
         sendBasis();
       },
-      [width, height, zoom, dims, sendBasis],
+      [width, height, zoom, projectionScale, dims, sendBasis],
     );
 
     const handlePointerUp = useCallback(() => {

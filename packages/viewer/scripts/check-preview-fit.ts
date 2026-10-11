@@ -39,6 +39,7 @@ const tourStore = (keyframeCount: number) => {
     maxes: [1, 1, 1],
     ranges: [1, 1, 1],
     means: [0, 0, 0],
+    sample: new Float32Array(3),
   });
   const keyframes = Array.from(
     { length: keyframeCount },
