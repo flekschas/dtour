@@ -398,7 +398,10 @@ a 2D colormap, "point_color_map" ({label: "#hex"}), "point_size" and \
 "point_opacity" (number or "auto"), "tour_traversal" ("guided", "manual", \
 "grand"), "tour_playing" (bool), "tour_speed" (0.1-5), "show_axes" (bool), \
 "preview_label_content" ("auto", "description", "loadings"), "theme_mode" \
-("light", "dark", "system"). Name only columns that exist.
+("light", "dark", "system"), "tooltip_columns" (the columns the hover tooltip \
+lists, in order; [] hides it; columns of image URLs or data URIs show as \
+images), "legend_order" (labels the legend lists first). Name only columns \
+that exist.
 
 Inspect the file's columns first if you don't know them.\
 """

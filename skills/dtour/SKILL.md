@@ -134,9 +134,12 @@ setting has a traitlet. The most useful ones:
 | `tour_traversal` | `tourTraversal` | `"guided"` \| `"manual"` \| `"grand"` |
 | `tour_position`, `tour_playing`, `tour_speed` | `tourPosition`, `tourPlaying`, `tourSpeed` | 0–1, bool, 0.1–5 |
 | `point_color_by`, `color_map` (export: `point_color_map`) | `pointColorBy`, `pointColorMap` | column name or `[x, y]` pair for a 2D colormap, label → color |
+| `legend_order` | `legendOrder` | labels the legend lists first, in this order; the others follow |
 | `point_color_map_2d` | `pointColorMap2d` | `"schumann"` \| `"bremm"` \| `"steiger"` \| `"ziegler"` \| `"teulingfig2"` \| `"cubediagonal"` \| `"oklab_polar"` |
 | `tour_dimensions` | `tourDimensions` | columns of an auto-generated tour; two show a static scatter, the first on the x-axis |
 | `link` | `link` | views in the same browser with the same id share their selection (`dtour.link()` sets it) |
+| `tooltip_columns` | `tooltipColumns` | columns the point tooltip lists, in order; `[]` hides it. Columns of image URLs or `data:image/...` URIs show as images |
+| `tooltip_image_fit` | `tooltipImageFit` | `"contain"` \| `"cover"` |
 | `point_size`, `point_opacity` | `pointSize`, `pointOpacity` | number or `"auto"` |
 | `preview_count` | `previewCount` | 2–32, keyframes of an auto-generated tour |
 | `preview_size` | `previewSize` | `"auto"` \| `"small"` \| `"medium"` \| `"large"` |
@@ -157,7 +160,14 @@ https://dtour.dev/?url=<encoded file URL>&pointColorBy=cell_type&tourTraversal=m
 
 - Load the data with `url=<public file URL>` or `dataset=<example>` (`gaussian-blobs`,
   `linked-rings`, `lorenz`, `fashion-mnist`, `news-headlines`, `single-cell`,
-  `single-cell-rna-seq`, `image-caption-clip`, `arxiv-papers`).
+  `single-cell-rna-seq`, `image-caption-clip`, `arxiv-papers`, `digits`).
+- Show several views side by side with `views`, a JSON array of settings per view.
+  A view's `data` names its own file; views without it show the `url`/`dataset` data,
+  and settings outside `views` apply to all views. Give the views the same `link` to
+  link their selections; linked files must hold the same rows in the same order. `layout`
+  arranges the views in rows by index, listing each view once, e.g. `[[0,1],[2,3]]` for a
+  2×2 grid (default: one row):
+  `?url=<pca.pq>&views=[{"link":"a"},{"data":"<umap.pq>","link":"a"}]`.
 - Write strings as plain text and everything else as JSON: `previewCount=8`,
   `showAxes=true`, `pointColorBy=["x","y"]`, `tourDimensions=["a","b","c"]`,
   `pointColorMap={"setosa":"#e69f00"}`. Write a string that reads as JSON, e.g. a

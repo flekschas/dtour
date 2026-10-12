@@ -34,6 +34,33 @@ export function readUrlSpec(params: URLSearchParams): DtourSpec {
   return spec as DtourSpec;
 }
 
+/** Valid spec fields of `fields`. Invalid fields are dropped with a warning naming `source`. */
+export function parseSpecFields(fields: Record<string, unknown>, source: string): DtourSpec {
+  const spec: Record<string, unknown> = {};
+  for (const key of URL_SPEC_KEYS) {
+    if (!(key in fields)) continue;
+    const parsed = dtourSpecSchema.shape[key].safeParse(fields[key]);
+    if (parsed.success && parsed.data !== undefined) {
+      spec[key] = parsed.data;
+    } else {
+      console.warn(`[dtour] Ignoring invalid ${key} in ${source}: ${JSON.stringify(fields[key])}`);
+    }
+  }
+  return spec as DtourSpec;
+}
+
+/** The fields of `spec` that differ from `baseline`. */
+export function specDiff(spec: DtourSpec, baseline: DtourSpec): DtourSpec {
+  const diff: Record<string, unknown> = {};
+  for (const key of URL_SPEC_KEYS) {
+    const value = spec[key];
+    if (value !== undefined && JSON.stringify(value) !== JSON.stringify(baseline[key])) {
+      diff[key] = value;
+    }
+  }
+  return diff as DtourSpec;
+}
+
 function formatParam(value: unknown): string {
   // Plain text unless the string would read back as JSON, e.g. a column named "1"
   if (typeof value === 'string' && !parseJson(value)) return value;

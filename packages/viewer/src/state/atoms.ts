@@ -162,6 +162,13 @@ export const centeringAtom = atom<'midrange' | 'mean'>('midrange');
  */
 export const projectionScaleAtom = atom(1);
 
+/** Columns the point tooltip lists, in this order, or null for a default selection. */
+export const tooltipColumnsAtom = atom<string[] | null>(null);
+export const tooltipImageFitAtom = atom<'contain' | 'cover'>('contain');
+
+/** Labels the legend lists first, in this order, or null for their natural order. */
+export const legendOrderAtom = atom<string[] | null>(null);
+
 /** Id that links this view's selection with other views of the same rows, or null. */
 export const linkAtom = atom<string | null>(null);
 

@@ -893,7 +893,10 @@ export const DtourViewer = ({
         const cursorProjX = (ndcX * aspect) / zoomIz - oldPanX;
         const cursorProjY = (ndcY - iy) / zoomIz - oldPanY;
 
-        const factor = 1 - (e.deltaX || e.deltaY) * 0.002;
+        // The dominant axis: Shift turns a mouse wheel's scroll horizontal, and
+        // trackpads add small horizontal jitter to slow vertical scrolls
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        const factor = 1 - delta * 0.002;
         const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldZoom * factor));
 
         // Adjust pan so cursor stays at same screen position

@@ -108,6 +108,49 @@ def test_widget_point_color_by_accepts_a_column_pair():
         Widget(point_color_map_2d="rainbow")
 
 
+def test_widget_tooltip_and_legend_order_traits():
+    w = Widget()
+    assert w.tooltip_columns is None
+    assert w.tooltip_image_fit == "contain"
+    assert w.legend_order is None
+
+    w = Widget(tooltip_columns=[], tooltip_image_fit="cover", legend_order=["b", "a"])
+    assert w.tooltip_columns == []
+    assert w.tooltip_image_fit == "cover"
+    assert w.legend_order == ["b", "a"]
+    w.tooltip_columns = None
+    assert w.tooltip_columns is None
+
+    with pytest.raises(Exception):
+        Widget(tooltip_image_fit="stretch")
+
+
+def test_widget_saves_tooltip_and_legend_order():
+    from dtour.spec import read_spec_from_parquet
+
+    X = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
+    spec = read_spec_from_parquet(Widget(X, little_tour(X)).save_spec_to_parquet())
+    assert "tooltipColumns" not in spec
+    assert "tooltipImageFit" not in spec
+    assert "legendOrder" not in spec
+
+    w = Widget(
+        X,
+        little_tour(X),
+        tooltip_columns=["dim_1", "dim_0"],
+        tooltip_image_fit="cover",
+        legend_order=["b", "a"],
+    )
+    spec = read_spec_from_parquet(w.save_spec_to_parquet())
+    assert spec["tooltipColumns"] == ["dim_1", "dim_0"]
+    assert spec["tooltipImageFit"] == "cover"
+    assert spec["legendOrder"] == ["b", "a"]
+
+    # An empty list hides the tooltip, so it's saved
+    spec = read_spec_from_parquet(Widget(X, tooltip_columns=[]).save_spec_to_parquet())
+    assert spec["tooltipColumns"] == []
+
+
 def test_widget_saves_2d_color():
     from dtour.spec import read_spec_from_parquet
 

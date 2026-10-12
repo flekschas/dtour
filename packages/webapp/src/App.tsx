@@ -15,7 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { Button } from './components/ui/button.tsx';
 import { CONTENT_TOP_VH } from './constants.ts';
-import { readUrlSpec, URL_SPEC_KEYS, writeUrlSpec } from './url-spec.ts';
+import { readUrlSpec, specDiff, URL_SPEC_KEYS, writeUrlSpec } from './url-spec.ts';
+import { type Layout, layoutRows, readUrlLayout, readUrlViews, type ViewSpec } from './views.ts';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
 
 type LogoPhase = 'drawing' | 'moving' | 'done';
@@ -35,12 +36,17 @@ type ExampleDataset = {
   size?: string;
   // File name (without extension) of the looping preview video under
   // `example-previews/`, shown behind the example button.
-  preview: string;
+  preview?: string;
   tourDescription?: string;
   // Default color encoding for examples whose data can't embed a dtour spec
   // (e.g. generated Arrow tables). Applied on first load; overridden by any
   // persisted user choice.
   pointColorBy?: string;
+  /** Views shown side by side. A view's `data` is the URL of its own file. */
+  views?: ViewSpec[];
+  layout?: Layout;
+  /** Loads with `?dataset=<slug>` but isn't listed on the homepage. */
+  hidden?: boolean;
 } & (
   | { type: 'remote'; url: string }
   | { type: 'generate'; worker: 'lorenz' | 'gaussian-blobs' | 'linked-rings' }
@@ -97,6 +103,19 @@ const EXAMPLES: ExampleDataset[] = [
     size: '3MB',
     tourDescription:
       '70K fashion product images from [Fashion MNIST](https://github.com/zalandoresearch/fashion-mnist). Four 2D embeddings sweep the attraction-repulsion spectrum from LE-like (rho=100) through UMAP-like (rho=4) to t-SNE (rho=1), revealing how cluster structure emerges as repulsion increases.',
+  },
+  {
+    type: 'remote',
+    label: 'Handwritten Digits',
+    slug: 'digits',
+    fileName: 'digits-pca-tour.pq',
+    url: `${REMOTE}/digits-pca-tour.pq`,
+    numPoints: '1.8K',
+    numDims: '64',
+    tourDescription:
+      '1,797 8×8 images of handwritten digits from [scikit-learn](https://scikit-learn.org/stable/datasets/toy_dataset.html#digits-dataset). Left, a PCA tour of the 64 pixels. Right, a 2D UMAP of the same images. Selections link across both views, and hovering a point shows its digit.',
+    views: [{ link: 'digits' }, { data: `${REMOTE}/digits-umap.pq`, link: 'digits' }],
+    hidden: true,
   },
   {
     type: 'remote',
@@ -165,6 +184,8 @@ const EXAMPLES: ExampleDataset[] = [
   },
 ];
 
+const LISTED_EXAMPLES = EXAMPLES.filter((example) => !example.hidden);
+
 // Example buttons play their preview video while hovered or focused
 function playPreview(event: SyntheticEvent<HTMLElement>) {
   // play() rejects when a pause() interrupts it, which is expected here
@@ -186,7 +207,7 @@ const ExampleButtonContent = ({
   showPreview: boolean;
 }) => (
   <>
-    {showPreview && (
+    {showPreview && example.preview && (
       // The videos have a black background, so the light theme inverts their
       // lightness and rotates the hues back
       <video
@@ -281,11 +302,48 @@ function writeSpecToUrl(spec: DtourSpec, fileName: string, embeddedSpec: DtourSp
   replaceUrl(params);
 }
 
+/**
+ * Save each view's settings that differ from its defaults, embedded settings,
+ * and shared URL settings in the `views` URL parameter. An example's views stay
+ * out of the URL until they change.
+ */
+function writeViewsToUrl(
+  load: DataLoad & { views: LoadedView[] },
+  initialSpecs: DtourSpec[],
+  specs: DtourSpec[],
+  embeddedSpecs: DtourSpec[],
+): void {
+  const params = new URLSearchParams(location.search);
+  const shared = readUrlSpec(params);
+  const entries = (viewSpecs: DtourSpec[]) =>
+    load.views.map(({ fileName, spec: { data } }, i) => {
+      const baseline = {
+        ...DTOUR_DEFAULTS,
+        ...exampleDefaultSpec(fileName),
+        ...embeddedSpecs[i],
+        ...shared,
+      };
+      // Views share the page's theme
+      const { themeMode: _, ...settings } = specDiff(viewSpecs[i]!, baseline);
+      return data ? { data, ...settings } : settings;
+    });
+  const views = JSON.stringify(entries(specs));
+  if (load.fromExample && views === JSON.stringify(entries(initialSpecs))) {
+    params.delete('views');
+  } else {
+    params.set('views', views);
+  }
+  writeUrlSpec(params, { themeMode: specs[0]!.themeMode }, DTOUR_DEFAULTS);
+  replaceUrl(params);
+}
+
 /** Point the page URL at an example dataset, or at no data, without settings. */
 function setUrlData(datasetSlug: string | null): void {
   const params = new URLSearchParams(location.search);
   params.delete('url');
   params.delete('dataset');
+  params.delete('views');
+  params.delete('layout');
   for (const key of URL_SPEC_KEYS) params.delete(key);
   if (datasetSlug) params.set('dataset', datasetSlug);
   replaceUrl(params);
@@ -316,8 +374,49 @@ function csvToArrow(csvBuffer: ArrayBuffer): Promise<ArrayBuffer> {
  */
 type DataSource = 'link' | 'example' | 'local';
 
-/** One load of data. `id` changes on every load, even of the same file. */
-type DataLoad = { id: number; fileName: string; source: DataSource };
+/** A view of a load: the file it shows and its settings. */
+type LoadedView = { fileName: string; spec: ViewSpec };
+
+/**
+ * One load of data. `id` changes on every load, even of the same file. A load
+ * with `views` shows them in the `layout`'s rows, with `fromExample` when the
+ * views are an example's.
+ */
+type DataLoad = {
+  id: number;
+  fileName: string;
+  source: DataSource;
+  views?: LoadedView[];
+  layout?: number[][];
+  fromExample?: boolean;
+};
+
+type Composition = { views: ViewSpec[]; layout?: Layout; fromExample: boolean };
+
+const fileNameOf = (url: string) =>
+  new URL(url, location.href).pathname.split('/').pop() || 'data.pq';
+
+async function fetchData(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const buffer = await response.arrayBuffer();
+  return fileNameOf(url).toLowerCase().endsWith('.csv') ? csvToArrow(buffer) : buffer;
+}
+
+/** Whether some view shows the page's data. Without views, the page's data is the view. */
+const usesPageData = (views: ViewSpec[] | null | undefined) =>
+  !views || views.some((view) => !view.data);
+
+/** Each view's data: its own file, or a copy of the page's data, since each viewer takes ownership of its data. */
+function loadViewData(views: ViewSpec[], buffer: ArrayBuffer | null): Promise<ArrayBuffer[]> {
+  return Promise.all(
+    views.map(async (view) => {
+      if (view.data) return fetchData(view.data);
+      if (!buffer) throw new Error('Views without their own data need ?url= or ?dataset=');
+      return buffer.slice(0);
+    }),
+  );
+}
 
 // URL parameters for linked data, settings, and benchmark automation
 const urlParams = new URLSearchParams(globalThis.location?.search ?? '');
@@ -328,6 +427,10 @@ const rendererQuery = urlParams.get('renderer');
 const rendererParam =
   rendererQuery === 'webgl' ? 'webgl' : rendererQuery === 'webgpu' ? 'webgpu' : 'auto';
 const pointsParam = Number(urlParams.get('points')) || null;
+const urlViews = readUrlViews(urlParams);
+const urlLayout = readUrlLayout(urlParams);
+// The page URL names data to load: a file, an example, or views
+const isDataLink = Boolean(urlParam || datasetSlug || urlViews);
 
 // In benchmark mode, expose flag so DtourViewer conditionally sets window.scatter
 if (benchmarkMode) {
@@ -335,7 +438,8 @@ if (benchmarkMode) {
 }
 
 const App = () => {
-  const [data, setData] = useState<ArrayBuffer | undefined>(undefined);
+  // One buffer per view
+  const [data, setData] = useState<ArrayBuffer[] | undefined>(undefined);
   const [dataLoad, setDataLoad] = useState<DataLoad | null>(null);
   const [tourDescription, setTourDescription] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -350,7 +454,7 @@ const App = () => {
   // Deep links skip the intro: the logo only leaves 'drawing' once data has
   // rendered, but auto-loading waits for the logo to leave 'drawing'.
   const [logoPhase, setLogoPhase] = useState<LogoPhase>(
-    prefersReducedMotion || benchmarkMode || urlParam || datasetSlug ? 'done' : 'drawing',
+    prefersReducedMotion || benchmarkMode || isDataLink ? 'done' : 'drawing',
   );
   const drawCompleteRef = useRef(false);
   const gpuReadyRef = useRef(false);
@@ -359,8 +463,10 @@ const App = () => {
   const loadIdRef = useRef(0);
   // The latest load, set before React renders it
   const dataLoadRef = useRef<DataLoad | null>(null);
-  // Settings the loaded file implies. Like defaults, they stay out of the URL.
-  const embeddedSpecRef = useRef<DtourSpec>({});
+  // Settings each view's file implies, once known. Like defaults, they stay out of the URL.
+  const embeddedSpecsRef = useRef<(DtourSpec | undefined)[]>([]);
+  // The settings each view last reported
+  const latestSpecsRef = useRef<(Required<DtourSpec> | undefined)[]>([]);
   // Theme the viewer last reported. Only theme changes in the viewer become the saved preference.
   const shownThemeRef = useRef<ThemeMode | null>(null);
 
@@ -370,29 +476,57 @@ const App = () => {
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   );
 
-  // Derive spec from each load — recomputed synchronously for every load.
-  // Combined with key={dataLoad.id} on <Dtour>, this guarantees initStoreFromSpec
+  // Derive each view's spec from each load — recomputed synchronously for every load.
+  // Combined with the view containers keyed by the load, which remount the viewers, this guarantees initStoreFromSpec
   // runs with the spec before the first render (no flash of defaults).
-  // A link shows exactly its view: settings it omits use the defaults, not saved ones.
-  const spec = useMemo<DtourSpec>(() => {
-    if (!dataLoad) return { themeMode: readPersistedTheme() };
-    const { fileName, source } = dataLoad;
-    if (source === 'link') {
-      return {
-        ...exampleDefaultSpec(fileName),
-        themeMode: DTOUR_DEFAULTS.themeMode,
-        ...readUrlSpec(new URLSearchParams(location.search)),
-      };
-    }
-    return {
-      ...exampleDefaultSpec(fileName),
-      ...loadPersistedSpec(fileName),
-      themeMode: readPersistedTheme(),
+  // A link shows exactly its views: settings it omits use the defaults, not saved ones.
+  // Views share the settings of the page URL and don't use saved ones.
+  const specs = useMemo<DtourSpec[]>(() => {
+    if (!dataLoad) return [{ themeMode: readPersistedTheme() }];
+    const { fileName, source, views } = dataLoad;
+    const linkSpec: DtourSpec = {
+      themeMode: DTOUR_DEFAULTS.themeMode,
+      ...readUrlSpec(new URLSearchParams(location.search)),
     };
+    if (views) {
+      const shared = source === 'link' ? linkSpec : { themeMode: readPersistedTheme() };
+      return views.map(({ fileName: viewFileName, spec: { data: _, ...settings } }) => ({
+        ...exampleDefaultSpec(viewFileName),
+        ...shared,
+        ...settings,
+        themeMode: shared.themeMode,
+      }));
+    }
+    if (source === 'link') return [{ ...exampleDefaultSpec(fileName), ...linkSpec }];
+    return [
+      {
+        ...exampleDefaultSpec(fileName),
+        ...loadPersistedSpec(fileName),
+        themeMode: readPersistedTheme(),
+      },
+    ];
   }, [dataLoad]);
+  const spec = specs[0]!;
 
-  const specRef = useRef(spec);
-  specRef.current = spec;
+  const specsRef = useRef(specs);
+  specsRef.current = specs;
+
+  // A theme picked in one view applies to all views. A view applies every field
+  // its spec sets, so views that show their file get only the theme, plus the
+  // color map, which the viewer reads from the spec. Views still loading their
+  // file keep their spec, which their file's settings mustn't override.
+  const [sharedTheme, setSharedTheme] = useState<ThemeMode | null>(null);
+  const viewSpecs = useMemo(
+    () =>
+      sharedTheme
+        ? specs.map((s, i) =>
+            embeddedSpecsRef.current[i]
+              ? { themeMode: sharedTheme, pointColorMap: s.pointColorMap }
+              : { ...s, themeMode: sharedTheme },
+          )
+        : specs,
+    [specs, sharedTheme],
+  );
 
   // The page takes each load's theme right away; the URL waits for the file's metadata
   useEffect(() => {
@@ -423,36 +557,79 @@ const App = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [homeOpen, videoOpen]);
 
+  /** Describe the shown views in the page URL. */
+  const writeUrl = useCallback(() => {
+    const load = dataLoadRef.current;
+    const embeddedSpecs = embeddedSpecsRef.current;
+    // Until the files' own settings are known, the URL can't tell overrides from them
+    if (!load || load.source === 'local') return;
+    if ((load.layout?.flat() ?? [0]).some((i) => !embeddedSpecs[i])) return;
+    // The viewer doesn't report every spec field, e.g., pointColorMap
+    const shownSpecs = specsRef.current.map((s, i) => ({ ...s, ...latestSpecsRef.current[i] }));
+    if (load.views) {
+      writeViewsToUrl(
+        { ...load, views: load.views },
+        specsRef.current,
+        shownSpecs,
+        embeddedSpecs as DtourSpec[],
+      );
+    } else {
+      writeSpecToUrl(shownSpecs[0]!, load.fileName, embeddedSpecs[0]!);
+    }
+  }, []);
+
   const handleSpecChange = useCallback(
-    (newSpec: Required<DtourSpec>) => {
+    (index: number, newSpec: Required<DtourSpec>) => {
       // A viewer that a newer load replaces may still report its settings
       if (!dataLoad || dataLoad !== dataLoadRef.current) return;
-      setThemeMode(newSpec.themeMode);
+      // Until a view shows its file, it reports defaults instead of the file's settings
+      if (!embeddedSpecsRef.current[index]) return;
+      // Other views can still report the previous theme, which isn't a change
+      const previousTheme = latestSpecsRef.current[index]?.themeMode ?? shownThemeRef.current;
+      latestSpecsRef.current[index] = newSpec;
       // A link's theme doesn't replace the saved preference, but a change in the viewer does
-      if (newSpec.themeMode !== shownThemeRef.current) {
+      if (newSpec.themeMode !== previousTheme && newSpec.themeMode !== shownThemeRef.current) {
         shownThemeRef.current = newSpec.themeMode;
+        setThemeMode(newSpec.themeMode);
+        if (dataLoad.views) setSharedTheme(newSpec.themeMode);
         try {
           localStorage.setItem(THEME_STORAGE_KEY, newSpec.themeMode);
         } catch {}
       }
-      savePersistedSpec(dataLoad.fileName, newSpec);
-      // Until the file's own settings are known, the URL can't tell overrides from them
-      if (dataLoad.source !== 'local' && metadataReceivedRef.current) {
-        writeSpecToUrl(newSpec, dataLoad.fileName, embeddedSpecRef.current);
-      }
+      if (!dataLoad.views) savePersistedSpec(dataLoad.fileName, newSpec);
+      writeUrl();
     },
-    [dataLoad],
+    [dataLoad, writeUrl],
   );
 
   const showData = useCallback(
-    (buffer: ArrayBuffer, fileName: string, source: DataSource, description?: string) => {
-      dataLoadRef.current = { id: (dataLoadRef.current?.id ?? 0) + 1, fileName, source };
-      embeddedSpecRef.current = {};
-      metadataReceivedRef.current = false;
+    (
+      buffers: ArrayBuffer[],
+      fileName: string,
+      source: DataSource,
+      description?: string,
+      composition?: Composition,
+    ) => {
+      dataLoadRef.current = {
+        id: (dataLoadRef.current?.id ?? 0) + 1,
+        fileName,
+        source,
+        ...(composition && {
+          views: composition.views.map((spec) => ({
+            fileName: spec.data ? fileNameOf(spec.data) : fileName,
+            spec,
+          })),
+          layout: layoutRows(composition.layout, composition.views.length),
+          fromExample: composition.fromExample,
+        }),
+      };
+      embeddedSpecsRef.current = [];
+      latestSpecsRef.current = [];
       gpuReadyRef.current = false;
+      setSharedTheme(null);
       setTourDescription(description);
       setDataLoad(dataLoadRef.current);
-      setData(buffer);
+      setData(buffers);
       setParsing(true);
     },
     [],
@@ -475,7 +652,7 @@ const App = () => {
         }
 
         setUrlData(null);
-        showData(buffer, file.name, 'local');
+        showData([buffer], file.name, 'local');
       } catch (err) {
         if (id !== loadIdRef.current) return;
         console.error('Failed to load file:', err);
@@ -486,11 +663,11 @@ const App = () => {
     [showData],
   );
 
-  const loadBuffer = useCallback(
-    (buffer: ArrayBuffer, name: string, source: 'link' | 'local') => {
+  const handleLoadData = useCallback(
+    (buffer: ArrayBuffer, name: string) => {
       const applyData = (b: ArrayBuffer) => {
-        if (source === 'local') setUrlData(null);
-        showData(b, name, source);
+        setUrlData(null);
+        showData([b], name, 'local');
       };
 
       if (name.toLowerCase().endsWith('.csv')) {
@@ -516,11 +693,6 @@ const App = () => {
     [showData],
   );
 
-  const handleLoadData = useCallback(
-    (buffer: ArrayBuffer, name: string) => loadBuffer(buffer, name, 'local'),
-    [loadBuffer],
-  );
-
   const loadExample = useCallback(
     // `fromLink`: the page URL already names this example
     async (example: ExampleDataset, fromLink = false) => {
@@ -529,13 +701,15 @@ const App = () => {
       const id = ++loadIdRef.current;
 
       try {
-        let buffer: ArrayBuffer;
+        // A link's views replace the example's
+        const views = (fromLink && urlViews) || example.views;
+        const layout = (fromLink && urlLayout) || example.layout;
+        const needsData = usesPageData(views);
+        let buffer: ArrayBuffer | null = null;
 
-        if (example.type === 'remote') {
-          const response = await fetch(example.url);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          buffer = await response.arrayBuffer();
-        } else {
+        if (needsData && example.type === 'remote') {
+          buffer = await fetchData(example.url);
+        } else if (needsData && example.type === 'generate') {
           const mod = await (example.worker === 'gaussian-blobs'
             ? import('./workers/gaussianBlobs.worker.ts?worker&inline')
             : example.worker === 'linked-rings'
@@ -566,8 +740,17 @@ const App = () => {
             ? `${example.worker}-${pointsParam}.arrow`
             : example.fileName;
 
+        const buffers = views ? await loadViewData(views, buffer) : [buffer!];
+        if (id !== loadIdRef.current) return;
+
         if (!fromLink) setUrlData(example.slug);
-        showData(buffer, effectiveName, fromLink ? 'link' : 'example', example.tourDescription);
+        showData(
+          buffers,
+          effectiveName,
+          fromLink ? 'link' : 'example',
+          example.tourDescription,
+          views && { views, layout, fromExample: views === example.views },
+        );
       } catch (err) {
         if (id !== loadIdRef.current) return;
         console.error('Failed to load example:', err);
@@ -585,27 +768,35 @@ const App = () => {
   // with the animation for main-thread resources.
   const loadExampleRef = useRef(loadExample);
   loadExampleRef.current = loadExample;
-  const loadBufferRef = useRef(loadBuffer);
-  loadBufferRef.current = loadBuffer;
+  const showDataRef = useRef(showData);
+  showDataRef.current = showData;
   const pendingAutoLoad = useRef(true);
   useEffect(() => {
     if (!pendingAutoLoad.current) return;
     if (logoPhase === 'drawing') return; // wait for draw to finish
     pendingAutoLoad.current = false;
 
-    if (urlParam) {
+    // Views can name their own data instead of sharing the page's
+    if (urlParam || (!datasetSlug && urlViews)) {
       setLoading(true);
-      fetch(urlParam)
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.arrayBuffer();
-        })
-        .then((buffer) => {
-          const name = urlParam.split('/').pop() || 'data.pq';
-          loadBufferRef.current(buffer, name, 'link');
-        })
+      const id = ++loadIdRef.current;
+      (async () => {
+        const buffer = urlParam && usesPageData(urlViews) ? await fetchData(urlParam) : null;
+        const name = fileNameOf(urlParam ?? urlViews?.[0]?.data ?? '');
+        const buffers = urlViews ? await loadViewData(urlViews, buffer) : [buffer!];
+        if (id !== loadIdRef.current) return;
+        showDataRef.current(
+          buffers,
+          name,
+          'link',
+          undefined,
+          urlViews ? { views: urlViews, layout: urlLayout, fromExample: false } : undefined,
+        );
+      })()
         .catch((err) => console.error('Failed to load URL:', err))
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (id === loadIdRef.current) setLoading(false);
+        });
       return;
     }
     if (!datasetSlug) return;
@@ -621,25 +812,28 @@ const App = () => {
   // Expose readiness signal for Playwright.
   // We wait for the first 'rendered' event (not just 'metadata'), because bases
   // are installed in a later React effect and benchmark() requires state.tour.
-  const metadataReceivedRef = useRef(false);
+  // The first shown view's readiness stands for all views.
   const handleStatus = useCallback(
-    (status: { type: string; metadata?: { embeddedConfig?: string } }) => {
+    (index: number, status: { type: string; metadata?: { embeddedConfig?: string } }) => {
+      // A new renderer, e.g., of a remounted view, hasn't shown the file yet
+      if (status.type === 'ready') {
+        embeddedSpecsRef.current[index] = undefined;
+        latestSpecsRef.current[index] = undefined;
+      }
       if (status.type === 'metadata') {
-        metadataReceivedRef.current = true;
         const config = parseEmbeddedConfig(status.metadata?.embeddedConfig);
-        embeddedSpecRef.current = { ...config?.spec };
+        const embeddedSpec: DtourSpec = { ...config?.spec };
         // The viewer always traverses a sequential tour by parameter
-        if (config?.tour?.family === 'sequential') embeddedSpecRef.current.tourBy = 'parameter';
+        if (config?.tour?.family === 'sequential') embeddedSpec.tourBy = 'parameter';
+        embeddedSpecsRef.current[index] = embeddedSpec;
         // Start the load with a URL that describes it, e.g. with the saved settings of a picked example
-        const load = dataLoadRef.current;
-        if (load && load.source !== 'local') {
-          writeSpecToUrl(specRef.current, load.fileName, embeddedSpecRef.current);
-        }
+        writeUrl();
       }
       if (status.type === 'error' || status.type === 'lost') {
         setParsing(false);
       }
-      if (status.type === 'rendered' && metadataReceivedRef.current) {
+      const firstView = dataLoadRef.current?.layout?.[0]?.[0] ?? 0;
+      if (status.type === 'rendered' && index === firstView && embeddedSpecsRef.current[index]) {
         (globalThis as Record<string, unknown>).__dtourReady = true;
         gpuReadyRef.current = true;
         // If logo is still animating, trigger move once draw is also complete.
@@ -651,8 +845,10 @@ const App = () => {
         }
       }
     },
-    [],
+    [writeUrl],
   );
+
+  const layout = dataLoad?.layout ?? [[0]];
 
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
@@ -705,18 +901,37 @@ const App = () => {
         className="hidden"
         onChange={handleFileSelect}
       />
-      <Dtour
-        key={dataLoad?.id}
-        data={data}
-        spec={spec}
-        tourDescription={tourDescription}
-        onLoadData={handleLoadData}
-        onLogoClick={() => setHomeOpen(true)}
-        onSpecChange={handleSpecChange}
-        onStatus={handleStatus}
-        hideToolbar={logoPhase !== 'done'}
-        backend={rendererParam}
-      />
+      <div className="flex flex-1 min-h-0 flex-col">
+        {layout.map((row) => (
+          <div
+            key={row.join()}
+            className="flex flex-1 min-h-0 [&+&]:border-t [&+&]:border-dtour-border"
+          >
+            {row.map((i) => (
+              // On the viewer, so the line blends with the viewer's background, not the page's
+              <div
+                key={`${dataLoad?.id}-${i}`}
+                className="relative flex-1 min-w-0 [&+&>*]:border-l [&+&>*]:border-dtour-border"
+              >
+                <Dtour
+                  data={data?.[i]}
+                  spec={viewSpecs[i]}
+                  tourDescription={i === layout[0]?.[0] ? tourDescription : undefined}
+                  onLoadData={handleLoadData}
+                  onLogoClick={() => setHomeOpen(true)}
+                  onSpecChange={(newSpec) => handleSpecChange(i, newSpec)}
+                  onStatus={(status) => {
+                    // A viewer that a newer load replaces may still report its status
+                    if (dataLoad === dataLoadRef.current) handleStatus(i, status);
+                  }}
+                  hideToolbar={logoPhase !== 'done'}
+                  backend={rendererParam}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
       {/* Solid background cover — stays during logo move to hide scatter */}
       {(!data || parsing) && (
         <div className="absolute inset-0 z-20 bg-dtour-bg pointer-events-none" />
@@ -785,7 +1000,7 @@ const App = () => {
               </motion.span>
               {/* 4. Example grid */}
               <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
-                {EXAMPLES.map((example, i) => (
+                {LISTED_EXAMPLES.map((example, i) => (
                   <motion.button
                     key={example.fileName}
                     type="button"
@@ -813,7 +1028,7 @@ const App = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{
-                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + EXAMPLES.length * 0.05 + 0.1,
+                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.1,
                   duration: 0.4,
                   ease: 'easeOut',
                 }}
@@ -827,7 +1042,8 @@ const App = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{
-                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + EXAMPLES.length * 0.05 + 0.15,
+                  delay:
+                    (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.15,
                   duration: 0.4,
                   ease: 'easeOut',
                 }}
@@ -927,7 +1143,7 @@ const App = () => {
                   </Button>
                   <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
                   <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
-                    {EXAMPLES.map((example) => (
+                    {LISTED_EXAMPLES.map((example) => (
                       <button
                         key={example.fileName}
                         type="button"

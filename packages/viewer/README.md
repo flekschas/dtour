@@ -87,10 +87,13 @@ type DtourSpec = {
   cameraZoom?: number;                // default 1/1.5
   centering?: "midrange" | "mean";    // default "midrange"
   showLegend?: boolean;               // default true
+  legendOrder?: string[] | null;      // labels the legend lists first, in this order; the others follow, default null
   showAxes?: boolean;                 // default false
   showTourDescription?: boolean | null; // default null
   themeMode?: "light" | "dark" | "system"; // default "dark"
   tourDimensions?: string[] | null;   // columns of an auto-generated tour, default null (all); two show a static scatter, the first on x
+  tooltipColumns?: string[] | null;   // columns the tooltip lists, in this order; [] hides it, default null (image columns, the color column, and up to 9 more)
+  tooltipImageFit?: "contain" | "cover"; // how tooltip images fit their box, default "contain"
   link?: string | null;               // views in the same browser with the same id share their selection, default null
 };
 ```

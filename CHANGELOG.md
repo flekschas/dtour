@@ -17,6 +17,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - **Python `compute_metrics`**: `views` → `keyframes`
 - **Python `build_dtour_metadata`**: tours with an `embedding` (all but `little_tour`) need `tour_dimensions`, the names of the embedding columns. It used to record the input features instead
 - **DtourSpec**: `pointColorBy` can be an `[x, y]` column pair, so code reading it from `onSpecChange` must handle arrays
+- **Scatter `Metadata`**: string columns of image URLs or data URIs are listed in the new `imageColumnNames` instead of `categoricalColumnNames`
 - **Backward compatibility**: Parquet files with the old spec names still load. Old Python names still work but raise a `DeprecationWarning`, except in the `TourResult` constructor. Saved tours (`.npz` and Parquet) keep their format.
 
 ### python
@@ -36,6 +37,9 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add a Claude Desktop extension for the MCP server, attached to each GitHub release as `dtour.mcpb`. Opening it installs the server; Claude Desktop sets up Python and the dependencies itself. Build it with `pnpm build:mcpb`
 - feat: add `dtour.link(*widgets)`, which keeps the lasso and legend selections of widgets showing the same points in sync and returns a function that unlinks them. It sets the new `link` traitlet, so the widgets link in the browser without a round trip through Python. With the static scatter (e.g., `Widget(df, tour_dimensions=["umap_x", "umap_y"])`), this compares a 2D embedding with a tour without another package
 - feat: the MCP server's `visualize` tool takes `views`, up to 4 views of the same rows that the viewer shows side by side with linked selections, e.g., a PCA tour next to a 2D UMAP, or embeddings from two models. Each view can set its own `tour`, `columns`, `dimensions`, and `settings`. `dimensions` sets how many dimensions a tour moves through, and `2` shows a static 2D PCA or UMAP embedding. Two `columns` show as a static scatter. With several views, the legends start hidden. The tool's result lists one Parquet file per view, and `read_data` takes the view's index
+- feat: add `tooltip_columns` and `tooltip_image_fit` traitlets and `build_dtour_metadata` arguments. `tooltip_columns` sets which columns the point tooltip lists and in what order, and `[]` hides the tooltip. String columns of image URLs or `data:image/...` URIs show as images, and `tooltip_image_fit` (`"contain"` or `"cover"`) sets how they fit their box
+- feat: add a `legend_order` traitlet and `build_dtour_metadata` argument, which lists the given labels of the categorical color column first in the legend
+- feat: the MCP server's `visualize` tool documents the `tooltip_columns` and `legend_order` settings
 - fix: the widget keeps a snapshot of its data, so later changes to the source (e.g., a mutated numpy array or a consumed Arrow stream) don't change what it shows or saves, and raw Arrow IPC file bytes work like IPC stream bytes
 - fix: keep label columns of pandas DataFrames — categorical, string, object, and boolean columns become Arrow string columns (with missing values as nulls), so `point_color_by` works with plain pandas input. Other types, like datetimes, are only included when listed in `from_pandas(columns=...)`. Column names that collide as strings (e.g., `1` and `"1"`) now raise a `ValueError`
 - fix: preserve sequential interpolation (no "breathing") and show tour descriptions, keyframe labels, and loadings when a widget view opens, including in marimo. This also removes the tour-family console warning
@@ -55,12 +59,16 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: selection requests (`setSelectionMask`, `lassoSelect`, `clearSelection`, `selectByColumn`) return an id that their result repeats, and `latestSelectionId()` tells whether a result belongs to a selection a newer request replaced. `selectByColumn` reports its rows, column, and labels in a new `columnSelectionResult` status, and repeating the latest column selection changes nothing
 - feat: report a `lost` status when the WebGPU device or WebGL context is lost. Device loss used to be reported as an `error` status, and only when a frame failed
 - feat: `setProjectionScale(scale)` scales the projected coordinates in the main view, the previews, and for selections, and `Metadata.sample` holds up to 1,024 evenly spaced rows, e.g., to estimate how far projections spread
+- feat: string columns whose values are all image URLs (`http(s)` URLs ending in `.png`, `.jpg`, `.jpeg`, or `.webp`) or `data:image/png|jpeg|webp` URIs are image columns, listed in the new `Metadata.imageColumnNames`. They stay out of `categoricalColumnNames`, so they aren't offered for coloring, but `categoricalLabels` and `getPointData` still hold their values
 - fix: treat string columns whose first value is null as categorical
 - fix: category colors no longer shift when zooming in (e.g., orange turning yellow). Auto opacity still grows with zoom but now stops at 1
 
 ### viewer
 
 - feat: `DtourSpec` covers 2D coloring and the tour columns: `pointColorBy` accepts an `[x, y]` column pair, `pointColorMap2d` picks the 2D colormap, and `tourDimensions` sets the columns of an auto-generated tour
+- feat: add `tooltipColumns` to `DtourSpec`, the columns the point tooltip lists, in this order. `[]` hides the tooltip. By default, the tooltip lists image columns, the color column, the other categorical columns, then the tour's numeric columns, up to 10 text rows and a "+N more" row, instead of every column
+- feat: the tooltip shows the values of image columns as images, at least 96px and at most 218px wide (their natural width in between), in a box with an aspect ratio between 1:1 and 2:1. Images at most 48px wide render pixelated. `tooltipImageFit: 'contain' | 'cover'` sets how they fit the box
+- feat: add `legendOrder` to `DtourSpec`, labels the legend lists first, in this order. The other labels follow in their natural order. Colors and selections stay with their labels
 - fix: `spec.pointColorMap` applies; it used to be ignored unless embedded in a Parquet file
 - fix: tours over many columns fit the canvas and the previews. Their projections spread further than each column's range, e.g., up to 4 times as far for the 64 pixels of the handwritten digits, which put most points outside the view, emptied the previews, and made points faint after zooming out. Tours that spread wider than a typical tour of a few columns now scale their coordinates down, so the default zoom, the previews, and auto opacity work as for other tours
 - fix: with `backend: 'auto'`, fall back to WebGL when WebGPU fails to start (e.g., Chrome's `Failed to create WebGPU Context Provider`), instead of showing a blank canvas. The viewer now sends data to the renderer only once it is ready, and `onScatterReady` is called at that point
@@ -76,6 +84,9 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: add a `tourDimensions` prop to `Dtour` and `DtourViewer` naming the columns the `keyframes` project (default: the first p numeric columns). If they don't name one existing column per keyframe dimension, the viewer logs an error and shows an auto-generated tour instead, with its own keyframe count and without the rejected tour's labels. Without `keyframes`, `Dtour` uses the names as the columns checked in the toolbar's column menu
 - feat: an auto-generated tour that projects two columns shows a static scatter of them: no gallery, slider, playback, axes, or traversal modes, and a "Tour: None" badge whose tooltip explains why. The order of `tourDimensions` decides which column is on the x-axis, both axes share one scale, so 2D embeddings keep their shape, and an untouched camera zooms to fit the points around the centering origin into the canvas, within the zoom limits. A PCA tour projects all numeric columns, so it stays a tour
 - feat: add `link` to `DtourSpec`. Views in the same browser with the same id share their selections over a `BroadcastChannel`, also across tabs. Selections link by row: a legend selection shows in the legend of views colored by the same column, and as a point selection in the others. A view without a selection adopts the selection of the views it joins. Views must show the same rows in the same order; views with a different number of rows ignore each other
+- feat: the legend sidebar fits its content, between 64px and 200px, until the user resizes it, so short labels like digits no longer leave empty space
+- fix: the legend's resize handle reacts 2px to either side of its 1px line, so it's easier to grab
+- fix: slow two-finger trackpad scrolls zoom smoothly. Zooming used the scroll's horizontal component whenever it wasn't zero, so the small sideways jitter of slow vertical scrolls made the view flicker between zooming in and out
 - fix: tours with more keyframes than the gallery can show no longer stack all previews in the top-left corner. The gallery previews the 32 keyframes most evenly spaced along the tour (by normalized geodesic distance), always including the first and last, and the slider keeps a tick for every keyframe
 - fix: align radial metric bars with the slider ticks for every preview count. Previously the bars were rotated away from the ticks for counts other than 4, 8, 12, and 16
 - fix: show fewer previews instead of unusably small ones in narrow or short containers, such as phones. Each preview stays at least 24px, the shown keyframes are sampled like for long tours, and the gallery hides when not even two previews fit
@@ -93,7 +104,11 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - feat: example buttons show a preview video of their dataset that loops while the button is hovered or focused. In light mode the video is inverted with its hues kept
 - feat: on screens from 1440px, 1600px, and 1920px wide, the example grid gets wider with larger gaps and taller buttons
 - feat: `?link=<id>` links the selections of tabs that show the same rows. The link isn't saved with a file's other settings
+- feat: `?views=[…]` shows several views side by side, e.g., a PCA tour next to a 2D UMAP. It's a JSON array with settings per view, where `data` names a view's own file; views without it show the `?url=` or `?dataset=` data, and settings outside `views` apply to all views. Views with the same `link` share their selections. `?layout=[[0,1],[2,3]]` arranges the views in rows by index, listing each view once (default: one row). The URL follows each view's settings, and a theme picked in one view applies to all
+- feat: `?dataset=digits` opens the handwritten digits: a PCA tour of the 64 pixels next to a 2D UMAP, with linked selections and the digit's image on hover. It isn't listed on the homepage. `scripts/make_digits_example.py` builds its two files
+- fix: a view's settings reach the URL and saved settings only once it shows its file. A view that hasn't loaded its file, e.g., one remounted by a dev hot reload, used to report default settings, which replaced the file's own, e.g., `pointColorBy: null` instead of the file's coloring
 - fix: the webapp's responsive and hover styles (e.g., the example grid's `sm:` gap and the drop button's hover background) no longer lose to same-named classes from the viewer's stylesheet
+- fix: `?url=` CSV files whose URL has a query string or fragment, e.g., a signed download link, are converted from CSV again
 - fix: `?url=` and `?dataset=` links load their data without also needing `&benchmark`
 - fix: `?dataset=` slugs load the example they name. Since the examples were reordered, they had loaded other examples (e.g., `lorenz` loaded Fashion MNIST), including in benchmark runs
 
@@ -102,6 +117,7 @@ Names now use "keyframe" for a stop on the tour and "preview" for its thumbnail 
 - ai: add a dtour agent skill (`npx skills add flekschas/dtour`) with usage guidance, API references, and the paper
 - ai: the skill explains how to build a dtour.dev link that opens data with given settings
 - ai: the skill compares a UMAP with a PCA tour using two linked dtour widgets instead of jupyter-scatter
+- ai: the skill covers the tooltip and legend order settings and dtour.dev links with several views
 
 ## v0.4.4
 

@@ -33,6 +33,7 @@ const tourStore = (keyframeCount: number) => {
     columnNames: ['a', 'b', 'c'],
     categoricalColumnNames: [],
     categoricalLabels: {},
+    imageColumnNames: [],
     rowCount: 1,
     dimCount: 3,
     mins: [0, 0, 0],

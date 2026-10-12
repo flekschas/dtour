@@ -33,6 +33,8 @@ export const dtourSpecSchema = z.object({
     .optional(),
   pointColorMap: z.record(z.string(), z.string()).optional(),
   pointColorMap2d: z.enum(COLORMAP_2D_NAMES).optional(),
+  /** Labels the legend lists first, in this order. The other labels follow in their natural order. */
+  legendOrder: z.array(z.string()).nullable().optional(),
   cameraPanX: z.number().optional(),
   cameraPanY: z.number().optional(),
   cameraZoom: z.number().positive().optional(),
@@ -43,6 +45,10 @@ export const dtourSpecSchema = z.object({
   centering: z.enum(['midrange', 'mean']).optional(),
   /** Numeric columns an auto-generated tour uses. `null` uses all. A precomputed tour ignores it. */
   tourDimensions: z.array(z.string()).nullable().optional(),
+  /** Columns the point tooltip lists, in this order. `null` lists a default selection. `[]` hides the tooltip. */
+  tooltipColumns: z.array(z.string()).nullable().optional(),
+  /** How images in the tooltip fit their box. */
+  tooltipImageFit: z.enum(['contain', 'cover']).optional(),
   /** Views in the same browser with the same id share their selection. `null` doesn't link. */
   link: z.string().min(1).nullable().optional(),
 });
@@ -250,6 +256,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   pointColorBy: null,
   pointColorMap: {},
   pointColorMap2d: 'schumann',
+  legendOrder: null,
   cameraPanX: 0,
   cameraPanY: 0,
   cameraZoom: 1 / 1.5,
@@ -262,5 +269,7 @@ export const DTOUR_DEFAULTS: Required<DtourSpec> = {
   themeMode: 'dark',
   centering: 'midrange',
   tourDimensions: null,
+  tooltipColumns: null,
+  tooltipImageFit: 'contain',
   link: null,
 };

@@ -1,4 +1,7 @@
 import type { Metadata } from '@dtour/scatter';
+import { useAtomValue } from 'jotai';
+import { useState } from 'react';
+import { tooltipColumnsAtom, tooltipImageFitAtom } from '../state/atoms.ts';
 
 const hexLuminance = (hex: string): number => {
   const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
@@ -24,8 +27,50 @@ export type HoverState = {
 const POINT_R = 4;
 const ARROW_W = 6;
 const TOOLTIP_MAX_W = 240;
+/** Content width of the widest tooltip: its max width less padding and border. */
+const CONTENT_MAX_W = TOOLTIP_MAX_W - 22;
+/** Text rows the default selection of columns shows before a "+N more" row. */
+const DEFAULT_MAX_ROWS = 10;
+/** Images narrower than this scale up to it. Images at most half as wide render pixelated. */
+const MIN_IMAGE_W = 96;
 
-type Row = { label: string; value: string; isColor: boolean };
+type Row = { label: string; value: string; isColor: boolean; isImage: boolean };
+
+const formatNumber = (val: number) => (Number.isInteger(val) ? String(val) : val.toPrecision(4));
+
+/**
+ * An image as wide as the tooltip and at least as wide as its natural width,
+ * within limits, in a box with an aspect ratio between 1 and 2 so wide and tall
+ * images don't make the tooltip too tall.
+ */
+const TooltipImage = ({
+  src,
+  alt,
+  fit,
+}: {
+  src: string;
+  alt: string;
+  fit: 'contain' | 'cover';
+}) => {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  const ratio = size ? Math.min(Math.max(size.width / size.height, 1), 2) : 1;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="block w-full rounded-xs"
+      style={{
+        aspectRatio: ratio,
+        objectFit: fit,
+        minWidth: Math.min(Math.max(size?.width ?? 0, MIN_IMAGE_W), CONTENT_MAX_W),
+        imageRendering: size && size.width * 2 <= MIN_IMAGE_W ? 'pixelated' : undefined,
+      }}
+      onLoad={(e) =>
+        setSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })
+      }
+    />
+  );
+};
 
 export const PointTooltip = ({
   hover,
@@ -47,75 +92,56 @@ export const PointTooltip = ({
   activeIndices?: number[];
 }) => {
   const { data } = hover;
+  const tooltipColumns = useAtomValue(tooltipColumnsAtom);
+  const imageFit = useAtomValue(tooltipImageFitAtom);
+
+  if (tooltipColumns?.length === 0) return null;
 
   const gap = POINT_R + 4;
   const goRight = cx + gap + ARROW_W + TOOLTIP_MAX_W < containerWidth;
 
-  // Build rows in order: color dimension, other categoricals, other numericals, projection
   const rows: Row[] = [];
+  let hiddenCount = 0;
   if (data && metadata) {
-    // 1. Color dimension first
-    if (colorColumn) {
-      if (metadata.categoricalColumnNames.includes(colorColumn)) {
-        const labelIdx = data.categoricalValues[colorColumn];
-        if (labelIdx !== undefined) {
-          const labels = metadata.categoricalLabels[colorColumn];
-          rows.push({
-            label: colorColumn,
-            value: labels?.[labelIdx] ?? String(labelIdx),
-            isColor: true,
-          });
-        }
-      } else {
-        const colIdx = metadata.columnNames.indexOf(colorColumn);
-        if (colIdx >= 0) {
-          const val = data.numericValues[String(colIdx)];
-          if (val !== undefined) {
-            rows.push({
-              label: colorColumn,
-              value: Number.isInteger(val) ? String(val) : val.toPrecision(4),
-              isColor: true,
-            });
-          }
-        }
+    const rowOf = (name: string): Row | null => {
+      const isColor = name === colorColumn;
+      const labels = metadata.categoricalLabels[name];
+      if (labels) {
+        const labelIdx = data.categoricalValues[name];
+        if (labelIdx === undefined) return null;
+        const isImage = metadata.imageColumnNames.includes(name);
+        const value = labels[labelIdx] ?? String(labelIdx);
+        if (isImage && !value) return null;
+        return { label: name, value, isColor, isImage };
       }
-    }
-
-    // 2. Other categorical columns
-    for (const catName of metadata.categoricalColumnNames) {
-      if (catName === colorColumn) continue;
-      const labelIdx = data.categoricalValues[catName];
-      if (labelIdx !== undefined) {
-        const labels = metadata.categoricalLabels[catName];
-        rows.push({
-          label: catName,
-          value: labels?.[labelIdx] ?? String(labelIdx),
-          isColor: false,
-        });
-      }
-    }
-
-    // 3. Projection dimensions (active in the tour), then remaining numerical
-    const activeSet = activeIndices ? new Set(activeIndices) : null;
-    const addNumRow = (d: number) => {
-      if (metadata.columnNames[d] === colorColumn) return;
-      const val = data.numericValues[String(d)];
-      if (val === undefined) return;
-      rows.push({
-        label: metadata.columnNames[d]!,
-        value: Number.isInteger(val) ? String(val) : val.toPrecision(4),
-        isColor: false,
-      });
+      const val = data.numericValues[String(metadata.columnNames.indexOf(name))];
+      if (val === undefined) return null;
+      return { label: name, value: formatNumber(val), isColor, isImage: false };
     };
-    if (activeSet) {
-      for (const d of activeIndices!) addNumRow(d);
-      for (let d = 0; d < metadata.columnNames.length; d++) {
-        if (!activeSet.has(d)) addNumRow(d);
-      }
-    } else {
-      for (let d = 0; d < metadata.columnNames.length; d++) addNumRow(d);
+
+    // By default: images, the color column, other categoricals, the tour's numeric columns, other numerics
+    let names = tooltipColumns;
+    if (!names) {
+      const active = activeIndices ?? [];
+      const activeSet = new Set(active);
+      const numeric = [
+        ...active.map((d) => metadata.columnNames[d]!),
+        ...metadata.columnNames.filter((_, d) => !activeSet.has(d)),
+      ];
+      const others = [...metadata.categoricalColumnNames, ...numeric].filter(
+        (name) => name !== colorColumn,
+      );
+      const textNames = [...(colorColumn ? [colorColumn] : []), ...others];
+      hiddenCount = Math.max(textNames.length - DEFAULT_MAX_ROWS, 0);
+      names = [...metadata.imageColumnNames, ...textNames.slice(0, DEFAULT_MAX_ROWS)];
+    }
+    for (const name of names) {
+      const row = rowOf(name);
+      if (row) rows.push(row);
     }
   }
+
+  if (data && rows.length === 0) return null;
 
   // Arrow: SVG path draws only the two outer edges (no base stroke over tooltip border).
   // Polygon fills the triangle with the tooltip background color.
@@ -179,26 +205,31 @@ export const PointTooltip = ({
       {arrowSvg}
       {rows.length > 0 ? (
         <div className="flex flex-col gap-0.5">
-          {rows.map((row) => (
-            <div
-              key={row.label}
-              className={`flex gap-2 ${row.isColor ? 'rounded-xs px-1 -mx-1' : ''}`}
-              style={
-                row.isColor && color?.startsWith('#')
-                  ? {
-                      backgroundColor: color,
-                      color: hexLuminance(color) > 0.4 ? '#000' : '#fff',
-                    }
-                  : undefined
-              }
-            >
-              <span className={`truncate ${row.isColor ? '' : 'opacity-60'}`}>{row.label}</span>
-              <span className="ml-auto text-right font-mono truncate">{row.value}</span>
-            </div>
-          ))}
+          {rows.map((row) =>
+            row.isImage ? (
+              <TooltipImage key={row.label} src={row.value} alt={row.label} fit={imageFit} />
+            ) : (
+              <div
+                key={row.label}
+                className={`flex gap-2 ${row.isColor ? 'rounded-xs px-1 -mx-1' : ''}`}
+                style={
+                  row.isColor && color?.startsWith('#')
+                    ? {
+                        backgroundColor: color,
+                        color: hexLuminance(color) > 0.4 ? '#000' : '#fff',
+                      }
+                    : undefined
+                }
+              >
+                <span className={`truncate ${row.isColor ? '' : 'opacity-60'}`}>{row.label}</span>
+                <span className="ml-auto text-right font-mono truncate">{row.value}</span>
+              </div>
+            ),
+          )}
+          {hiddenCount > 0 && <div className="opacity-40">+{hiddenCount} more</div>}
         </div>
       ) : (
-        data === null && <div className="opacity-40">Loading...</div>
+        <div className="opacity-40">Loading...</div>
       )}
     </div>
   );

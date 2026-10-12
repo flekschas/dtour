@@ -88,6 +88,9 @@ def test_build_snake_to_camel_all_keys():
         "tour_slider_spacing": "equal",
         "tour_slider_visibility": "subtle",
         "theme_mode": "light",
+        "tooltip_columns": ["image", "label"],
+        "tooltip_image_fit": "cover",
+        "legend_order": ["B", "A"],
         "centering": "mean",
     }
     result = json.loads(build_dtour_metadata(**kwargs))
@@ -119,8 +122,16 @@ def test_build_snake_to_camel_all_keys():
         "tourSliderSpacing": "equal",
         "tourSliderVisibility": "subtle",
         "themeMode": "light",
+        "tooltipColumns": ["image", "label"],
+        "tooltipImageFit": "cover",
+        "legendOrder": ["B", "A"],
         "centering": "mean",
     }
+
+
+def test_build_keeps_empty_tooltip_columns():
+    # An empty list hides the tooltip, unlike an omitted one
+    assert json.loads(build_dtour_metadata(tooltip_columns=[])) == {"tooltipColumns": []}
 
 
 def test_build_maps_deprecated_kwargs():

@@ -18,6 +18,7 @@ import {
   color2dMapAtom,
   colorMapAtom,
   legendClearGenAtom,
+  legendOrderAtom,
   legendSelectionAtom,
   metadataAtom,
   paletteAtom,
@@ -78,6 +79,7 @@ export const ColorLegend = () => {
   const color2dEnabled = useAtomValue(color2dEnabledAtom);
   const color2dColumns = useAtomValue(color2dColumnsAtom);
   const [color2dMap, setColor2dMap] = useAtom(color2dMapAtom);
+  const legendOrder = useAtomValue(legendOrderAtom);
 
   const onSwatchClick = useCallback(
     (index: number, event: React.MouseEvent) => {
@@ -126,13 +128,20 @@ export const ColorLegend = () => {
                 .flatMap(() => glasbey),
             ] as [number, number, number][]);
     }
+    // Labels in the legend order come first. The stable sort keeps the others in their natural order
+    const rank = new Map([...new Set(legendOrder)].map((label, i) => [label, i]));
+    const unranked = rank.size;
+    const order = labels
+      .map((_, i) => i)
+      .sort((a, b) => (rank.get(labels[a]!) ?? unranked) - (rank.get(labels[b]!) ?? unranked));
     return (
       <div className="flex h-full flex-col overflow-hidden bg-dtour-bg text-xs text-dtour-text">
         <div className="flex h-10 shrink-0 items-center border-b border-dtour-surface px-3 font-semibold text-dtour-highlight truncate">
           {column}
         </div>
         <div className="flex flex-col gap-1.5 overflow-y-auto px-3 pt-3 pb-3">
-          {labels.map((label, i) => {
+          {order.map((i) => {
+            const label = labels[i]!;
             const [r, g, b] = colors[i % colors.length]!;
             const dimmed = hasSelection && !legendSelection.has(i);
             return (
