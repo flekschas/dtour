@@ -119,14 +119,15 @@ jobs:
       - uses: astral-sh/setup-uv@v7
 
       # PyPI's index can lag a bit behind a fresh publish; wait for the tagged
-      # version to be queryable before pinning to it.
+      # version to be installable before pinning to it.
       - name: Wait for dtour ${{ github.ref_name }} on PyPI
         env:
           VERSION: ${{ github.ref_name }}
         run: |
           ver="${VERSION#v}"
           for attempt in $(seq 1 20); do
-            if curl -sf "https://pypi.org/pypi/dtour/${ver}/json" >/dev/null; then
+            # Ask uv itself, since PyPI's CDN can serve an outdated index
+            if echo "dtour==${ver}" | uv pip compile -q --no-cache --python-version 3.12 --no-deps - >/dev/null 2>&1; then
               echo "dtour ${ver} is available on PyPI"
               exit 0
             fi
@@ -175,7 +176,8 @@ jobs:
         run: |
           ver="${VERSION#v}"
           for attempt in $(seq 1 20); do
-            if curl -sf "https://pypi.org/pypi/dtour/${ver}/json" >/dev/null; then
+            # Ask uv itself, since PyPI's CDN can serve an outdated index
+            if echo "dtour==${ver}" | uv pip compile -q --no-cache --python-version 3.12 --no-deps - >/dev/null 2>&1; then
               exit 0
             fi
             echo "Waiting for dtour ${ver} on PyPI (attempt ${attempt}/20)…"
