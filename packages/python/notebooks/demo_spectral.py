@@ -37,7 +37,7 @@ def _(dtour, le_tour, phenotype_colors, phenotypes, pl):
     ).with_columns(phenotypes)
 
     w = dtour.Widget(
-        data=le_df,
+        data=pl.DataFrame([phenotypes]),
         tour=le_tour,
         preview_count=8,
         preview_size="small",
@@ -72,7 +72,7 @@ def _(dtour, phenotype_colors, phenotypes, pl, signed_tour):
     ).with_columns(phenotypes)
 
     signed_w = dtour.Widget(
-        data=signed_df,
+        data=pl.DataFrame([phenotypes]),
         tour=signed_tour,
         preview_count=min(8, signed_tour.n_keyframes),
         preview_size="small",
@@ -122,6 +122,8 @@ def _(X_scaled, cache_dir, marker_names, phenotypes):
             discriminative=True,
         )
         fisher_tour.save(fisher_tour_path)
+    # Fisher discriminant axes, named like the columns of the marker files below
+    fisher_tour.embedding_names = [f"FD{i}" for i in range(fisher_tour.embedding.shape[1])]
     return (fisher_tour,)
 
 
@@ -306,7 +308,7 @@ def _(np, signed_tour):
     _r2 = signed_tour.feature_r2
     _n_comp = _loadings.shape[0]
 
-    _row_labels = [f"LE{i} (R\u00b2={_r2[i]:.2f})" for i in range(_n_comp)]
+    _row_labels = [f"LE{i + 1} (R\u00b2={_r2[i]:.2f})" for i in range(_n_comp)]
 
     _vmax = np.abs(_loadings).max()
     _fig, _ax = _plt2.subplots(figsize=(max(10, len(_names) * 0.6), _n_comp * 0.5 + 2))
@@ -330,7 +332,7 @@ def _(dtour, fisher_tour, phenotype_colors, phenotypes, pl):
     ).with_columns(phenotypes)
 
     fisher_w = dtour.Widget(
-        data=fisher_df,
+        data=pl.DataFrame([phenotypes]),
         tour=fisher_tour,
         preview_count=min(8, fisher_tour.n_keyframes),
         preview_size="small",

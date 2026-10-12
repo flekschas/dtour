@@ -9,10 +9,10 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
   build: {
-    outDir: resolve(__dirname, 'src/dtour/static'),
+    outDir: resolve(import.meta.dirname, 'src/dtour/static'),
     emptyOutDir: true,
     lib: {
-      entry: resolve(__dirname, 'js/widget.tsx'),
+      entry: resolve(import.meta.dirname, 'js/widget.tsx'),
       formats: ['es'],
       fileName: 'widget',
     },

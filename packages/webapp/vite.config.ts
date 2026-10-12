@@ -6,7 +6,7 @@ import { defineConfig, type Plugin } from 'vite';
 
 /** Serve files from the monorepo `data/` directory at `/data/*` in dev. */
 function serveDataDir(): Plugin {
-  const dataDir = resolve(__dirname, '../../data');
+  const dataDir = resolve(import.meta.dirname, '../../data');
   return {
     name: 'serve-data-dir',
     configureServer(server) {

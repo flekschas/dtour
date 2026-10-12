@@ -77,7 +77,7 @@ def _(cache_dir, pd):
     if _local_pq.exists():
         df = pd.read_parquet(_local_pq)
     else:
-        df = pd.read_parquet(_data_url)
+        df = pd.read_parquet(_data_url, storage_options={"User-Agent": "dtour"})
         df.to_parquet(_local_pq)
 
     df = df.dropna(subset=pc_cols).reset_index(drop=True)

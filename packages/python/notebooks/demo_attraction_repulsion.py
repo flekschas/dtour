@@ -222,12 +222,8 @@ def _(dtour, label_names):
 def _(ImagesWidget, color_map, dtour, label_names, tour):
     import polars as pl
 
-    sp_df = pl.DataFrame(
-        {f"sp_{i}": tour.embedding[:, i] for i in range(tour.embedding.shape[1])}
-    ).with_columns(pl.Series("label", label_names))
-
     w = dtour.Widget(
-        data=sp_df,
+        data=pl.DataFrame({"label": label_names}),
         tour=tour,
         preview_count=4,
         preview_size="medium",
@@ -244,7 +240,7 @@ def _(ImagesWidget, color_map, dtour, label_names, tour):
         w_images.images = [[int(i), color_map.get(label_names[i], "#888")] for i in change["new"]]
 
     w.observe(_on_selection, names=["selected_indices"])
-    return sp_df, w, w_images
+    return pl, w, w_images
 
 
 @app.cell(hide_code=True)
@@ -257,9 +253,12 @@ def _(mo):
 
 
 @app.cell
-def _(cache_dir, color_map, dtour, sp_df, tour):
+def _(cache_dir, color_map, dtour, label_names, pl, tour):
     import pyarrow.parquet as pq
 
+    sp_df = pl.DataFrame(
+        {f"sp_{i}": tour.embedding[:, i] for i in range(tour.embedding.shape[1])}
+    ).with_columns(pl.Series("label", label_names))
     _pa_table = sp_df.to_arrow()
     _meta_json = dtour.build_dtour_metadata(
         tour=tour,

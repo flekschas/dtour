@@ -25,12 +25,16 @@ self.onmessage = (e: MessageEvent<BuildRequest>) => {
   }
   index.finish();
 
+  // kdbush types `data` as ArrayBufferLike, but it's an ArrayBuffer since we
+  // use the default buffer type.
+  const indexData = index.data as ArrayBuffer;
+
   const result: BuildResult = {
-    indexData: index.data,
+    indexData,
     positions,
     generation,
   };
 
   // Transfer both buffers — zero-copy back to main thread
-  (self as DedicatedWorkerGlobalScope).postMessage(result, [index.data, positions.buffer]);
+  (self as DedicatedWorkerGlobalScope).postMessage(result, [indexData, positions.buffer]);
 };

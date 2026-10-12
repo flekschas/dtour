@@ -10,10 +10,10 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
   build: {
-    outDir: resolve(__dirname, 'src/dtour/static'),
+    outDir: resolve(import.meta.dirname, 'src/dtour/static'),
     emptyOutDir: false,
     lib: {
-      entry: resolve(__dirname, 'js/mcp-app.tsx'),
+      entry: resolve(import.meta.dirname, 'js/mcp-app.tsx'),
       formats: ['es'],
       fileName: 'mcp-app',
     },

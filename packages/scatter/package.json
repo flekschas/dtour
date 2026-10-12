@@ -25,11 +25,11 @@
   },
   "dependencies": {
     "@uwdata/flechette": "catalog:",
-    "hyparquet": "^1.25.0",
-    "hyparquet-compressors": "^1.1.1"
+    "hyparquet": "^1.31.3",
+    "hyparquet-compressors": "^1.1.2"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.54",
+    "@webgpu/types": "^0.1.74",
     "vite": "catalog:"
   }
 }

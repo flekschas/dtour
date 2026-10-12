@@ -70,23 +70,23 @@ def _(mo):
 
 @app.cell
 def _(cache_dir, mo, pd, pq):
+    import urllib.request
+
     _base_url = "https://data.dtour.dev/notebooks"
 
-    def _load_pq(name, columns=None):
+    def _download(name):
         local = cache_dir / name
-        if local.exists():
-            return pd.read_parquet(local, columns=columns)
-        df = pd.read_parquet(f"{_base_url}/{name}", columns=columns)
-        df.to_parquet(local)
-        return df
+        if not local.exists():
+            _req = urllib.request.Request(f"{_base_url}/{name}", headers={"User-Agent": "dtour"})
+            with urllib.request.urlopen(_req) as _resp:
+                local.write_bytes(_resp.read())
+        return local
+
+    def _load_pq(name, columns=None):
+        return pd.read_parquet(_download(name), columns=columns)
 
     def _load_pq_table(name):
-        local = cache_dir / name
-        if local.exists():
-            return pq.read_table(local)
-        table = pq.read_table(f"{_base_url}/{name}")
-        pq.write_table(table, local)
-        return table
+        return pq.read_table(_download(name))
 
     # Labels (from the combined parquet with all alphas)
     df_labels = _load_pq("joint-embeddings-umap-dense-2d-all-alphas.pq", columns=["coco_label_idf"])

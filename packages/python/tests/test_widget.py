@@ -331,10 +331,15 @@ def test_widget_keeps_data_that_starts_with_embedding():
     data = pl.DataFrame({f"e{i}": tour.embedding[:, i] for i in range(3)}).with_columns(
         _labeled_data()["label"]
     )
-    with pytest.warns(FutureWarning, match="already starts with the tour's embedding"):
+    with pytest.warns(FutureWarning, match="already starts with the tour's embedding") as record:
         w = Widget(data, tour)
+    assert record[0].filename == __file__
     assert _sent_columns(w) == ["e0", "e1", "e2", "label"]
     assert w.tour_dimensions == ["e0", "e1", "e2"]
+
+    with pytest.warns(FutureWarning, match="already starts with the tour's embedding") as record:
+        w.set_data(data)
+    assert record[0].filename == __file__
 
 
 def test_widget_rejects_data_with_other_row_count():

@@ -7,7 +7,7 @@
     "build": "vite build && vite build -c vite.mcp.config.ts"
   },
   "devDependencies": {
-    "@anywidget/react": "^0.2.0",
+    "@anywidget/react": "^0.2.2",
     "@dtour/scatter": "workspace:*",
     "@dtour/viewer": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^2.0.3",

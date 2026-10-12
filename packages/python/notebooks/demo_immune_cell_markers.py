@@ -28,12 +28,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(df, dtour, phenotype_colors, phenotypes, pl, tour):
-    # Combine embedding columns with the categorical label for coloring.
-    # The scatter engine uses numeric columns for projection and categorical
-    # columns for per-point color encoding.
-    widget_df = pl.DataFrame(
-        {f"dim_{i}": tour.embedding[:, i] for i in range(tour.embedding.shape[1])}
-    ).with_columns(df["faustLabels"], phenotypes)
+    # The widget adds the tour's embedding columns; the labels color the points.
+    widget_df = pl.DataFrame([df["faustLabels"], phenotypes])
 
     w = dtour.Widget(
         data=widget_df,

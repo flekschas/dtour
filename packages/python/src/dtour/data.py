@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import warnings
 from io import BytesIO
 from pathlib import Path
@@ -201,7 +202,7 @@ def _add_embedding(
                 "The data already starts with the tour's embedding. Pass the data the tour "
                 "was computed from instead; the widget adds the embedding columns itself.",
                 FutureWarning,
-                stacklevel=2,
+                stacklevel=_user_stacklevel(),
             )
             return table, leading
 
@@ -219,6 +220,18 @@ def _add_embedding(
     for name in columns:
         arrays[name] = table.column(name)
     return ac.Table.from_pydict(arrays), names
+
+
+def _user_stacklevel() -> int:
+    """The ``stacklevel`` that makes a warning raised by the caller point at the
+    first frame outside dtour."""
+    package_dir = Path(__file__).parent
+    frame = sys._getframe(1)
+    level = 1
+    while frame is not None and Path(frame.f_code.co_filename).is_relative_to(package_dir):
+        frame = frame.f_back
+        level += 1
+    return level
 
 
 def _equals(column: Any, values: np.ndarray) -> bool:
