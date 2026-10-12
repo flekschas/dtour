@@ -75,10 +75,17 @@ dtour.Widget(
     # mode & appearance
     tour_traversal="guided",  # "guided" | "manual" | "grand"
     show_legend=True,  # show/hide color legend
+    legend_order=None,  # labels the legend lists first, in this order
     show_axes=False,  # show/hide the axis biplot in guided mode
     theme_mode="dark",  # "light" | "dark" | "system"
+    # tooltip
+    tooltip_columns=None,  # columns the point tooltip lists, in order; [] hides it
+    tooltip_image_fit="contain",  # "contain" | "cover" for image columns
 )
 ```
+
+String columns of image URLs (`.png`, `.jpg`, `.jpeg`, `.webp`) or `data:image/...` URIs
+show as images in the tooltip.
 
 All settings are exposed as [traitlets](https://traitlets.readthedocs.io/), so they
 can be read, set, and observed live from the notebook.

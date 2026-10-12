@@ -114,9 +114,12 @@ the Zod schema.
   cameraPanX: number, cameraPanY: number, cameraZoom: number,
   centering: "midrange" | "mean",
   showLegend, showAxes: boolean,
+  legendOrder: string[] | null,  // labels the legend lists first; the others follow
   showTourDescription: boolean | null,
   themeMode: "light" | "dark" | "system",
   tourDimensions: string[] | null,  // columns of an auto-generated tour; null: all
+  tooltipColumns: string[] | null,  // columns the tooltip lists, in order; []: no tooltip
+  tooltipImageFit: "contain" | "cover",  // string columns of image URLs show as images
 }
 ```
 

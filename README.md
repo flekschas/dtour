@@ -139,6 +139,33 @@ To let Claude show tours right in the chat, add dtour's MCP server and ask, e.g.
 
 See [the Python README](packages/python#mcp-server) for details.
 
+## Examples
+
+Open an example on dtour.dev:
+
+| Example | Points × dims | Data |
+|---|---|---|
+| [Gaussian Blobs](https://dtour.dev/?dataset=gaussian-blobs) | 500K × 5 | Five Gaussian clusters, generated in the browser |
+| [Linked Rings](https://dtour.dev/?dataset=linked-rings) | 500K × 4 | Two interlocking rings, generated in the browser |
+| [Lorenz Attractor](https://dtour.dev/?dataset=lorenz) | 1M × 4 | The Lorenz-Stenflo chaotic attractor, generated in the browser |
+| [Fashion MNIST](https://dtour.dev/?dataset=fashion-mnist) | 70K × 8 | Product images in four 2D embeddings, from LE-like to t-SNE |
+| [Handwritten Digits](https://dtour.dev/?dataset=digits) | 1.8K × 64 | A PCA tour of the pixels next to a 2D UMAP, with linked selections and the digit on hover |
+| [News Headlines](https://dtour.dev/?dataset=news-headlines) | 204K × 4 | HuffPost headlines in a supervised 4D UMAP |
+| [Single Cell Proteomics](https://dtour.dev/?dataset=single-cell) | 345K × 9 | Tumor immune cells across 9 protein markers |
+| [Single Cell RNA-seq](https://dtour.dev/?dataset=single-cell-rna-seq) | 276K × 8 | Developing mouse brain cells in a PCA tour |
+| [Image Caption CLIP](https://dtour.dev/?dataset=image-caption-clip) | 49K × 10 | Joint CLIP embeddings of images and captions |
+| [arXiv papers](https://dtour.dev/?dataset=arxiv-papers) | 3M × 8 | Papers in 2D UMAPs of four embedding models |
+
+A link can also show any files side by side. This one shows the digits with a view per file and links their selections with the same `link` id:
+
+```
+https://dtour.dev/?url=https://data.dtour.dev/digits-pca-tour.pq&views=[{"link":"d"},{"data":"https://data.dtour.dev/digits-umap.pq","link":"d"}]
+```
+
+[Open it](https://dtour.dev/?url=https%3A%2F%2Fdata.dtour.dev%2Fdigits-pca-tour.pq&views=%5B%7B%22link%22%3A%22d%22%7D%2C%7B%22data%22%3A%22https%3A%2F%2Fdata.dtour.dev%2Fdigits-umap.pq%22%2C%22link%22%3A%22d%22%7D%5D). Each entry in `views` holds a view's settings, and `data` names its file. Add `layout=[[0],[1]]` to stack the views. When running the webapp locally (`pnpm dev`), replace `https://dtour.dev` with `http://localhost:5173`.
+
+For the Python widget, see the [example notebooks](packages/python/notebooks) on Fashion MNIST, a developing mouse brain atlas, joint image and caption embeddings, and tumor immune cells.
+
 ## Why Take a _Tour de Vis_ Through High-Dimensional Data?
 
 Making sense of high-dimensional data is hard. Non-linear embedding tools like

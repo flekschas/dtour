@@ -108,6 +108,10 @@ export type DtourProps = {
   keyframeLoadings?: KeyframeLoading[] | null;
 };
 
+const MIN_SIDEBAR_WIDTH = 64;
+/** The widest the legend sidebar grows to fit its content. */
+const MAX_FIT_SIDEBAR_WIDTH = 200;
+
 // Minimal inline markdown: [text](url), **bold**/__bold__, *italic*/_italic_
 const MD_INLINE = /\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|__(.+?)__|\*(.+?)\*|_(.+?)_/g;
 
@@ -513,8 +517,19 @@ const DtourInner = ({
   const [descriptionRef, descriptionTruncated] = useIsTruncated<HTMLSpanElement>(tourDescription);
   const effectiveToolbarHeight = hideToolbar ? 0 : descriptionVisible ? 72 : 40;
 
-  // Sidebar width state — remembered across open/close cycles
-  const [sidebarWidth, setSidebarWidth] = useState(200);
+  // Sidebar width: fits the legend, within limits, until the user drags it.
+  // Remembered across open/close cycles.
+  const [userSidebarWidth, setUserSidebarWidth] = useState<number | null>(null);
+  const [legendContentWidth, setLegendContentWidth] = useState(MAX_FIT_SIDEBAR_WIDTH);
+  const sidebarWidth = userSidebarWidth ?? legendContentWidth;
+  const legendContentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = legendContentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setLegendContentWidth(el.offsetWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [dragging, setDragging] = useState(false);
   // Grand mode slides the legend out with the rest of the chrome; hovering the
   // right edge peeks it back in. Transient, so no persistent atom needed.
@@ -560,8 +575,8 @@ const DtourInner = ({
         if (!container) return;
         const rect = container.getBoundingClientRect();
         const maxWidth = rect.width * 0.4;
-        const newWidth = Math.min(maxWidth, Math.max(64, rect.right - me.clientX));
-        setSidebarWidth(newWidth);
+        const newWidth = Math.min(maxWidth, Math.max(MIN_SIDEBAR_WIDTH, rect.right - me.clientX));
+        setUserSidebarWidth(newWidth);
       };
 
       const onMouseUp = () => {
@@ -662,7 +677,7 @@ const DtourInner = ({
       {/* Drag handle — hidden in overlay mode (resize is a desktop affordance) */}
       {!legendOverlay && (
         <div
-          className={`w-px shrink-0 transition-colors ${
+          className={`relative z-20 w-px shrink-0 transition-colors before:absolute before:inset-y-0 before:-inset-x-0.5 before:content-[''] ${
             legendInteractive
               ? 'cursor-col-resize bg-dtour-surface hover:bg-dtour-text-muted active:bg-dtour-highlight'
               : 'pointer-events-none'
@@ -685,7 +700,19 @@ const DtourInner = ({
         }}
         onMouseLeave={isGrand ? () => setLegendPeek(false) : undefined}
       >
-        <div className="h-full" style={{ width: sidebarWidth }}>
+        <div
+          ref={legendContentRef}
+          className="h-full"
+          style={
+            userSidebarWidth === null
+              ? {
+                  width: 'max-content',
+                  minWidth: MIN_SIDEBAR_WIDTH,
+                  maxWidth: MAX_FIT_SIDEBAR_WIDTH,
+                }
+              : { width: userSidebarWidth }
+          }
+        >
           <ColorLegend />
         </div>
       </div>

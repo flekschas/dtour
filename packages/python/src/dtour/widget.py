@@ -180,9 +180,14 @@ class Widget(anywidget.AnyWidget):
     camera_zoom = t.Float(1 / 1.5).tag(sync=True)
     tour_traversal = t.Enum(["guided", "manual", "grand"], default_value="guided").tag(sync=True)
     show_legend = t.Bool(True).tag(sync=True)
+    # Labels of the color column to list first in the legend, in this order
+    legend_order = t.List(t.Unicode(), allow_none=True, default_value=None).tag(sync=True)
     show_axes = t.Bool(False).tag(sync=True)
     show_tour_description = t.Bool(False).tag(sync=True)
     theme_mode = t.Enum(["light", "dark", "system"], default_value="dark").tag(sync=True)
+    # Columns the point tooltip lists, in order. None shows a default list, [] no tooltip.
+    tooltip_columns = t.List(t.Unicode(), allow_none=True, default_value=None).tag(sync=True)
+    tooltip_image_fit = t.Enum(["contain", "cover"], default_value="contain").tag(sync=True)
     centering = t.Enum(["midrange", "mean"], default_value="midrange").tag(sync=True)
     metric_bar_width = t.Union(
         [t.Int(), t.Unicode()],
@@ -558,12 +563,18 @@ class Widget(anywidget.AnyWidget):
             kwargs["tour_traversal"] = self.tour_traversal
         if not self.show_legend:
             kwargs["show_legend"] = self.show_legend
+        if self.legend_order is not None:
+            kwargs["legend_order"] = self.legend_order
         if self.show_axes:
             kwargs["show_axes"] = self.show_axes
         if self.show_tour_description:
             kwargs["show_tour_description"] = self.show_tour_description
         if self.theme_mode != "dark":
             kwargs["theme_mode"] = self.theme_mode
+        if self.tooltip_columns is not None:
+            kwargs["tooltip_columns"] = self.tooltip_columns
+        if self.tooltip_image_fit != "contain":
+            kwargs["tooltip_image_fit"] = self.tooltip_image_fit
         if self.centering != "midrange":
             kwargs["centering"] = self.centering
 

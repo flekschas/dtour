@@ -21,6 +21,14 @@ const sampleRows = (columns: ColumnData[], rowCount: number): Float32Array => {
   return sample;
 };
 
+/** URLs and data URIs of PNG, JPEG, and WebP images. */
+const IMAGE_URL =
+  /^(?:https?:\/\/\S+\.(?:png|jpe?g|webp)(?:[?#]\S*)?|data:image\/(?:png|jpeg|webp)[;,]\S*)$/i;
+
+/** A string column is an image column when all its non-empty values are image URLs. */
+const isImageColumn = (labels: string[]): boolean =>
+  labels.some(Boolean) && labels.every((label) => !label || IMAGE_URL.test(label));
+
 const packPalette = (palette: [number, number, number][]): Uint32Array => {
   const packed = new Uint32Array(palette.length);
   for (let i = 0; i < palette.length; i++) {
@@ -86,13 +94,20 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
         catLabelsRecord[cat.name] = cat.labels;
       }
 
+      const imageColumnNames = parsed.categoricalColumns
+        .filter((c) => isImageColumn(c.labels))
+        .map((c) => c.name);
+
       // Send column metadata back to main thread (small JSON, structured clone)
       const metadata: DataToMain = {
         type: 'metadata',
         metadata: {
           columnNames: parsed.columns.map((c) => c.name),
-          categoricalColumnNames: parsed.categoricalColumns.map((c) => c.name),
+          categoricalColumnNames: parsed.categoricalColumns
+            .filter((c) => !imageColumnNames.includes(c.name))
+            .map((c) => c.name),
           categoricalLabels: catLabelsRecord,
+          imageColumnNames,
           rowCount: parsed.rowCount,
           dimCount: parsed.columns.length,
           mins: parsed.columns.map((c) => c.min),

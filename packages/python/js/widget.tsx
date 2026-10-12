@@ -50,9 +50,12 @@ const SPEC_TRAITS: SnakeCase<Extract<keyof DtourSpec, string>>[] = [
   'camera_zoom',
   'tour_traversal',
   'show_legend',
+  'legend_order',
   'show_axes',
   'show_tour_description',
   'theme_mode',
+  'tooltip_columns',
+  'tooltip_image_fit',
   'centering',
   'link',
 ];

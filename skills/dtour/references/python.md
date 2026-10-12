@@ -53,9 +53,12 @@ w = dtour.Widget(
     camera_pan_x=0.0, camera_pan_y=0.0, camera_zoom=1/1.5,
     centering="midrange",     # "midrange" | "mean"
     show_legend=True,
+    legend_order=None,        # labels the legend lists first, in this order
     show_axes=False,          # axis biplot in guided mode
     show_tour_description=False,
     theme_mode="dark",        # "light" | "dark" | "system"
+    tooltip_columns=None,     # columns the point tooltip lists, in order; [] hides it
+    tooltip_image_fit="contain",  # "contain" | "cover" for image columns
     metric_tracks=[],         # radial metric chart config, see Quality metrics
     metric_bar_width="full",  # "full" or int
 )
@@ -86,6 +89,8 @@ Selection state is synced in both directions: `w.selected_indices` and
 
 - Numeric columns (float or int) become dimensions. String/dictionary columns become
   categories that you can color by. Cast integer labels to string.
+- String columns of image URLs (`.png`, `.jpg`, `.jpeg`, `.webp`) or `data:image/...`
+  URIs show as images in the point tooltip instead of categories.
 - Without a tour, the viewer builds its own from all numeric columns. `tour_by`
   chooses dimension pairs (`"dimensions"`) or in-browser PCA (`"pca"`).
 - A precomputed tour uses only its own columns; other numeric columns (e.g. raw marker

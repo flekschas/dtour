@@ -136,11 +136,14 @@ def build_dtour_metadata(
     camera_zoom: float | None = None,
     tour_traversal: str | None = None,
     show_legend: bool | None = None,
+    legend_order: list[str] | None = None,
     show_axes: bool | None = None,
     show_tour_description: bool | None = None,
     tour_slider_spacing: str | None = None,
     tour_slider_visibility: str | None = None,
     theme_mode: str | None = None,
+    tooltip_columns: list[str] | None = None,
+    tooltip_image_fit: str | None = None,
     centering: str | None = None,
     point_color_map: dict[str, str] | None = None,
     point_color_map_2d: str | None = None,
@@ -199,6 +202,9 @@ def build_dtour_metadata(
         ``"guided"``, ``"manual"``, or ``"grand"``.
     show_legend : bool, optional
         Whether the legend panel is visible.
+    legend_order : list[str], optional
+        Labels of the categorical color column to list first in the legend, in
+        this order. Other labels follow in their natural order.
     show_axes : bool, optional
         Whether the axis biplot is visible in guided mode.
     show_tour_description : bool, optional
@@ -209,6 +215,15 @@ def build_dtour_metadata(
         ``"visible"``, ``"subtle"``, or ``"hidden"``.
     theme_mode : str, optional
         ``"light"``, ``"dark"``, or ``"system"``.
+    tooltip_columns : list[str], optional
+        Columns the point tooltip lists, in this order. When omitted, the
+        tooltip shows image columns, the color column, other categorical
+        columns, then numeric columns, capped with a "+N more" row. ``[]``
+        hides the tooltip. Unknown names are skipped. String columns of image
+        URLs (``.png``, ``.jpg``, ``.jpeg``, ``.webp``) or ``data:image/...``
+        URIs show as images.
+    tooltip_image_fit : str, optional
+        How tooltip images fit their box: ``"contain"`` or ``"cover"``.
     centering : str, optional
         ``"midrange"`` (default, ``(min+max)/2``) or ``"mean"`` (center of mass).
     point_color_map : dict, optional
@@ -262,11 +277,14 @@ def build_dtour_metadata(
         "camera_zoom": camera_zoom,
         "tour_traversal": tour_traversal,
         "show_legend": show_legend,
+        "legend_order": legend_order,
         "show_axes": show_axes,
         "show_tour_description": show_tour_description,
         "tour_slider_spacing": tour_slider_spacing,
         "tour_slider_visibility": tour_slider_visibility,
         "theme_mode": theme_mode,
+        "tooltip_columns": tooltip_columns,
+        "tooltip_image_fit": tooltip_image_fit,
         "centering": centering,
     }
 

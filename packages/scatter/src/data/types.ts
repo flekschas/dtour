@@ -25,7 +25,10 @@ export const SAMPLE_ROWS = 1024;
 export type Metadata = {
   columnNames: string[];
   categoricalColumnNames: string[];
+  /** Labels of the categorical and image columns. */
   categoricalLabels: Record<string, string[]>;
+  /** String columns whose values are image URLs or data URIs. They aren't categorical. */
+  imageColumnNames: string[];
   rowCount: number;
   dimCount: number;
   mins: number[];
