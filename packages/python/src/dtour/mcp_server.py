@@ -189,8 +189,14 @@ def _read(path: str) -> pl.DataFrame:
     """Read a CSV, Parquet, or Arrow file from a local path or URL."""
     import polars as pl
 
-    is_url = "://" in path
-    source = path if is_url else str(Path(path).expanduser())
+    source: bytes | Path
+    if "://" in path:
+        # Some hosts reject the default Python user agent
+        request = urllib.request.Request(path, headers={"User-Agent": "dtour"})
+        with urllib.request.urlopen(request) as response:
+            source = response.read()
+    else:
+        source = Path(path).expanduser()
     suffix = Path(path.split("?")[0]).suffix.lower()
     if suffix in (".csv", ".tsv", ".txt"):
         separator = "\t" if suffix == ".tsv" else ","
@@ -199,7 +205,7 @@ def _read(path: str) -> pl.DataFrame:
         )
     if suffix in (".arrow", ".feather", ".ipc"):
         # `_read_table` reads both the Arrow IPC file and stream formats
-        data = urllib.request.urlopen(path).read() if is_url else Path(source).read_bytes()
+        data = source.read_bytes() if isinstance(source, Path) else source
         return pl.DataFrame(_read_table(data))
     return pl.read_parquet(source)
 

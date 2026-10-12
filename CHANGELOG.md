@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.1
+
+### python
+
+- fix: the MCP server's `visualize` tool reads CSV and Arrow files from hosts that reject Python's default user agent, like `data.dtour.dev`
+- ci: publish the GitHub release with the version's CHANGELOG section as its notes and `dtour.mcpb` attached, instead of creating a draft
+
+### webapp
+
+- feat: add an "Install MCP" button next to the intro video that explains how to install the MCP server in Claude Desktop, Claude Code, and other MCP apps, with an example prompt to try
+
 ## v0.5.0
 
 ### BREAKING CHANGES

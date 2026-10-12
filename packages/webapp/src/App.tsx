@@ -3,6 +3,7 @@ import { DTOUR_DEFAULTS, Dtour, parseEmbeddedConfig } from '@dtour/viewer';
 import {
   GithubLogoIcon,
   PlayCircleIcon,
+  RobotIcon,
   ScrollIcon,
   SpinnerIcon,
   UploadSimpleIcon,
@@ -13,6 +14,7 @@ import 'plyr-react/plyr.css';
 import type { SyntheticEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
+import { InstallMcpDialog } from './components/InstallMcpDialog.tsx';
 import { Button } from './components/ui/button.tsx';
 import { CONTENT_TOP_VH } from './constants.ts';
 import { readUrlSpec, specDiff, URL_SPEC_KEYS, writeUrlSpec } from './url-spec.ts';
@@ -446,6 +448,8 @@ const App = () => {
   const [parsing, setParsing] = useState(false);
   const [homeOpen, setHomeOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
+  const closeMcp = useCallback(() => setMcpOpen(false), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const plyrRef = useRef<InstanceType<typeof import('plyr').default> | null>(null);
@@ -1033,12 +1037,11 @@ const App = () => {
                   ease: 'easeOut',
                 }}
               >
-                or watch
+                or
               </motion.span>
-              {/* 6. Video button */}
-              <motion.button
-                type="button"
-                className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none mt-2 pointer-events-auto"
+              {/* 6. Video and MCP buttons */}
+              <motion.div
+                className="flex items-center gap-2 mt-2 pointer-events-auto"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{
@@ -1047,11 +1050,24 @@ const App = () => {
                   duration: 0.4,
                   ease: 'easeOut',
                 }}
-                onClick={() => setVideoOpen(true)}
               >
-                <PlayCircleIcon size={16} weight="fill" />
-                <span>Intro Video</span>
-              </motion.button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                  onClick={() => setVideoOpen(true)}
+                >
+                  <PlayCircleIcon size={16} weight="fill" />
+                  <span>Watch Intro Video</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                  onClick={() => setMcpOpen(true)}
+                >
+                  <RobotIcon size={16} weight="fill" />
+                  <span>Install MCP</span>
+                </button>
+              </motion.div>
             </>
           )}
           <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 flex items-center gap-1">
@@ -1176,6 +1192,17 @@ const App = () => {
                       <PlayCircleIcon size={16} weight="fill" />
                       <span>Intro Video</span>
                     </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                      onClick={() => {
+                        setHomeOpen(false);
+                        setMcpOpen(true);
+                      }}
+                    >
+                      <RobotIcon size={16} weight="fill" />
+                      <span>Install MCP</span>
+                    </button>
                   </div>
                 </>
               )}
@@ -1226,6 +1253,7 @@ const App = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <InstallMcpDialog open={mcpOpen} onClose={closeMcp} />
       {/* Video intro modal */}
       <AnimatePresence>
         {videoOpen && (

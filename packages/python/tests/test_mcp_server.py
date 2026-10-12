@@ -2,8 +2,10 @@
 
 import base64
 import json
+import threading
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import arro3.io
@@ -171,6 +173,28 @@ async def test_sample(csv):
 
     assert "Sampled 100 of 299 rows" in result.content[0].text
     assert _read_table(data).num_rows == 100
+
+
+def test_read_loads_urls_from_hosts_that_reject_python(csv):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.headers["User-Agent"].startswith("Python-urllib"):
+                self.send_error(403)
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(csv.read_bytes())
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        df = mcp_server._read(f"http://127.0.0.1:{server.server_address[1]}/data.csv")
+    finally:
+        server.shutdown()
+    assert df.equals(mcp_server._read(str(csv)))
 
 
 async def test_read_data_returns_the_file_in_chunks(csv, monkeypatch):
