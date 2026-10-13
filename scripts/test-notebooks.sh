@@ -46,6 +46,7 @@ else
     demo_image_embedding
     demo_immune_cell_markers
     demo_spectral
+    demo_sherlock_umap
   )
 fi
 
