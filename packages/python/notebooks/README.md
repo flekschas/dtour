@@ -62,6 +62,18 @@ Joint pixel + caption embedding of **ShareGPT4V × COCO** (α=0.5).
 - Radial bar charts show per-keyframe phenotype **confusion** (`cev` metric); click
   a phenotype label to see its confusion.
 
+### [`demo_sherlock_umap.py`](demo_sherlock_umap.py)
+
+**SHERLOCK** latent space vs. expression space on the **Replogle et al. 2022**
+(CRISPRi) and **Norman et al. 2019** (CRISPRa) Perturb-seq screens.
+
+- **Data:** precomputed SHERLOCK latent dimensions, principal components, 2D/4D
+  UMAPs, and 2D UMAPs of 32 training snapshots, downloaded from `data.dtour.dev`.
+- **Tours:** a sequential tour through the training snapshots with one preview
+  per epoch, a morph from the expression UMAP to the SHERLOCK UMAP, and
+  side-by-side little tours of both spaces and of their 4D UMAPs.
+- All views are linked with `dtour.link`, so a selection in one shows in all.
+
 ### [`demo_spectral.py`](demo_spectral.py)
 
 **Mair et al. 2022** tumor dataset via **Laplacian Eigenmaps**.
