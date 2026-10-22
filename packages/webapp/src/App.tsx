@@ -943,6 +943,17 @@ const App = () => {
       {(!data || parsing) && (
         <div className="absolute inset-0 z-20 bg-dtour-bg pointer-events-none" />
       )}
+      {/* Replacing shown data: cover the views until the new data renders */}
+      {data && (loading || parsing) && logoPhase === 'done' && (
+        <motion.div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-dtour-bg/70 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+        >
+          <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
+        </motion.div>
+      )}
       {/* Content overlay (upload button + examples) — hidden during logo move/settle */}
       {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
