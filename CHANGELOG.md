@@ -5,6 +5,7 @@
 ### webapp
 
 - fix: show a spinner over the shown data while other data loads, e.g. after picking another example, instead of leaving the old data interactive and then showing a blank page until the new data renders
+- docs: add a "Use in Marimo" link next to the intro video that opens a molab notebook showing dtour in a marimo analysis
 
 ## v0.5.1
 

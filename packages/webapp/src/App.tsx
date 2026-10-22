@@ -2,6 +2,7 @@ import type { DtourSpec } from '@dtour/viewer';
 import { DTOUR_DEFAULTS, Dtour, parseEmbeddedConfig } from '@dtour/viewer';
 import {
   GithubLogoIcon,
+  NotebookIcon,
   PlayCircleIcon,
   RobotIcon,
   ScrollIcon,
@@ -27,6 +28,8 @@ type ThemeMode = 'light' | 'dark' | 'system';
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
 const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
+const MARIMO_DEMO_URL =
+  'https://molab.marimo.io/github/flekschas/dtour/blob/main/packages/python/notebooks/demo_molab.py';
 
 type ExampleDataset = {
   label: string;
@@ -1070,6 +1073,15 @@ const App = () => {
                   <PlayCircleIcon size={16} weight="fill" />
                   <span>Watch Intro Video</span>
                 </button>
+                <a
+                  href={MARIMO_DEMO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                >
+                  <NotebookIcon size={16} weight="fill" />
+                  <span>Use in Marimo</span>
+                </a>
                 <button
                   type="button"
                   className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
@@ -1203,6 +1215,15 @@ const App = () => {
                       <PlayCircleIcon size={16} weight="fill" />
                       <span>Intro Video</span>
                     </button>
+                    <a
+                      href={MARIMO_DEMO_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                    >
+                      <NotebookIcon size={16} weight="fill" />
+                      <span>Use in Marimo</span>
+                    </a>
                     <button
                       type="button"
                       className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
