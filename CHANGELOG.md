@@ -1,5 +1,11 @@
 # Changelog
 
+## Next
+
+### webapp
+
+- feat: add a "Use in Marimo" link next to the intro video that opens a molab notebook showing dtour in a marimo analysis
+
 ## v0.5.1
 
 ### python
