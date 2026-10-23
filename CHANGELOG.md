@@ -7,6 +7,10 @@
 - fix: show a spinner over the shown data while other data loads, e.g. after picking another example, instead of leaving the old data interactive and then showing a blank page until the new data renders
 - docs: add a "Use in Marimo" link next to the intro video that opens a molab notebook showing dtour in a marimo analysis
 
+### python
+
+- fix: the molab demo notebook now runs on molab, as it no longer needs `cev-metrics`, which has no wheels for molab's Python 3.13. The version with confusion bars is now `demo_molab_cev.py`
+
 ## v0.5.1
 
 ### python
