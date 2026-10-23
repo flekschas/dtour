@@ -62,10 +62,16 @@ def _(mo):
 
 
 @app.cell(hide_code=True, expand_output=True)
-def _(brain_enrichment, brain_umap, brain_widget, mo):
-    mo.vstack(
-        [mo.hstack([brain_widget, brain_umap.widget], widths="equal", gap=0), brain_enrichment]
-    )
+def _(brain_umap, brain_widget, mo):
+    mo.hstack([brain_widget, brain_umap.widget], widths="equal", gap=0)
+    return
+
+
+@app.cell(hide_code=True)
+def _(brain_enrichment):
+    # Not part of the cell above, as selections rerun this cell, and jupyter-scatter
+    # stops responding when the cell that shows it reruns
+    brain_enrichment
     return
 
 

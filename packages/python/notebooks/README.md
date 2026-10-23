@@ -64,17 +64,10 @@ A quick tour of using dtour in a marimo analysis, linked from dtour.dev and host
   downloaded from `data.dtour.dev`, so it starts in seconds.
 - **Brain atlas:** a little tour linked with a 2D UMAP; selections list the subclasses
   they are enriched for.
-- **Tumor immune cells:** a little tour of the 8D UMAP; selections show their marker
-  profile.
+- **Tumor immune cells:** a little tour of the 8D UMAP with live confusion bars;
+  clicking phenotypes shows their confusion, and selections show their marker profile.
 - **Handwritten digits:** a PCA tour of the pixels linked with a 2D UMAP via
   `dtour.link`; selections show their images and which digits they look like.
-
-### [`demo_molab_cev.py`](demo_molab_cev.py)
-
-`demo_molab.py` plus live confusion bars in the immune cell tour, computed with
-[`cev-metrics`](https://pypi.org/project/cev-metrics/); clicking phenotypes shows their
-confusion. Needs Python 3.12 or older, as `cev-metrics` has no wheels for newer versions
-yet, so it does not run on molab.
 
 ### [`demo_image_embedding.py`](demo_image_embedding.py)
 

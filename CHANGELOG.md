@@ -9,7 +9,8 @@
 
 ### python
 
-- fix: the molab demo notebook now runs on molab, as it no longer needs `cev-metrics`, which has no wheels for molab's Python 3.13. The version with confusion bars is now `demo_molab_cev.py`
+- fix: the molab demo notebook now runs on molab, as `cev-metrics` 0.1.6 has wheels for molab's Python 3.13
+- fix: the UMAP in the molab demo's brain atlas example keeps responding to the pointer after you select cells
 
 ## v0.5.1
 
