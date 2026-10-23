@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #     "anywidget==0.11.0",
-#     "dtour",
+#     "dtour[cev]",
 #     "jupyter-scatter>=0.22.3",
 #     "marimo>=0.25.2",
 #     "matplotlib>=3.10.8",
@@ -35,7 +35,8 @@ def _(mo):
 
     1. **Drive other views**: highlight the selected brain cells in a 2D UMAP and list the
        cell types they are enriched for
-    2. **Profile a selection**: show which markers set the selected immune cells apart
+    2. **Update the tour itself**: show how intermixed the selected immune cell phenotypes
+       are in each projection, and which markers set selected cells apart
     3. **Feed custom widgets**: show the selected handwritten digits as images and which
        digits they look like
 
@@ -182,7 +183,9 @@ def _(mo):
 
     346K cells from a tumor sample of the [Mair et al. 2022](https://pubmed.ncbi.nlm.nih.gov/35545675/)
     CyTOF dataset, colored by [FAUST](https://pubmed.ncbi.nlm.nih.gov/34950900/)-derived
-    phenotypes: a tour through an 8D UMAP of 18 markers.
+    phenotypes: a tour through an 8D UMAP of 18 markers. The bars around the circle show
+    how intermixed the phenotypes are in each keyframe
+    ([confusion](https://pmc.ncbi.nlm.nih.gov/articles/PMC11875997/), computed live).
     """)
     return
 
@@ -198,11 +201,12 @@ def _(mo):
     mo.md(r"""
     **Try this:**
 
+    - Click a phenotype in the legend, e.g., _Treg_. The bars now show how intermixed
+      just that phenotype is in each keyframe. Click a keyframe with a short bar to jump
+      to the projection that separates it best.
+    - Click more phenotypes to see their mean confusion.
     - Press and hold, then drag to lasso a group of cells. The chart under the tour shows
       which markers set them apart from all other cells.
-    - Click a phenotype in the legend, e.g., _Treg_, to see its marker profile.
-    - Press play to tour through the projections and see which ones separate your
-      selection from the other cells.
     """)
     return
 
@@ -241,6 +245,25 @@ def _(cells, cells_selection, markers, mo, plt):
 
 
 @app.cell
+def _(
+    cells_selection,
+    cells_widget,
+    dtour,
+    per_phenotype_confusion,
+    phenotypes,
+):
+    # The bars show the mean confusion of the clicked phenotypes, or of all of them.
+    # Reading the selection reruns this cell when it changes.
+    cells_selection()
+    _clicked = [phenotypes.index(p) for p in cells_widget.selected_labels if p in phenotypes]
+    _confusion = per_phenotype_confusion[:, _clicked or slice(None)].mean(axis=1)
+    cells_widget.set_metrics(
+        dtour.MetricResult(values={"confusion": _confusion.tolist()}, metric_names=["confusion"])
+    )
+    return
+
+
+@app.cell
 def _(DATA_URL, dtour, pl):
     cells = pl.read_parquet(f"{DATA_URL}/notebooks/mair-2022-tumor-umap-8d.pq")
     umaps = [c for c in cells.columns if c.startswith("UMAP")]
@@ -255,19 +278,44 @@ def _(DATA_URL, dtour, pl):
 
 @app.cell
 def _(cells, dtour, phenotype_colors, selection, umaps):
+    cells_tour = dtour.little_tour(cells.select(umaps))
     cells_widget = dtour.Widget(
         data=cells.select(*umaps, "phenotypes"),
-        tour=dtour.little_tour(cells.select(umaps)),
+        tour=cells_tour,
         tour_dimensions=umaps,
         point_color_by="phenotypes",
         color_map=phenotype_colors,
         preview_size="small",
         preview_count=8,
+        metric_bar_width=24,
+        metric_tracks=[{"metric": "confusion", "height": 64, "domain": [0, 1]}],
         theme_mode="light",
         height=720,
     )
     cells_selection = selection(cells_widget, cells, "phenotypes")
-    return cells_selection, cells_widget
+    return cells_selection, cells_tour, cells_widget
+
+
+@app.cell
+def _(cells, cells_tour, np, pd, pl, umaps):
+    import cev_metrics
+
+    # Label confusion matrix of every keyframe, ignoring unassigned cells. Projects
+    # like the viewer, which scales each dimension to [-0.5, 0.5].
+    _assigned = cells.filter(pl.col("phenotypes") != "Unassigned")
+    _X = _assigned.select(umaps).to_numpy()
+    _X = (_X - _X.min(axis=0)) / np.ptp(_X, axis=0) - 0.5
+    _labels = pd.Categorical(_assigned["phenotypes"].cast(pl.String).to_numpy())
+    phenotypes = list(_labels.categories)
+    per_phenotype_confusion = []
+    for _basis in cells_tour.keyframes:
+        _xy = _X @ _basis
+        _cm = np.asarray(
+            cev_metrics.confusion(pd.DataFrame({"x": _xy[:, 0], "y": _xy[:, 1], "label": _labels}))
+        )
+        per_phenotype_confusion.append(1 - np.diag(_cm) / _cm.sum(axis=1))
+    per_phenotype_confusion = np.array(per_phenotype_confusion)
+    return per_phenotype_confusion, phenotypes
 
 
 @app.cell(hide_code=True)
@@ -476,6 +524,7 @@ def _():
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
+    import pandas as pd
     import polars as pl
 
     DATA_URL = "https://data.dtour.dev"
@@ -507,6 +556,7 @@ def _():
         jscatter,
         mo,
         np,
+        pd,
         pl,
         plt,
         selected_rows,
