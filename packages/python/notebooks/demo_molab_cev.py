@@ -1,8 +1,7 @@
 # /// script
-# requires-python = ">=3.10,<3.13"
+# requires-python = ">=3.10"
 # dependencies = [
 #     "anywidget==0.11.0",
-#     "cev-metrics==0.1.5",
 #     "dtour[cev]",
 #     "jupyter-scatter>=0.22.3",
 #     "marimo>=0.25.2",
