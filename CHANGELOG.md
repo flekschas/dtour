@@ -1,5 +1,11 @@
 # Changelog
 
+## Next
+
+### python
+
+- fix: changing the widget's `height` from Python now resizes a widget that is already displayed, instead of waiting for something else to make it redraw
+
 ## v0.5.1
 
 ### python

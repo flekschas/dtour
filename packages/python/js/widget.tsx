@@ -298,7 +298,7 @@ function Widget() {
     };
   }, [model]);
 
-  const height: number = model.get('height') ?? 600;
+  const [height, setHeight] = useState<number>(() => model.get('height') ?? 600);
   const [metricBarWidth, setMetricBarWidth] = useState<'full' | number>(
     () => model.get('metric_bar_width') ?? 'full',
   );
@@ -319,6 +319,9 @@ function Widget() {
   });
 
   useEffect(() => {
+    function onHeight() {
+      setHeight(model.get('height') ?? 600);
+    }
     function onBarWidth() {
       setMetricBarWidth(model.get('metric_bar_width') ?? 'full');
     }
@@ -335,12 +338,14 @@ function Widget() {
       const raw = model.get('color_map');
       setColorMap(raw && Object.keys(raw).length > 0 ? raw : undefined);
     }
+    model.on('change:height', onHeight);
     model.on('change:metric_bar_width', onBarWidth);
     model.on('change:metric_tracks', onTracks);
     model.on('change:_tour_family', onTourFamily);
     model.on('change:tour_dimensions', onTourDimensions);
     model.on('change:color_map', onColorMap);
     return () => {
+      model.off('change:height', onHeight);
       model.off('change:metric_bar_width', onBarWidth);
       model.off('change:metric_tracks', onTracks);
       model.off('change:_tour_family', onTourFamily);
