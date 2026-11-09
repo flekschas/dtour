@@ -2,6 +2,7 @@ import type { DtourSpec } from '@dtour/viewer';
 import { DTOUR_DEFAULTS, Dtour, parseEmbeddedConfig } from '@dtour/viewer';
 import {
   GithubLogoIcon,
+  NotebookIcon,
   PlayCircleIcon,
   RobotIcon,
   ScrollIcon,
@@ -27,6 +28,8 @@ type ThemeMode = 'light' | 'dark' | 'system';
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
 const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
+const MARIMO_DEMO_URL =
+  'https://molab.marimo.io/github/flekschas/dtour/blob/main/packages/python/notebooks/demo_molab.py';
 
 type ExampleDataset = {
   label: string;
@@ -940,6 +943,17 @@ const App = () => {
       {(!data || parsing) && (
         <div className="absolute inset-0 z-20 bg-dtour-bg pointer-events-none" />
       )}
+      {/* Replacing shown data: cover the views until the new data renders */}
+      {data && (loading || parsing) && logoPhase === 'done' && (
+        <motion.div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-dtour-bg/70 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+        >
+          <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
+        </motion.div>
+      )}
       {/* Content overlay (upload button + examples) — hidden during logo move/settle */}
       {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
@@ -1059,6 +1073,15 @@ const App = () => {
                   <PlayCircleIcon size={16} weight="fill" />
                   <span>Watch Intro Video</span>
                 </button>
+                <a
+                  href={MARIMO_DEMO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                >
+                  <NotebookIcon size={16} weight="fill" />
+                  <span>Use in Marimo</span>
+                </a>
                 <button
                   type="button"
                   className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
@@ -1192,6 +1215,15 @@ const App = () => {
                       <PlayCircleIcon size={16} weight="fill" />
                       <span>Intro Video</span>
                     </button>
+                    <a
+                      href={MARIMO_DEMO_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                    >
+                      <NotebookIcon size={16} weight="fill" />
+                      <span>Use in Marimo</span>
+                    </a>
                     <button
                       type="button"
                       className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"

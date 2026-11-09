@@ -43,6 +43,32 @@ Attraction–repulsion spectrum tour of **Fashion-MNIST** (70K images, PCA to 50
   [jupyter-scatter](https://jupyter-scatter.dev).
 - Lasso-select in the dtour view to highlight the same cells in the UMAP.
 
+### [`demo_digits.py`](demo_digits.py)
+
+PCA tour of scikit-learn's **digits** dataset (1,797 8×8 images).
+
+- **Data:** bundled with scikit-learn, so nothing is downloaded.
+- **Tour:** `little_tour` over the top 6 principal components of the 64 pixels.
+- Select points to show their images. The selection is read reactively from
+  `mo.ui.anywidget`, so no observers are needed.
+- Also runs in the browser via WebAssembly:
+  `uvx marimo export html-wasm demo_digits.py -o out --mode run`, then serve `out/`.
+
+### [`demo_molab.py`](demo_molab.py)
+
+A quick tour of using dtour in a marimo analysis, linked from dtour.dev and hosted on
+[molab](https://molab.marimo.io/github/flekschas/dtour/blob/main/packages/python/notebooks/demo_molab.py).
+
+- **Data:** the brain atlas and tumor data with their UMAP embeddings precomputed by
+  [`scripts/make_molab_demo_data.py`](../../../scripts/make_molab_demo_data.py),
+  downloaded from `data.dtour.dev`, so it starts in seconds.
+- **Brain atlas:** a little tour linked with a 2D UMAP; selections list the subclasses
+  they are enriched for.
+- **Tumor immune cells:** a little tour of the 8D UMAP with live confusion bars;
+  clicking phenotypes shows their confusion, and selections show their marker profile.
+- **Handwritten digits:** a PCA tour of the pixels linked with a 2D UMAP via
+  `dtour.link`; selections show their images and which digits they look like.
+
 ### [`demo_image_embedding.py`](demo_image_embedding.py)
 
 Joint pixel + caption embedding of **ShareGPT4V × COCO** (α=0.5).
