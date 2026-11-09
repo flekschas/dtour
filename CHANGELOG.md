@@ -1,6 +1,6 @@
 # Changelog
 
-## Next
+## v0.5.2
 
 ### webapp
 
@@ -9,8 +9,6 @@
 
 ### python
 
-- fix: the molab demo notebook now runs on molab, as `cev-metrics` 0.1.6 has wheels for molab's Python 3.13
-- fix: the UMAP in the molab demo's brain atlas example keeps responding to the pointer after you select cells
 - fix: changing the widget's `height` from Python now resizes a widget that is already displayed, instead of waiting for something else to make it redraw
 
 ## v0.5.1
