@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.3
+
+### scatter
+
+- fix: string columns with more labels than there are distinct category colors (263), like IDs, no longer color points. They still show in tooltips, and loading skips sorting their labels
+- fix: loading data with many distinct string values is much faster, e.g., parsing a 3M-row file with an ID column takes ~3s instead of ~63s
+- fix: categorical colors beyond the first seven use 256 dark Glasbey colors in the light theme and 256 light ones in the dark theme, matching jupyter-scatter. Before, the light theme used light colors and the dark theme repeated 64 colors
+
+### python
+
+- fix: `build_color_map` uses the same 256-color Glasbey palettes as the scatter engine for each theme
+
 ## v0.5.2
 
 ### webapp

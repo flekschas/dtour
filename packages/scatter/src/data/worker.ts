@@ -3,7 +3,14 @@
 import type { Colormap2DName } from './colormaps2d.ts';
 import { COLORMAP_2D_INDEX, packColormap2DLut } from './colormaps2d.ts';
 import type { DataToGpu, DataToMain, MainToData } from './messages.ts';
-import { GLASBEY_DARK, GLASBEY_LIGHT, MAGMA_25, OKABE_ITO, VIRIDIS_25 } from './palettes.ts';
+import {
+  GLASBEY_DARK,
+  GLASBEY_LIGHT,
+  MAGMA_25,
+  MAX_COLOR_CATEGORIES,
+  OKABE_ITO,
+  VIRIDIS_25,
+} from './palettes.ts';
 import { parseBuffer } from './parse.ts';
 import { type ColumnData, SAMPLE_ROWS } from './types.ts';
 
@@ -104,7 +111,9 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
         metadata: {
           columnNames: parsed.columns.map((c) => c.name),
           categoricalColumnNames: parsed.categoricalColumns
-            .filter((c) => !imageColumnNames.includes(c.name))
+            .filter(
+              (c) => !imageColumnNames.includes(c.name) && c.labels.length <= MAX_COLOR_CATEGORIES,
+            )
             .map((c) => c.name),
           categoricalLabels: catLabelsRecord,
           imageColumnNames,
@@ -160,6 +169,7 @@ self.onmessage = async (event: MessageEvent<MainToData>) => {
 
     // Check categorical columns first
     const labels = categoricalLabels.get(column);
+    if (labels && labels.length > MAX_COLOR_CATEGORIES) return;
     if (labels) {
       let pal: [number, number, number][];
       if (colorMap) {
