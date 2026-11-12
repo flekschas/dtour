@@ -128,9 +128,10 @@ export const PointTooltip = ({
         ...active.map((d) => metadata.columnNames[d]!),
         ...metadata.columnNames.filter((_, d) => !activeSet.has(d)),
       ];
-      const others = [...metadata.categoricalColumnNames, ...numeric].filter(
-        (name) => name !== colorColumn,
+      const text = Object.keys(metadata.categoricalLabels).filter(
+        (name) => !metadata.imageColumnNames.includes(name),
       );
+      const others = [...text, ...numeric].filter((name) => name !== colorColumn);
       const textNames = [...(colorColumn ? [colorColumn] : []), ...others];
       hiddenCount = Math.max(textNames.length - DEFAULT_MAX_ROWS, 0);
       names = [...metadata.imageColumnNames, ...textNames.slice(0, DEFAULT_MAX_ROWS)];

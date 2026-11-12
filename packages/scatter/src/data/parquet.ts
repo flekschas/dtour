@@ -240,19 +240,11 @@ export const loadParquet = async (buffer: ArrayBuffer): Promise<ParquetResult> =
     },
   });
 
-  // Sort labels alphabetically for deterministic ordering.
-  const categorical: CategoricalColumn[] = stringColNames.map((key) => {
-    const unsortedLabels = [...labelSets.get(key)!.keys()];
-    const sortedLabels = [...unsortedLabels].sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
-    );
-    const newIdx = new Map<string, number>();
-    for (let j = 0; j < sortedLabels.length; j++) newIdx.set(sortedLabels[j]!, j);
-    const oldToNew = unsortedLabels.map((l) => newIdx.get(l)!);
-    const indices = catIndices.get(key)!;
-    for (let i = 0; i < indices.length; i++) indices[i] = oldToNew[indices[i]!]!;
-    return { name: key, indices, labels: sortedLabels };
-  });
+  const categorical: CategoricalColumn[] = stringColNames.map((key) => ({
+    name: key,
+    indices: catIndices.get(key)!,
+    labels: [...labelSets.get(key)!.keys()],
+  }));
 
   return { numeric, categorical, embeddedConfig };
 };

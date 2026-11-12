@@ -1,8 +1,22 @@
 import { analyzeColumn } from './analyze.ts';
 import { loadArrow } from './arrow.ts';
 import { detectFormat } from './detect.ts';
+import { MAX_COLOR_CATEGORIES } from './palettes.ts';
 import { loadParquet } from './parquet.ts';
-import type { AnalyzedData } from './types.ts';
+import type { AnalyzedData, CategoricalColumn } from './types.ts';
+
+// `localeCompare` with options creates a collator per call, which is ~20x slower on large columns.
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** Sort a column's labels in place and remap its indices to the new order. */
+const sortLabels = (column: CategoricalColumn): void => {
+  const sorted = [...column.labels].sort(collator.compare);
+  const newIdx = new Map(sorted.map((label, i) => [label, i]));
+  const oldToNew = column.labels.map((label) => newIdx.get(label)!);
+  const { indices } = column;
+  for (let i = 0; i < indices.length; i++) indices[i] = oldToNew[indices[i]!]!;
+  column.labels = sorted;
+};
 
 export type ParseResult = AnalyzedData & {
   /** Raw JSON from Parquet "dtour" key_value_metadata. Undefined for Arrow. */
@@ -45,6 +59,11 @@ export const parseBuffer = async (buffer: ArrayBuffer): Promise<ParseResult> => 
     const { min, max, range, mean } = analyzeColumn(values);
     return { name, values, min, max, range, mean };
   });
+
+  // Only columns that can color points need a stable, sorted label order (e.g., for the legend).
+  for (const column of result.categorical) {
+    if (column.labels.length <= MAX_COLOR_CATEGORIES) sortLabels(column);
+  }
 
   return {
     columns,

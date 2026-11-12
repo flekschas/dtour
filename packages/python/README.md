@@ -85,7 +85,8 @@ dtour.Widget(
 ```
 
 String columns of image URLs (`.png`, `.jpg`, `.jpeg`, `.webp`) or `data:image/...` URIs
-show as images in the tooltip.
+show as images in the tooltip. String columns with more than 263 distinct values, like
+IDs, show in the tooltip but can't color points, since each value needs its own color.
 
 All settings are exposed as [traitlets](https://traitlets.readthedocs.io/), so they
 can be read, set, and observed live from the notebook.

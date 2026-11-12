@@ -191,7 +191,8 @@ def build_dtour_metadata(
         Uniform point color as ``[r, g, b]`` tuple (0-1).
     point_color_by : str or list[str], optional
         Column name for per-point color encoding, or an ``[x, y]`` pair of
-        numeric columns for a 2D colormap.
+        numeric columns for a 2D colormap. String columns with more than 263
+        distinct values can't color points.
     camera_pan_x : float, optional
         Horizontal camera pan.
     camera_pan_y : float, optional

@@ -10,6 +10,7 @@ export type ColumnData = {
 export type CategoricalColumn = {
   name: string;
   indices: Uint32Array;
+  /** Sorted when the column has at most `MAX_COLOR_CATEGORIES` labels, else in order of first appearance. */
   labels: string[];
 };
 
@@ -24,8 +25,9 @@ export const SAMPLE_ROWS = 1024;
 
 export type Metadata = {
   columnNames: string[];
+  /** String columns that can color points: not image columns and at most `MAX_COLOR_CATEGORIES` labels. */
   categoricalColumnNames: string[];
-  /** Labels of the categorical and image columns. */
+  /** Labels of all string columns. */
   categoricalLabels: Record<string, string[]>;
   /** String columns whose values are image URLs or data URIs. They aren't categorical. */
   imageColumnNames: string[];
