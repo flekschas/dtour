@@ -1,6 +1,6 @@
 import { motion, type Transition, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CONTENT_TOP_VH } from '../constants.ts';
+import { getHeroLayout } from '../constants.ts';
 
 type AnimatedLogoProps = {
   phase: 'drawing' | 'moving';
@@ -85,15 +85,12 @@ export const AnimatedLogo = ({
     const rect = targetEl.getBoundingClientRect();
     setTargetRect(rect);
 
-    // Cap the hero logo to the content block width so it never overflows the
-    // viewport or exceeds the example grid below it. Matches the landing
-    // content cap (max-w-lg = 512px) minus the overlay's px-4 padding.
-    const maxWidth = Math.min(512, window.innerWidth - 32);
-    const scale = Math.min(SCALE, maxWidth / rect.width);
+    const { logoWidth, contentTop } = getHeroLayout();
+    const scale = Math.min(SCALE, logoWidth / rect.width);
     const width = rect.width * scale;
     const height = rect.height * scale;
     const x = (window.innerWidth - width) / 2;
-    const y = window.innerHeight * CONTENT_TOP_VH - height;
+    const y = contentTop - height;
     setInitialRect({ x, y, width, height });
   }, []);
 
