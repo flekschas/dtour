@@ -4,6 +4,7 @@ import {
   GithubLogoIcon,
   NotebookIcon,
   PlayCircleIcon,
+  PresentationChartIcon,
   RobotIcon,
   ScrollIcon,
   SpinnerIcon,
@@ -28,6 +29,7 @@ type ThemeMode = 'light' | 'dark' | 'system';
 const ACCEPTED_EXTENSIONS = ['.parquet', '.pq', '.arrow', '.csv'];
 
 const REMOTE = import.meta.env.DEV ? '/cloudflare' : 'https://data.dtour.dev';
+const SLIDES_URL = 'https://slides.dtour.dev/';
 const MARIMO_DEMO_URL =
   'https://molab.marimo.io/github/flekschas/dtour/blob/main/packages/python/notebooks/demo_molab.py';
 
@@ -1071,8 +1073,17 @@ const App = () => {
                   onClick={() => setVideoOpen(true)}
                 >
                   <PlayCircleIcon size={16} weight="fill" />
-                  <span>Watch Intro Video</span>
+                  <span>Watch Intro</span>
                 </button>
+                <a
+                  href={SLIDES_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                >
+                  <PresentationChartIcon size={16} weight="fill" />
+                  <span>See Slides</span>
+                </a>
                 <a
                   href={MARIMO_DEMO_URL}
                   target="_blank"

@@ -1,5 +1,11 @@
 # Changelog
 
+## Next
+
+### webapp
+
+- feat: add a "See Slides" button after the intro video button on the home page that opens [slides.dtour.dev](https://slides.dtour.dev/) in a new tab, and shorten "Watch Intro Video" to "Watch Intro"
+
 ## v0.5.3
 
 ### scatter
