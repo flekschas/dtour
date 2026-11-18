@@ -1,11 +1,9 @@
 import type { DtourSpec } from '@dtour/viewer';
 import { DTOUR_DEFAULTS, Dtour, parseEmbeddedConfig } from '@dtour/viewer';
 import {
-  GithubLogoIcon,
   NotebookIcon,
   PlayCircleIcon,
   RobotIcon,
-  ScrollIcon,
   SpinnerIcon,
   UploadSimpleIcon,
   XIcon,
@@ -16,8 +14,9 @@ import type { SyntheticEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatedLogo } from './components/AnimatedLogo.tsx';
 import { InstallMcpDialog } from './components/InstallMcpDialog.tsx';
+import { LandingFooter } from './components/LandingFooter.tsx';
 import { Button } from './components/ui/button.tsx';
-import { CONTENT_TOP_VH } from './constants.ts';
+import { getHeroLayout } from './constants.ts';
 import { readUrlSpec, specDiff, URL_SPEC_KEYS, writeUrlSpec } from './url-spec.ts';
 import { type Layout, layoutRows, readUrlLayout, readUrlViews, type ViewSpec } from './views.ts';
 import CsvWorkerFactory from './workers/csv.worker.ts?worker&inline';
@@ -957,185 +956,150 @@ const App = () => {
       {/* Content overlay (upload button + examples) — hidden during logo move/settle */}
       {(!data || (parsing && logoPhase !== 'done')) && logoPhase !== 'moving' && (
         <motion.div
-          className={`absolute inset-0 flex flex-col items-center px-4 z-20 pointer-events-none ${
-            logoPhase === 'done' ? 'justify-center' : 'justify-start'
-          }`}
-          style={logoPhase !== 'done' ? { paddingTop: `${CONTENT_TOP_VH * 100}vh` } : undefined}
+          className="absolute inset-0 flex flex-col items-center px-4 z-20 pointer-events-none"
+          style={logoPhase !== 'done' ? { paddingTop: getHeroLayout().contentTop } : undefined}
         >
-          {loading || parsing ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-4">
-              <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
-            </div>
-          ) : (
-            <>
-              {/* 1. Description */}
-              <motion.p
-                className="w-full max-w-lg text-sm text-dtour-text-muted/80 text-center mb-6 pointer-events-auto"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  delay: logoPhase === 'drawing' ? 1.2 : 0,
-                  duration: 0.6,
-                  ease: 'easeOut',
-                }}
-              >
-                Visually explore high-dimensional data and embeddings through interactive, smooth
-                tours of 2D projections to build intuition for the full data manifold.
-              </motion.p>
-              {/* 2. Drop button */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  delay: logoPhase === 'drawing' ? 1.45 : 0,
-                  duration: 0.4,
-                  ease: 'easeOut',
-                }}
-              >
-                <Button
-                  variant="ghost"
-                  className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
-                  onClick={() => inputRef.current?.click()}
-                >
-                  <UploadSimpleIcon size={36} />
-                  <span className="text-sm select-none">
-                    Drop a Parquet, Arrow, or CSV file to start
-                  </span>
-                </Button>
-              </motion.div>
-              {/* 3. "or try" */}
-              <motion.span
-                className="text-xs text-dtour-text-muted/60 select-none mt-4"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  delay: logoPhase === 'drawing' ? 1.5 : 0,
-                  duration: 0.4,
-                  ease: 'easeOut',
-                }}
-              >
-                or try
-              </motion.span>
-              {/* 4. Example grid */}
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
-                {LISTED_EXAMPLES.map((example, i) => (
-                  <motion.button
-                    key={example.fileName}
-                    type="button"
-                    className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{
-                      delay: (logoPhase === 'drawing' ? 1.55 : 0) + i * 0.05,
-                      duration: 0.4,
-                      ease: 'easeOut',
-                    }}
-                    onClick={() => loadExample(example)}
-                    onPointerEnter={playPreview}
-                    onPointerLeave={pausePreview}
-                    onFocus={playPreview}
-                    onBlur={pausePreview}
-                  >
-                    <ExampleButtonContent example={example} showPreview={showPreviews} />
-                  </motion.button>
-                ))}
+          <div
+            className={`flex-1 w-full flex flex-col items-center ${
+              logoPhase === 'done' ? 'justify-center' : 'justify-start'
+            }`}
+          >
+            {loading || parsing ? (
+              <div className="flex flex-col items-center gap-3 px-6 py-4">
+                <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
               </div>
-              {/* 5. "or watch" */}
-              <motion.span
-                className="text-xs text-dtour-text-muted/60 select-none mt-4 mb-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  delay: (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.1,
-                  duration: 0.4,
-                  ease: 'easeOut',
-                }}
-              >
-                or
-              </motion.span>
-              {/* 6. Video and MCP buttons */}
-              <motion.div
-                className="flex items-center gap-2 mt-2 pointer-events-auto"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  delay:
-                    (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.15,
-                  duration: 0.4,
-                  ease: 'easeOut',
-                }}
-              >
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
-                  onClick={() => setVideoOpen(true)}
+            ) : (
+              <>
+                {/* 1. Description */}
+                <motion.p
+                  className="w-full max-w-lg text-sm text-dtour-text-muted/80 text-center mb-6 pointer-events-auto"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    delay: logoPhase === 'drawing' ? 1.2 : 0,
+                    duration: 0.6,
+                    ease: 'easeOut',
+                  }}
                 >
-                  <PlayCircleIcon size={16} weight="fill" />
-                  <span>Watch Intro Video</span>
-                </button>
-                <a
-                  href={MARIMO_DEMO_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                  Visually explore high-dimensional data and embeddings through interactive, smooth
+                  tours of 2D projections to build intuition for the full data manifold.
+                </motion.p>
+                {/* 2. Drop button */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    delay: logoPhase === 'drawing' ? 1.45 : 0,
+                    duration: 0.4,
+                    ease: 'easeOut',
+                  }}
                 >
-                  <NotebookIcon size={16} weight="fill" />
-                  <span>Use in Marimo</span>
-                </a>
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
-                  onClick={() => setMcpOpen(true)}
+                  <Button
+                    variant="ghost"
+                    className="w-full max-w-lg cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface"
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    <UploadSimpleIcon size={36} className="hidden sm:block" />
+                    <span className="text-sm select-none">
+                      Drop a Parquet, Arrow, or CSV file to start
+                    </span>
+                  </Button>
+                </motion.div>
+                {/* 3. "or try" */}
+                <motion.span
+                  className="text-xs text-dtour-text-muted/60 select-none mt-4"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    delay: logoPhase === 'drawing' ? 1.5 : 0,
+                    duration: 0.4,
+                    ease: 'easeOut',
+                  }}
                 >
-                  <RobotIcon size={16} weight="fill" />
-                  <span>Install MCP</span>
-                </button>
-              </motion.div>
-            </>
-          )}
-          <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 flex items-center gap-1">
-            <span>
-              Made by{' '}
-              <a
-                href="https://lekschas.de"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-              >
-                Fritz
-              </a>
-              {' and '}
-              <a
-                href="https://nvictus.me"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-              >
-                Nezar
-              </a>
-              .
-            </span>
-            <span className="bg-dtour-text-muted/30 w-px h-4 mx-1" />
-            <a
-              href="https://github.com/flekschas/dtour"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-            >
-              <GithubLogoIcon size={14} weight="fill" />
-              GitHub
-            </a>
-            <span className="bg-dtour-text-muted/30 w-px h-4 mx-1" />
-            <a
-              href="https://arxiv.org/abs/2605.04306"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-            >
-              <ScrollIcon size={14} weight="fill" />
-              arXiv
-            </a>
-          </p>
+                  or try
+                </motion.span>
+                {/* 4. Example grid */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
+                  {LISTED_EXAMPLES.map((example, i) => (
+                    <motion.button
+                      key={example.fileName}
+                      type="button"
+                      className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-bg/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{
+                        delay: (logoPhase === 'drawing' ? 1.55 : 0) + i * 0.05,
+                        duration: 0.4,
+                        ease: 'easeOut',
+                      }}
+                      onClick={() => loadExample(example)}
+                      onPointerEnter={playPreview}
+                      onPointerLeave={pausePreview}
+                      onFocus={playPreview}
+                      onBlur={pausePreview}
+                    >
+                      <ExampleButtonContent example={example} showPreview={showPreviews} />
+                    </motion.button>
+                  ))}
+                </div>
+                {/* 5. "or watch" */}
+                <motion.span
+                  className="text-xs text-dtour-text-muted/60 select-none mt-4 mb-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    delay:
+                      (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.1,
+                    duration: 0.4,
+                    ease: 'easeOut',
+                  }}
+                >
+                  or
+                </motion.span>
+                {/* 6. Video and MCP buttons */}
+                <motion.div
+                  className="flex items-center gap-2 mt-2 pointer-events-auto"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    delay:
+                      (logoPhase === 'drawing' ? 1.55 : 0) + LISTED_EXAMPLES.length * 0.05 + 0.15,
+                    duration: 0.4,
+                    ease: 'easeOut',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                    onClick={() => setVideoOpen(true)}
+                  >
+                    <PlayCircleIcon size={16} weight="fill" />
+                    <span className="whitespace-nowrap">
+                      <span className="hidden sm:inline">Watch </span>Intro Video
+                    </span>
+                  </button>
+                  <a
+                    href={MARIMO_DEMO_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                  >
+                    <NotebookIcon size={16} weight="fill" />
+                    <span className="whitespace-nowrap">Use in Marimo</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                    onClick={() => setMcpOpen(true)}
+                  >
+                    <RobotIcon size={16} weight="fill" />
+                    <span className="whitespace-nowrap">Install MCP</span>
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </div>
+          <LandingFooter />
         </motion.div>
       )}
       {logoPhase !== 'done' && (
@@ -1163,124 +1127,86 @@ const App = () => {
                 if (e.key === 'Escape') setHomeOpen(false);
               }}
             />
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-4 pointer-events-none">
-              {loading ? (
-                <div className="flex flex-col items-center gap-3 px-6 py-4">
-                  <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
-                </div>
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    className="w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
-                    onClick={() => inputRef.current?.click()}
-                  >
-                    <UploadSimpleIcon size={36} />
-                    <span className="text-sm select-none">
-                      Drop a Parquet, Arrow, or CSV file to start
+            <div className="absolute inset-0 z-10 flex flex-col items-center px-4 pointer-events-none">
+              <div className="flex-1 w-full flex flex-col items-center justify-center">
+                {loading ? (
+                  <div className="flex flex-col items-center gap-3 px-6 py-4">
+                    <SpinnerIcon size={32} className="animate-spin text-dtour-text-muted" />
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl cursor-pointer flex flex-col items-center gap-2 p-4 h-auto pointer-events-auto bg-dtour-surface/60 hover:bg-dtour-surface backdrop-blur-sm"
+                      onClick={() => inputRef.current?.click()}
+                    >
+                      <UploadSimpleIcon size={36} className="hidden sm:block" />
+                      <span className="text-sm select-none">
+                        Drop a Parquet, Arrow, or CSV file to start
+                      </span>
+                    </Button>
+                    <span className="text-xs text-dtour-text-muted/60 select-none mt-4">
+                      or try
                     </span>
-                  </Button>
-                  <span className="text-xs text-dtour-text-muted/60 select-none mt-4">or try</span>
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
-                    {LISTED_EXAMPLES.map((example) => (
+                    <div className="grid grid-cols-3 gap-1.5 sm:gap-4 min-[90rem]:gap-5 min-[100rem]:gap-6 min-[120rem]:gap-7 mt-3 w-full max-w-lg min-[90rem]:max-w-xl min-[100rem]:max-w-2xl min-[120rem]:max-w-3xl pointer-events-auto">
+                      {LISTED_EXAMPLES.map((example) => (
+                        <button
+                          key={example.fileName}
+                          type="button"
+                          className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                          onClick={() => {
+                            setHomeOpen(false);
+                            loadExample(example);
+                          }}
+                          onPointerEnter={playPreview}
+                          onPointerLeave={pausePreview}
+                          onFocus={playPreview}
+                          onBlur={pausePreview}
+                        >
+                          <ExampleButtonContent example={example} showPreview={showPreviews} />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 mt-4 pointer-events-auto">
+                      <span className="text-xs text-dtour-text-muted/60 select-none">or watch</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-4 pointer-events-auto">
                       <button
-                        key={example.fileName}
                         type="button"
-                        className="group relative overflow-hidden w-full p-2 border border-dtour-surface rounded-md text-left cursor-pointer transition-colors bg-dtour-surface/50 hover:bg-dtour-surface select-none backdrop-blur-sm"
+                        className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
                         onClick={() => {
                           setHomeOpen(false);
-                          loadExample(example);
+                          setVideoOpen(true);
                         }}
-                        onPointerEnter={playPreview}
-                        onPointerLeave={pausePreview}
-                        onFocus={playPreview}
-                        onBlur={pausePreview}
                       >
-                        <ExampleButtonContent example={example} showPreview={showPreviews} />
+                        <PlayCircleIcon size={16} weight="fill" />
+                        <span>Intro Video</span>
                       </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 mt-4 pointer-events-auto">
-                    <span className="text-xs text-dtour-text-muted/60 select-none">or watch</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-4 pointer-events-auto">
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
-                      onClick={() => {
-                        setHomeOpen(false);
-                        setVideoOpen(true);
-                      }}
-                    >
-                      <PlayCircleIcon size={16} weight="fill" />
-                      <span>Intro Video</span>
-                    </button>
-                    <a
-                      href={MARIMO_DEMO_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
-                    >
-                      <NotebookIcon size={16} weight="fill" />
-                      <span>Use in Marimo</span>
-                    </a>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
-                      onClick={() => {
-                        setHomeOpen(false);
-                        setMcpOpen(true);
-                      }}
-                    >
-                      <RobotIcon size={16} weight="fill" />
-                      <span>Install MCP</span>
-                    </button>
-                  </div>
-                </>
-              )}
-              <p className="absolute bottom-6 text-xs text-dtour-text-muted/60 flex items-center gap-1">
-                <span>
-                  Made by{' '}
-                  <a
-                    href="https://lekschas.de"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-                  >
-                    Fritz
-                  </a>
-                  {' and '}
-                  <a
-                    href="https://nvictus.me"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pointer-events-auto hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-                  >
-                    Nezar
-                  </a>
-                  .
-                </span>
-                <span className="text-dtour-text-muted/30 mx-1">|</span>
-                <a
-                  href="https://github.com/flekschas/dtour"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-                >
-                  <GithubLogoIcon size={14} weight="fill" />
-                  GitHub
-                </a>
-                <span className="text-dtour-text-muted/30 mx-1">|</span>
-                <a
-                  href="https://arxiv.org/abs/2605.04306"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pointer-events-auto flex items-center gap-1 hover:underline underline-offset-2 hover:text-dtour-text-muted transition-colors"
-                >
-                  <ScrollIcon size={14} weight="fill" />
-                  arXiv
-                </a>
-              </p>
+                      <a
+                        href={MARIMO_DEMO_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                      >
+                        <NotebookIcon size={16} weight="fill" />
+                        <span className="whitespace-nowrap">Use in Marimo</span>
+                      </a>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-xs text-dtour-text-muted/80 hover:text-dtour-text border border-dtour-surface hover:bg-dtour-surface rounded-full px-3 py-1.5 transition-colors cursor-pointer select-none"
+                        onClick={() => {
+                          setHomeOpen(false);
+                          setMcpOpen(true);
+                        }}
+                      >
+                        <RobotIcon size={16} weight="fill" />
+                        <span className="whitespace-nowrap">Install MCP</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <LandingFooter />
             </div>
           </motion.div>
         )}

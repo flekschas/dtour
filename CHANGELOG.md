@@ -1,5 +1,13 @@
 # Changelog
 
+## Next
+
+### webapp
+
+- fix: the landing page fits on phones. The logo is smaller and closer to the top, the upload icon is hidden, and the intro video button reads "Intro Video", so the content no longer runs into the footer. The footer is now part of the layout instead of floating over it, so it can't overlap the content
+- fix: center the landing page footer on iOS Safari and let it wrap on narrow screens
+- fix: on iOS Safari, the landing content starts right below the logo instead of leaving a gap, since its offset is now based on the visible viewport height rather than CSS `vh`
+
 ## v0.5.3
 
 ### scatter
